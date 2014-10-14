@@ -1,0 +1,15 @@
+proc*.v
+proc*.ml*
+*.vo
+*.vi
+*.v.d
+*.mlo
+*.native
+# Maybe we will keep a list of cm for non regression testing.
+*.cm
+*.s
+*.ali
+*.o
+*.glob
+gnatinspect*
+*loc.xml
