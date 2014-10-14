@@ -1,0 +1,20 @@
+
+-R @COMPCERT/ia32 compcert.ia32
+-R @COMPCERT/lib compcert.lib
+-R @COMPCERT/common compcert.common
+-R @COMPCERT/backend compcert.backend
+-R @COMPCERT/cfrontend compcert.cfrontend
+-R @COMPCERT/driver compcert.driver
+-R @COMPCERT/flocq compcert.flocq
+-R @COMPCERT/exportclight compcert.exportclight
+-R @COMPCERT/cparser compcert.cparser
+
+-I @SPARK
+-R sparktests sparktests
+
+spark2Cminor.v
+spark2Cshm.v
+Tests.v
+testing_language.v
+spark_tests/proc1.v
+spark_tests/tests.v

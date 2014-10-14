@@ -1,0 +1,3 @@
+COQTAGS=coqtags.sh
+COMPCERT=..
+SPARK=spark

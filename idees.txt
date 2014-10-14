@@ -1,0 +1,218 @@
+-*- mode:outline -*-
+
+* TODO: refaire l'archi pour être un ss-rep de compcert et pas l'inverse.
+
+* faire un printer pour sparkcoq et dumper à la compil.
+
+
+* La chaine Compcert:
+
+La chaine part de Clight vers l'assembleur
+
+Clight -> C#minor -> Cminor -> CminorSel ...
+
+***** A priori CMinor est la meilleure cible.
+
+
+** Clight -> C#Minor : 
+*** Resolution of all type-dependent behaviours: overloaded operators
+   are resolved, address computations for array and struct accesses
+   are made explicit, etc.
+**** Du coup ça fait du sens d'arriver dans c#minor
+     (calcul des décalages de tableaux par exemple)
+**** NON
+   Mais en fait non car les variables ont chacune leur espace mémoire
+   et le mécanisme de chainage des blocs mémoire de procédure n'est
+   donc pas possible
+
+*** bidouille des switch et des loops (on s'en fout)
+
+** C#Minor -> CMinor:
+*** changement d'adressage des variables non temporaire
+  Explicitly stack-allocate local variables whose address is taken:
+  these local variables become sub-blocks of the Cminor stack data
+  block for the current function. Taking the address of such a
+  variable becomes a [Oaddrstack] operation with the corresponding
+  offset. Accessing or assigning such a variable becomes a load or
+  store operation at that address. Only scalar local variables whose
+  address is never taken in the Csharpminor code can be mapped to
+  Cminor local variable, since the latter do not reside in memory.
+
+**** Précision: en c#minor chaque variable est stockée dans son espace
+  mémoire, dans Cminor toutes les variables locales à une procédure
+  (sauf les temporaires) partagent le même espace mémoire et sont
+  référencées par un offset (comme dans un record).
+
+  IMPORTANT: les paramètres de fonction de C#minor (et Cminor et plus
+  bas donc) sont des temporaires par principe. MAIS si on a besoin de
+  leur adresse alors ils sont dupliqués comme variale locale non
+  temporaire. Il y a une phase (niveau Clight, voir
+  cfrontend/SimplLocals.v) ou les paramètres sont mis en temporaire
+  (est-ce bien à cete endroit?) le prélude effectuant cette copie
+  (temporaire -> var locale) est ajouté au code des fonction
+  (cfrontend/SimplLocals.v#store_params).
+
+**** Mmmh là ça semble être le bon endroit
+  Pour implanter le mécanisme de scope exotique des procédures
+  imbriquées. On va chaîner les bloc entre eux en y ajoutantune
+  variables locale qui pointe vers l'environnment de la procédure
+  englobante
+
+*** encore un truc sur les switchs
+
+** CminorSel et le reste
+   début de la partie machine-dépendante (adressing etc).
+
+
+* Où se brancher.
+
+Clight est trop marqué par le C.
+
+** Cminor?
+Apparemment la transformation c#minor -> cminor fait une bonne partie
+du travail de transformation de nom de variables en adresse mémoire
+(sauf les variables scalaires dont l'adresse n'est pas utilisée, elles
+seront traitée plus loin (allocation dans un registre si possible)).
+
+Donc c'est dans une traduction spark#minor -> cminor que je devrais
+mettre la transformation nom de variable => offset dans la pile
+probablement. La transformation est beaucoup plus lourde dans mon cas
+car l'accès aux variables fait appel à un mécanisme compliqué (il faut
+une routine en Cminor qui le fait probablement).
+
+** C#minor?
+
+C#Minor = Cminor mais on a transformé les variables en adresses
+mémoire (sauf celle qui peuvent prétendre à être en registre
+(scalaires dont l'adresse n'est jamais demandée).
+
+Du coup c'est un candidat 
+
+
+* On a besoin de plusieurs passes?
+
+Peut-on passer de la sémantique avec noms de variable qui coupe la
+pile directement à celle qui ne coupe pas? Non
+
+Il faut d'abord avoir une version qui ne coupe pas mais avec noms?
+*** MÀJ: non peut-être pas car le chainage des stores locaux colle
+    assez à la sématique qui coupe.
+
+
+Compcert       SPARK
+
+            Avec noms, pile découpée
+                   |
+                   | preuve de d'équivalence
+                   |
+            Avec noms, sauts dans la pile
+                   |
+                   | preuve de d'équivalence (compilation des noms vers des offsets)
+                   |
+            p-machine (pas de nom, sauts dans la pile)
+                   |
+                   | résolution des déf. de type
+                   |
+            p-machine (pas de nom, sauts dans la pile, types dépliés?)
+              ?/
+  C#minor <---/
+     |       /?
+     |      /
+     |     /
+     |    /   Compilation
+     |   /
+     |  /
+     |	|
+     V  V
+   Cminor
+
+* Résolution des types
+
+Il faut résoudre les alias de type avant la traduction vers Cminor.
+Sinon on garde la possibilité de boucler entre plusieurs définitions
+de types et ça rend impossible la compilation (transl_type).
+
+type X := Y
+type Y := X.
+
+Donc il faut une phase de compilation qui déplie les types au fur et à
+mesure. Il faut probablement caractériser les programmes dont les def
+de types ne cyclent pas? Est-ce fait en compcert? Est-ce fait par une
+précompilation? J'ai pas trouvé où.
+
+** En compcert
+  Pour l'instant il n'ya pas de typedef dans compcert. Ils sont
+  considérés comme expansés. Xavier Leroy me signale que Robbert
+  Krebbers, dans sa formalisation CH2O
+  (http://robbertkrebbers.nl/research/ch2o/), arrive à gérer les types
+  nommés. Le principe serait que l'accès à une def de type "consomme"
+  la def de type et ainsi on fait diminuer la taille de
+  l'environnement. Si on tombe sur une def déjà consommée c'est un
+  cycle et ça échoue. Pas con.
+
+
+Est-ce que ça peut être fait pendant la même phase de compile que le
+reste? Bof, c'est sûrement pas le seul truc à faire, donc il vaut
+probablement avoir une phase préparatoire.
+
+* Comment compiler les variables "globales" (y compris les variables
+   des coprocédures)?
+
+Les variables visibles des coprocédures ne sont pas recopiées en
+principe, elles sont lues et affectées en direct. Il faut donc générer
+du code qui retrouve l'adresse des variables visibles.
+
+** Une solution naïve
+  On ajoute des variables locales aux fonctions (ou des paramètres).
+  Ces variables sont des pointeurs sur les variables visibles. À
+  chaque appel on recopie les pointeurs. On peut toujours optimiser en
+  détectant les variables qui ne sont pas utilisées.
+
+*** Comment référencer ces variables?
+  On peut garder le même nom mais c'est un pointeur.
+
+** Une autre solution?
+  Avoir une pile de pointeurs dans *une* variable dans chaque frame.
+  Lors de l'appel à une fonction mutuelle, on transmet la pile,
+  rallongée des variables supplémentaires. Avantage: on gagne de la
+  place mémoire (on partage les variables) et du temps CPU (on ne
+  duplique pas les pointeurs). Inconvénients: compliqué, piles
+  rallongeables.
+
+*** Comment référencer ces variables?
+  Il faut calculer le numéro de chaque variable, mais il est statique.
+
+
+* Comment gérer les paramètre en "out" (et "inout")?
+
+Plus exactement un simple passage par adresse ne marche pas car la
+sémantique dit que pour les types scalaires (et optionnellement les
+types tableaux et records) le passage se fait par valeur avec copie
+seulement à la fin de la procédure. Ceci n'est pas observable en
+théorie en spark puisque l'aliasing est interdit, mais ce serait
+pénible à prouver et ça ne colle pas à ada et à la sémantique formelle
+telle qu'elle est définie en Coq.
+
+
+** Excellente idée de Tristan:
+
+On passe l'adresse du paramètre (appelons-le x), mais on copie
+son *contenu pointé* (càd (*x)) dans la pile locale (appelons cette
+nouvelle variable x'. On travaille sur x' et à la fin de la procédure
+on fait (*x) = x' pour effectuer la copyout dans le paramètre
+effectif.
+
+
+* Comment fait-on pour avoir une chaine de compil complète?
+
+Pour l'instant on fait la chose cradissime suivante (gnat2ml.sh):
+
+** sireum fichier.adb ===> toto.v
+** echo à la fin de toto.v une commande d'extraction.
+** exécution de toto.v ==> tmp.ml
+** echo à la fin de tmp.ml une commande de marshaling (output_value) ==> tmp.mlo
+** dans Driver.ml (fichier principald ccomp) une fonction lit un fihcier tmp.mlo => (tmp.s,tmp.cm)
+
+
+Dans l'idéal on veut sireum sort une versino xml de toto.v (toto.xml)
+et Driver.ml lit directement ce fichier.
