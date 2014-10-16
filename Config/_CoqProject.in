@@ -13,8 +13,8 @@
 -R sparktests sparktests
 
 spark2Cminor.v
-spark2Cshm.v
-Tests.v
-testing_language.v
-spark_tests/proc1.v
-spark_tests/tests.v
+
+# should be generated automatically
+
+sparktests/proc1.v
+sparktests/proc2.v

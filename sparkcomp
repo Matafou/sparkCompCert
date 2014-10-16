@@ -99,7 +99,7 @@ echo "executing compiled ml file (for marshalling)..."
 ./$MLNATIVE_FILE
 echo "executing compiled ml file (for marshalling)... done"
 
-echo "deleting files $CMINOR_FILE and $ASM_FILE"
+echo "deleting old files $CMINOR_FILE and $ASM_FILE"
 rm -f $CMINOR_FILE $ASM_FILE
 echo "compiling the file with compcert (via input_value + spark2Cminor)"
 ../ccomp -dcminor -S $MLO_FILE -o $ASM_FILE

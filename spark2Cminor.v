@@ -153,7 +153,8 @@ End OffsetEntry.
 
 Module CompilEnv := environment.STORE OffsetEntry.
 Definition compilenv := CompilEnv.stack.
-
+Notation localframe := CompilEnv.store.
+Definition frame := CompilEnv.frame.
 
 
 
@@ -495,6 +496,7 @@ Definition transl_procsig (stbl:symboltable) (pnum:procnum)
    avoid zero as a procedure name in spark. *)
 Definition transl_procid := Pos.of_nat.
 
+(** Compilation of statements *)
 Fixpoint transl_stmt (stbl:symboltable) (CE:compilenv) (e:statement) {struct e}: res stmt :=
   match e with
     | S_Null => OK Sskip
@@ -550,46 +552,58 @@ Fixpoint transl_stmt (stbl:symboltable) (CE:compilenv) (e:statement) {struct e}:
     | S_While_Loop x x0 x1 => Error (msg "transl_stmt:Not yet implemented")
   end.
 
+(** * Functions for manipulating the [compilenv]
 
-(* [compute_size stbl typ] return the size needed to store values of typpe subtyp_mrk *)
+[compilenv] is the type of the static frame stack we maintain during
+compilation. It stores the offset of each visible variable (in its own
+frame) and the level of nesting of each one. The nestng level is
+actually represented by the structure of the compilenv: Concretely a
+compilenv is a stack ([CompilEnv.stack]) of frames
+([frame] = [scope*localframe]'s). A part of the compilation process to Cminor
+consists in using the information of this stack to maintain a pseudo
+stack in memory, that is isomorphic to this environment (chaining
+frames thanks to an implicit argument added to each procedure). *)
+
+(* [compute_size stbl typ] return the size needed to store values of
+   typpe subtyp_mrk *)
 Definition compute_size (stbl:symboltable) (typ:type) := 4%Z.
 
-
-Definition add_to_compilenv stbl (cenv_sz:CompilEnv.store*Z) nme subtyp_mrk: CompilEnv.store*Z  :=
+(** Add an element to a frame. *)
+Definition add_to_frame stbl (cenv_sz:localframe*Z) nme subtyp_mrk: localframe*Z  :=
   let (cenv,sz) := cenv_sz in
   let size := compute_size stbl subtyp_mrk in
   let new_size := (sz+size)%Z in
   let new_cenv := (nme,sz) :: cenv in
   (new_cenv,new_size).
 
-(* [build_frame_lparams stbl (cenv,sz) lparam] uses cenv as an
-   accumulator to build a compilation env for lparam. It also compute
+(* [build_frame_lparams stbl (fram,sz) lparam] uses fram as an
+   accumulator to build a frame env for lparam. It also compute
    the overall size of the store. *)
-Fixpoint build_frame_lparams (stbl:symboltable) (cenv_sz:CompilEnv.store * Z)
-         (lparam:list parameter_specification): CompilEnv.store*Z :=
+Fixpoint build_frame_lparams (stbl:symboltable) (fram_sz:localframe * Z)
+         (lparam:list parameter_specification): localframe*Z :=
   match lparam with
-    | nil => cenv_sz
+    | nil => fram_sz
     | mkparameter_specification _ nme subtyp_mrk mde :: lparam' =>
-      let new_cenv_sz := add_to_compilenv stbl cenv_sz nme subtyp_mrk in
-      build_frame_lparams stbl new_cenv_sz lparam'
+      let new_fram_sz := add_to_frame stbl fram_sz nme subtyp_mrk in
+      build_frame_lparams stbl new_fram_sz lparam'
   end.
 
-(* [build_frame_decl stbl (cenv,sz) decl] uses cenv as an
-   accumulator to build a compilation env for decl. It also compute
+(* [build_frame_decl stbl (fram,sz) decl] uses fram as an
+   accumulator to build a frame for decl. It also compute
    the overall size of the store. *)
-Fixpoint build_frame_decl (stbl:symboltable) (cenv_sz:CompilEnv.store * Z)
-         (decl:declaration): CompilEnv.store*Z :=
-  let (cenv,sz) := cenv_sz in
+Fixpoint build_frame_decl (stbl:symboltable) (fram_sz:localframe * Z)
+         (decl:declaration): localframe*Z :=
+  let (fram,sz) := fram_sz in
   match decl with
-    | D_Null_Declaration => cenv_sz
+    | D_Null_Declaration => fram_sz
     | D_Seq_Declaration _ decl1 decl2 =>
-      let cenv2_sz1 := build_frame_decl stbl cenv_sz decl1 in
-      build_frame_decl stbl cenv2_sz1 decl2
+      let fram2_sz1 := build_frame_decl stbl fram_sz decl1 in
+      build_frame_decl stbl fram2_sz1 decl2
     | D_Object_Declaration _ objdecl =>
       let size := compute_size stbl (objdecl.(object_nominal_subtype)) in
       let new_size := (sz+size)%Z in
-      (((objdecl.(object_name),sz)::cenv) ,new_size)
-    | _ => cenv_sz
+      (((objdecl.(object_name),sz)::fram) ,new_size)
+    | _ => fram_sz
   end.
 
 
@@ -597,9 +611,10 @@ Fixpoint build_frame_decl (stbl:symboltable) (cenv_sz:CompilEnv.store * Z)
 (* [build_compilenv stbl enclosingCE pbdy] returns the new compilation
    environment built from the one of the enclosing procedure
    [enclosingCE] and the list of parameters [lparams] and local
-   variables [decl]. One of the things to note here is that it adds a
-   variable at address 0 which contains the address of the frame of
-   the enclosing procedure, for chaining. *)
+   variables [decl]. It attributes an offset to each of these
+   variable names. One of the things to note here is that it adds a
+   variable at offset 0 which contains the address of the frame of the
+   enclosing procedure, for chaining. *)
 Fixpoint build_compilenv (stbl:symboltable) (enclosingCE:compilenv) (lvl:Symbol_Table_Module.level)
          (lparams:list parameter_specification) (decl:declaration) : res (compilenv*Z) :=
   let stosz := build_frame_lparams stbl ((0,0%Z) :: nil, 4%Z) lparams in
@@ -607,6 +622,11 @@ Fixpoint build_compilenv (stbl:symboltable) (enclosingCE:compilenv) (lvl:Symbol_
   let scope_lvl := List.length enclosingCE in
   OK (((scope_lvl,sto2)::enclosingCE),sz2).
 
+
+(** * Translating a procedure declaration
+
+Such a declaration contains other declaration, possibly declarations
+of nested procedures. *)
 
 (** [store_params lparams statm] adds a prelude to statement [statm]
     which effect is to store all parameters values listed in [lparams]
@@ -638,6 +658,11 @@ Fixpoint store_params stbl (CE:compilenv) (lparams:list parameter_specification)
       OK (Sseq (Sstore chnk lexp (Evar id)) recres)
   end.
 
+(* [init_locals stbl CE decl statm] adds a prelude to statement
+   [statm] which effect is to initialize variables according to
+   intialzation expressions in [decl]. Variables declared in decl are
+   supposed to already be added to compilenv [CE] (by
+   [build_compilenv] above).*)
 Fixpoint init_locals (stbl:symboltable) (CE:compilenv) (decl:declaration) (statm:stmt)
   : res stmt :=
   match decl with
@@ -657,6 +682,12 @@ Fixpoint init_locals (stbl:symboltable) (CE:compilenv) (decl:declaration) (statm
     | _ => OK statm
   end.
 
+(** Translating a procedure definition. First computes the compilenv
+    from previous enclosing compilenv and local parameters and
+    variables and then add a prelude (and a postlude) to the statement
+    of the procedure. The prelude copies parameter to the local stack
+    (including the chaining parameter) and execute intialization of
+    local vars. *)
 Definition transl_procedure_body (stbl:symboltable) (enclosingCE:compilenv)
            (lvl:Symbol_Table_Module.level) (pbdy:procedure_body)
   : res (AST.ident * AST.globdef fundef unit) :=
@@ -698,13 +729,15 @@ Definition transl_procedure_body (stbl:symboltable) (enclosingCE:compilenv)
         else Error(msg "spark2Cminor: too many local variables, stack size exceeded")
   end.
 
+
 (* FIXME: check the size needed for the declarations *)
 Fixpoint transl_global_declaration_ (stbl:symboltable) (enclosingCE:compilenv)
            (decl:declaration) (p:Cminor.program) : res (Cminor.program) :=
   match decl with
       | D_Procedure_Body _ pbdy =>
         do tdecl <- transl_procedure_body stbl enclosingCE 0 pbdy;
-          OK {| AST.prog_defs := tdecl :: p.(AST.prog_defs); AST.prog_main := p.(AST.prog_main) |}
+          OK {| AST.prog_defs := tdecl :: p.(AST.prog_defs);
+                AST.prog_main := p.(AST.prog_main) |}
       | D_Seq_Declaration _ decl1 decl2 =>
         do p1 <- transl_global_declaration_ stbl enclosingCE decl1 p;
         do p2 <- transl_global_declaration_ stbl enclosingCE decl2 p1;
@@ -712,17 +745,20 @@ Fixpoint transl_global_declaration_ (stbl:symboltable) (enclosingCE:compilenv)
       | D_Object_Declaration astnum objdecl =>
         do tobjdecl <- OK (transl_paramid objdecl.(object_name),
                            AST.Gvar {| AST.gvar_info := tt;
-                                       AST.gvar_init := nil; (* TODO. list AST.init_data *)
+                                       AST.gvar_init := nil; (* TODO list AST.init_data*)
                                        AST.gvar_readonly := false; (* FIXME? *)
                                        AST.gvar_volatile := false |} (* FIXME? *)
                           ) ; (*transl_objdecl stbl 0  ;*)
-        OK {| AST.prog_defs := tobjdecl :: p.(AST.prog_defs); AST.prog_main := p.(AST.prog_main) |}
-      | D_Type_Declaration _ _ => Error (msg "transl_global_declaration: D_Type_Declaration not yet implemented")
-      | D_Null_Declaration => Error (msg "transl_global_declaration: D_Null_Declaration not yet implemented")
+        OK {| AST.prog_defs := tobjdecl :: p.(AST.prog_defs);
+              AST.prog_main := p.(AST.prog_main) |}
+      | D_Type_Declaration _ _ =>
+        Error (msg "transl_global_declaration: D_Type_Declaration not yet implemented")
+      | D_Null_Declaration =>
+        Error (msg "transl_global_declaration: D_Null_Declaration not yet implemented")
   end.
 
-Definition transl_global_declaration (stbl:symboltable) (decl:declaration) (p:Cminor.program)
-  :res (Cminor.program) :=
+Definition transl_global_declaration (stbl:symboltable) (decl:declaration)
+           (p:Cminor.program) :res (Cminor.program) :=
   do (cenv,sz) <- build_compilenv stbl nil 0(*module lvl*) nil(*params*) decl ;
   transl_global_declaration_ stbl cenv decl p.
 

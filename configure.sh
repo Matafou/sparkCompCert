@@ -72,6 +72,7 @@ sed --posix -e "s/@SPARK/$SPARK/" ./_CoqProject | sponge ./_CoqProject
 # coq_makefile does not manage -R correctly.
 find $COMPCERT/ -name "*svn*" -prune -o \( -name "*\.v" -print \) >>  ./_CoqProject
 find $SPARK/ -name "*svn*" -prune -o -name "language_template\.v" -prune -o \( -name "*\.v" -print \) >>  ./_CoqProject
+find $resourcedir/sparktests -name "*svn*" -prune -o -name "language_template\.v" -prune -o \( -name "*\.v" -print \) >>  ./_CoqProject
 
 # Generate the Makefile from _CoqProject + add a coqtags target
 coq_makefile -f _CoqProject > Makefile
@@ -97,7 +98,4 @@ testclean:
 tags:
 	$COQTAGS $COMPCERT/*/*.v $SPARK/*.v *.v
 
-%.v:%.adb
-	$SIREUM/sireum bakar program -p Coq \$*.adb \$*_template.v
-	bash  $resourcedir/test_demo \$*_template.v \$*.v
 " >> Makefile
