@@ -1,5 +1,6 @@
 
 
+
 Require Import symboltable.
 Require Import Errors.
 (* Require Import language. *)
@@ -74,7 +75,6 @@ Definition update_sloc := Symbol_Table_Module.update_sloc.
 
 
 
-Require symboltable.
 Definition range_of (tpnum:type): res range :=
   OK (Range 0 10) (* FIXME *).
 
@@ -614,7 +614,7 @@ Fixpoint build_frame_decl (stbl:symboltable) (fram_sz:localframe * Z)
    variables [decl]. It attributes an offset to each of these
    variable names. One of the things to note here is that it adds a
    variable at offset 0 which contains the address of the frame of the
-   enclosing procedure, for chaining. *)
+   enclosing procedure, for chaining. Procedures are ignored. *)
 Fixpoint build_compilenv (stbl:symboltable) (enclosingCE:compilenv) (lvl:Symbol_Table_Module.level)
          (lparams:list parameter_specification) (decl:declaration) : res (compilenv*Z) :=
   let stosz := build_frame_lparams stbl ((0,0%Z) :: nil, 4%Z) lparams in
@@ -682,33 +682,38 @@ Fixpoint init_locals (stbl:symboltable) (CE:compilenv) (decl:declaration) (statm
     | _ => OK statm
   end.
 
+Definition CMfundecls: Type := (list (AST.ident * AST.globdef fundef unit)).
+
+
 (** Translating a procedure definition. First computes the compilenv
     from previous enclosing compilenv and local parameters and
     variables and then add a prelude (and a postlude) to the statement
     of the procedure. The prelude copies parameter to the local stack
     (including the chaining parameter) and execute intialization of
     local vars. *)
-Definition transl_procedure_body (stbl:symboltable) (enclosingCE:compilenv)
-           (lvl:Symbol_Table_Module.level) (pbdy:procedure_body)
-  : res (AST.ident * AST.globdef fundef unit) :=
+Fixpoint transl_procedure_body (stbl:symboltable) (enclosingCE:compilenv)
+         (lvl:Symbol_Table_Module.level) (pbdy:procedure_body) (lfundef:CMfundecls)
+  : res CMfundecls  :=
   match pbdy with
     | mkprocedure_body _ pnum lparams decl statm =>
-      do (procsig,_) <- transl_lparameter_specification_to_procsig stbl lvl lparams ;
         (* setup frame chain *)
         do (CE,stcksize) <- build_compilenv stbl enclosingCE lvl lparams decl ;
         if Coqlib.zle stcksize Integers.Int.max_unsigned
         then
+          (* generate nested procedure in CE environment *)
+          do newp <- transl_declaration_ stbl CE decl lfundef;
           do bdy <- transl_stmt stbl CE statm ;
           do bdy_with_init <- init_locals stbl CE decl bdy ;
           do bdy_with_init_and_prelude_storing_params <- store_params stbl CE lparams bdy_with_init ;
           do bdy_with_init_and_prelude_storing_params_and_chain <-
              OK (Sseq (Sstore AST.Mint32 ((Econst (Oaddrstack (Integers.Int.zero)))) (Evar chaining_param))
                       bdy_with_init_and_prelude_storing_params) ;
+          do (procsig,_) <- transl_lparameter_specification_to_procsig stbl lvl lparams ;
           (** TODO: add the code that would copy out argument with
              "out" or "inout" mode. This should be done by doing the
              following for a given "out" argument x of type T of a
              procedure P:
-             - transforme T into T*, and change conequently the calls to P and signature of P.
+             - transform T into T*, and change conequently the calls to P and signature of P.
              - add code to copy *x into the local stack at the
                beginning of the procedure (by default we copy x
                itself for now), lets call x' this new variable
@@ -716,7 +721,8 @@ Definition transl_procedure_body (stbl:symboltable) (enclosingCE:compilenv)
              - add code at the end of the procedure to copy the value
                of x' into *x (this achieves the copyout operation). *)
           let tlparams := transl_lparameter_specification_to_lident stbl lparams in
-          OK (transl_paramid pnum,
+          let newGfun :=
+              (transl_paramid pnum,
               AST.Gfun (AST.Internal {|
                             fn_sig:= procsig;
                             (** list of idents of parameters (including the chaining one) *)
@@ -725,22 +731,21 @@ Definition transl_procedure_body (stbl:symboltable) (enclosingCE:compilenv)
                             fn_vars:= transl_decl_to_lident stbl lparams decl;
                             fn_stackspace:= stcksize%Z;
                             fn_body:= bdy_with_init_and_prelude_storing_params_and_chain
-                          |}))
+                          |})) in
+          OK (newGfun :: newp)
         else Error(msg "spark2Cminor: too many local variables, stack size exceeded")
-  end.
-
+  end
 
 (* FIXME: check the size needed for the declarations *)
-Fixpoint transl_global_declaration_ (stbl:symboltable) (enclosingCE:compilenv)
-           (decl:declaration) (p:Cminor.program) : res (Cminor.program) :=
+with transl_declaration_ (stbl:symboltable) (enclosingCE:compilenv)
+                         (decl:declaration) (lfundef:CMfundecls)
+     : res CMfundecls :=
   match decl with
       | D_Procedure_Body _ pbdy =>
-        do tdecl <- transl_procedure_body stbl enclosingCE 0 pbdy;
-          OK {| AST.prog_defs := tdecl :: p.(AST.prog_defs);
-                AST.prog_main := p.(AST.prog_main) |}
+        transl_procedure_body stbl enclosingCE 0 pbdy lfundef
       | D_Seq_Declaration _ decl1 decl2 =>
-        do p1 <- transl_global_declaration_ stbl enclosingCE decl1 p;
-        do p2 <- transl_global_declaration_ stbl enclosingCE decl2 p1;
+        do p1 <- transl_declaration_ stbl enclosingCE decl1 lfundef;
+        do p2 <- transl_declaration_ stbl enclosingCE decl2 p1;
         OK p2
       | D_Object_Declaration astnum objdecl =>
         do tobjdecl <- OK (transl_paramid objdecl.(object_name),
@@ -749,33 +754,70 @@ Fixpoint transl_global_declaration_ (stbl:symboltable) (enclosingCE:compilenv)
                                        AST.gvar_readonly := false; (* FIXME? *)
                                        AST.gvar_volatile := false |} (* FIXME? *)
                           ) ; (*transl_objdecl stbl 0  ;*)
-        OK {| AST.prog_defs := tobjdecl :: p.(AST.prog_defs);
-              AST.prog_main := p.(AST.prog_main) |}
+        OK (tobjdecl :: lfundef)
+
       | D_Type_Declaration _ _ =>
         Error (msg "transl_global_declaration: D_Type_Declaration not yet implemented")
       | D_Null_Declaration =>
         Error (msg "transl_global_declaration: D_Null_Declaration not yet implemented")
   end.
 
+(* We have to build first the compilenv and then generate code. *)
 Definition transl_global_declaration (stbl:symboltable) (decl:declaration)
-           (p:Cminor.program) :res (Cminor.program) :=
-  do (cenv,sz) <- build_compilenv stbl nil 0(*module lvl*) nil(*params*) decl ;
-  transl_global_declaration_ stbl cenv decl p.
+           (lfundef:CMfundecls) : res CMfundecls :=
+  do (cenv,_) <- build_compilenv stbl nil 0(*module lvl*) nil(*params*) decl ;
+  transl_declaration_ stbl cenv decl lfundef.
 
-Definition empty_program:program :=
-  {| AST.prog_defs := nil;
-     AST.prog_main := 39%positive |}.
+(** In Ada the main procedure is generally a procedure at toplevel
+    (not inside a package or a procedure). This function returns the
+    first procedure id found in a declaration. *)
+Fixpoint get_main_procedure (decl:declaration) : option procnum :=
+  match decl with
+    | D_Null_Declaration => None
+    | D_Type_Declaration _ x0 => None
+    | D_Object_Declaration _ x0 => None
+    | D_Seq_Declaration _ x0 x1 =>
+      match get_main_procedure x0 with
+        | None => get_main_procedure x1
+        | Some r => Some r
+      end
+    | D_Procedure_Body _  (mkprocedure_body _ pnum _ _ _) => Some pnum
+  end.
+
+(** Intitial program (with no procedure definition yet, onyl
+    referencing the main procedure name. *)
+Definition build_empty_program_with_main procnum (lfundef:CMfundecls) :=
+  {| AST.prog_defs := lfundef;
+     AST.prog_main := Pos.of_nat procnum |}.
 
 Definition transl_program (stbl:symboltable) (decl:declaration) : res (Cminor.program) :=
-transl_global_declaration stbl decl empty_program.
+  match get_main_procedure decl with
+    | None => Error (msg "No main procedure detected")
+    | Some mainprocnum =>
+      (* Check size returned by build_compilenv *)
+      do (cenv,_) <- build_compilenv stbl nil 0(*module lvl*) nil(*params*) decl ;
+      do lfdecl <- transl_declaration_ stbl cenv decl nil ;
+      OK (build_empty_program_with_main mainprocnum lfdecl)
+  end.
 
+(*
+Definition from_sireum x y :=
+  do stbl <- reduce_stbl x ;
+  transl_program stbl y.
+
+Set Printing Width 100.
+
+(* copy the content or prcoi.v here *)
+
+Eval compute in from_sireum Symbol_Table Coq_AST_Tree.
+*)
 
 
 (* * Generation of a symbol table for a procedure.
 
 No need to add the chaining parameter here, the symbol table is never
 searched for it. *)
-
+(*
 Definition empty_stbl:symboltable :=
   {|
     Symbol_Table_Module.vars  := nil; (*list (idnum * (mode * type)) *)
@@ -821,94 +863,4 @@ Definition stbl_of_proc (pbdy:procedure_body) :=
   stbl2.
 
 Definition empty_CE: compilenv := nil.
-
-(* Module examples. *)
-
-(*   Require Import Tests. *)
-(*   Import Example1. *)
-(*   Require Import testing_language. *)
-(*   Open Scope spark_scope. *)
-
-(*   Definition stbl1: symboltable := stbl_of_proc P1. *)
-(*   Definition stbl2: symboltable := stbl_of_proc P2. *)
-(*   Definition stbl3: symboltable := stbl_of_proc P3. *)
-
-
-(*   Eval compute in transl_procedure_body stbl1 empty_CE 0 P1. *)
-(*   Eval compute in transl_procedure_body stbl2 empty_CE 0 P2. *)
-(*   Eval compute in transl_procedure_body stbl3 empty_CE 0 P3. *)
-
-
-(*   Eval compute in build_compilenv stbl3 empty_CE 0 *)
-(*                                   (procedure_parameter_profile P3) *)
-(*                                   (procedure_declarative_part P3). *)
-
-(*   Eval compute in build_frame_lparams stbl3 ((0,0%Z) :: nil, 4%Z) (procedure_parameter_profile P2). *)
-(*   Eval compute in build_frame_decl stbl3 ([(23, 8%Z); (24, 4%Z); (0, 0%Z)], 12%Z) (procedure_declarative_part P2). *)
-(*   Eval compute in build_compilenv stbl3 empty_CE 0 *)
-(*                                   (procedure_parameter_profile P2) *)
-(*                                   (procedure_declarative_part P2). *)
-
-
-
-(*   Definition Tproc_referencing_glob := *)
-(*     PROC P₃ [INOUT ARG Integer; IN ARG2 Boolean] IS *)
-(*       N :: Boolean := Some TRUE *)
-(*     BEGIN *)
-(*       ARG := ARG + X *)
-(*     ENDPROC. *)
-(* (* Close Scope spark_scope. *) *)
-(*   Definition Tproc_referencing_glob2 := *)
-(*     PROC P₃ [INOUT ARG Integer; IN ARG2 Boolean] IS *)
-(*       N :: Boolean := Some TRUE;;; *)
-(*       TD_Procedure_Body *)
-(*         PROC P₃ [INOUT ARG Integer; IN ARG2 Boolean] IS *)
-(*            N :: Boolean := Some TRUE *)
-(*         BEGIN *)
-(*           ARG := ARG + X *)
-(*         ENDPROC *)
-(*     BEGIN *)
-(*       ARG := ARG + X *)
-(*     ENDPROC. *)
-
-
-
-
-(*   Definition update_lvars (stbl:symboltable) (l:list ((idnum*(mode * type)))): symboltable := *)
-(*     List.fold_left (fun acc elt => let '(id,modetyp) := elt in update_vars acc id modetyp) l stbl. *)
-
-(*   Definition proc_referencing_glob := fst (number_procbdy Tproc_referencing_glob 0). *)
-(*   Definition proc_referencing_glob2 := fst (number_procbdy Tproc_referencing_glob2 0). *)
-
-(*   Definition frame0:CompilEnv.frame := (0, (4,4%Z) :: nil). *)
-(*   Definition frame1:CompilEnv.frame := (2, (4,4%Z) :: nil). *)
-(*   Definition stbl_referencing_glob := update_lvars (stbl_of_proc proc_referencing_glob2) [(4,(In_Out, Integer))]. *)
-
-(*   Eval compute in transl_procedure_body stbl_referencing_glob (frame0::empty_CE) 1 proc_referencing_glob2 . *)
-
-
-(*   Require Import examples_spark.proc1. *)
-
-(*   Eval compute in *)
-(*       do bstbl <- reduce_stbl Symbol_Table ; *)
-(*     match Coq_AST_Tree with *)
-(*       | D_Procedure_Body _ x => transl_procedure_body bstbl nil 0 x *)
-(*       | _ => Error(msg "cannot compile this declaration") *)
-(*     end . *)
-
-
-(*   Definition empty_program:program := *)
-(*     {| *)
-(*       AST.prog_defs := nil; *)
-(*       AST.prog_main := xH *)
-(*     |}. *)
-
-(*   Eval compute in *)
-(*       do bstbl <- reduce_stbl Symbol_Table ; *)
-(*     transl_global_declaration bstbl Coq_AST_Tree empty_program. *)
-
-
-(* End examples. *)
-
-
-
+*)
