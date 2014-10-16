@@ -55,6 +55,13 @@ for i in $*; do
     esac
 done
 
+# storing the configuration in a file
+> $resourcedir/.config
+echo COQTAGS=$COQTAGS >> $resourcedir/.config
+echo COMPCERT=$COMPCERT >> $resourcedir/.config
+echo SPARK=$SPARK >> $resourcedir/.config
+echo SIREUM=$SIREUM >> $resourcedir/.config
+
 
 # Generate the _CoqProject file
 cp $resourcedir/Config/_CoqProject.in ./_CoqProject
@@ -80,6 +87,11 @@ echo "
 # let us clean only our files.
 clean:
 	rm -f *.vo *.glob *.v.d *.beautified *.old *.g *.vi
+
+# let us clean only our files.
+testclean:
+	rm -rf _build
+	cd sparktests; clean.sh
 
 # build tags for our files + spark + compcert
 tags:

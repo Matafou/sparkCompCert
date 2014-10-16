@@ -1,3 +1,17 @@
+#-*- sh -*-
+# This script performs a dirty compilation spark -> Compcert
+# Actually it performs several dirty transformations:
+#  foo.adb --[sireum bakar]--> foo.v
+#  foo.v  --[patch(extraction) + coqc]--> foo.ml
+#  foo.ml --[patch(marshal) + ocamlc + execution]--> foo.mlo (marshalled ml values)
+#  foo.mlo --[compcert(with spark2Cminor.v)]--> foo.s (+foo.cm).
+# usage sparkcomp source.adb [target.s]
+
+# Getting the directory containing the current script
+resourcedir=${0%/*}
+# contains the path for sireum, spark, compcert, and coqtags, filled
+# by ./configure.sh
+. $resourcedir/.config
 
 
 if [ $# -eq 1 -o $# -eq 2 ]; then
@@ -50,7 +64,7 @@ echo "" >> $COQ_FILE  # insert newline
 # echo "Import Check_Flags_Comparison_With_Debug_Infor." >> $COQ_FILE
 
 echo building coq file... invoking sireum bakar...
-/home/courtieu/src/Sireum/sireum bakar program -p Coq $INPUT_FILENAME $COQ_FILE.template
+$SIREUM/sireum bakar program -p Coq $INPUT_FILENAME $COQ_FILE.template
 sed 's/_xx//g;s/_XX//g;s/(\*checks\*)//g' $COQ_FILE.template >> $COQ_FILE
 rm $COQ_FILE.template
 echo building coq file... invoking sireum bakar...done
@@ -85,8 +99,10 @@ echo "executing compiled ml file (for marshalling)..."
 ./$MLNATIVE_FILE
 echo "executing compiled ml file (for marshalling)... done"
 
+echo "deleting files $CMINOR_FILE and $ASM_FILE"
+rm -f $CMINOR_FILE $ASM_FILE
 echo "compiling the file with compcert (via input_value + spark2Cminor)"
-/home/courtieu/tmp/compcert/ccomp -dcminor -S $MLO_FILE -o $ASM_FILE
+../ccomp -dcminor -S $MLO_FILE -o $ASM_FILE
 mv $CMINOR_FILE_RELOCATED $CMINOR_FILE
 echo "compiling the file with compcert (via input_value + spark2Cminor)... done"
 
