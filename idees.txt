@@ -171,13 +171,22 @@ du code qui retrouve l'adresse des variables visibles.
 *** Comment référencer ces variables?
   On peut garder le même nom mais c'est un pointeur.
 
-** Une autre solution?
-  Avoir une pile de pointeurs dans *une* variable dans chaque frame.
-  Lors de l'appel à une fonction mutuelle, on transmet la pile,
-  rallongée des variables supplémentaires. Avantage: on gagne de la
-  place mémoire (on partage les variables) et du temps CPU (on ne
-  duplique pas les pointeurs). Inconvénients: compliqué, piles
-  rallongeables.
+** Une autre solution? La bonne!
+
+   On ajoute un argument implicite (optimisation: en mode "in") à
+   toute les procédures (optimisation: sauf pour les procédures
+   globales). Cet argument doit contenir l'adresse de la frame de la
+   procédure englobante. Ainsi on a partout accès au frame
+   englobante.
+
+   À l'appel de procédure on ajoute l'adresse de la frame courante en
+   paramètre, dans la procédure on traite cet argument comme les
+   autres et on transforme les références aux variables par des multi
+   déréférences correspondant au nombre de frame qu'il faut "remonter"
+   pour retrouver la variable. Au passage les variables sont
+   transformées en offset, donc on applique l'offset après le
+   déréférencement.
+
 
 *** Comment référencer ces variables?
   Il faut calculer le numéro de chaque variable, mais il est statique.
@@ -200,7 +209,10 @@ On passe l'adresse du paramètre (appelons-le x), mais on copie
 son *contenu pointé* (càd (*x)) dans la pile locale (appelons cette
 nouvelle variable x'. On travaille sur x' et à la fin de la procédure
 on fait (*x) = x' pour effectuer la copyout dans le paramètre
-effectif.
+effectif. Donc cela demande un prélude et un postlude à chaque
+procédure.
+
+C'est implanté reste à le prouver...
 
 
 * Comment fait-on pour avoir une chaine de compil complète?
