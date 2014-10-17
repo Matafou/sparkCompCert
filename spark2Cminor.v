@@ -653,10 +653,39 @@ Fixpoint store_params stbl (CE:compilenv) (lparams:list parameter_specification)
     | cons prm lparams' =>
       let id := transl_paramid prm.(parameter_name) in
       do chnk <- compute_chnk stbl (E_Identifier 0 (prm.(parameter_name))) ;
-      do recres <- (store_params stbl CE lparams' statm) ;
+      do recres <- store_params stbl CE lparams' statm ;
       do lexp <- transl_name stbl CE (E_Identifier 0 (prm.(parameter_name))) ;
-      OK (Sseq (Sstore chnk lexp (Evar id)) recres)
+      let rexp := (* Should I do nothing for out (except in_out) params? *)
+          match prm.(parameter_mode) with
+            | In => Evar id
+            | _ => (Eload chnk (Evar id))
+          end in
+      OK (Sseq (Sstore chnk lexp rexp) recres)
   end.
+
+
+Fixpoint copy_out_params stbl (CE:compilenv)
+         (lparams:list parameter_specification) (statm:stmt)
+         {struct lparams} : res stmt :=
+  match lparams with
+    | nil => OK statm
+    | cons prm lparams' =>
+      let id := transl_paramid prm.(parameter_name) in
+      do chnk <- compute_chnk stbl (E_Identifier 0 (prm.(parameter_name))) ;
+        do recres <- store_params stbl CE lparams' statm ;
+        do rexp <- transl_name stbl CE (E_Identifier 0 (prm.(parameter_name))) ;
+        match prm.(parameter_mode) with
+          | In => OK recres
+          | _ =>
+            (* rexp is the *address* of the frame variable so we need
+               a Eload to get the value. In contrast variable (Evar
+               id) contains the address where this value should be
+               copied and as it is in lvalue position we don't put a
+               Eload. *)
+            OK (Sseq recres (Sstore chnk (Evar id) (Eload chnk rexp)))
+        end
+  end.
+
 
 (* [init_locals stbl CE decl statm] adds a prelude to statement
    [statm] which effect is to initialize variables according to
@@ -703,11 +732,18 @@ Fixpoint transl_procedure_body (stbl:symboltable) (enclosingCE:compilenv)
           (* generate nested procedure in CE environment *)
           do newp <- transl_declaration_ stbl CE decl lfundef;
           do bdy <- transl_stmt stbl CE statm ;
+          (* Adding prelude: initialization of variables *)
           do bdy_with_init <- init_locals stbl CE decl bdy ;
-          do bdy_with_init_and_prelude_storing_params <- store_params stbl CE lparams bdy_with_init ;
-          do bdy_with_init_and_prelude_storing_params_and_chain <-
-             OK (Sseq (Sstore AST.Mint32 ((Econst (Oaddrstack (Integers.Int.zero)))) (Evar chaining_param))
-                      bdy_with_init_and_prelude_storing_params) ;
+          (* Adding prelude: copying parameters into frame *)
+          do bdy_with_init_params <- store_params stbl CE lparams bdy_with_init ;
+          (* Adding prelude: copying chaining parameter into frame *)
+          do bdy_with_init_params_chain <-
+             OK (Sseq (Sstore AST.Mint32 ((Econst (Oaddrstack (Integers.Int.zero))))
+                              (Evar chaining_param))
+                      bdy_with_init_params) ;
+          (* Adding postlude: copying back out params *)
+          do bdy_with_init_params_chain_copyout
+            <- copy_out_params stbl CE lparams bdy_with_init_params_chain;
           do (procsig,_) <- transl_lparameter_specification_to_procsig stbl lvl lparams ;
           (** TODO: add the code that would copy out argument with
              "out" or "inout" mode. This should be done by doing the
@@ -730,7 +766,7 @@ Fixpoint transl_procedure_body (stbl:symboltable) (enclosingCE:compilenv)
                             (* list ident of local vars, including copy of parameters and chaining parameter *)
                             fn_vars:= transl_decl_to_lident stbl lparams decl;
                             fn_stackspace:= stcksize%Z;
-                            fn_body:= bdy_with_init_and_prelude_storing_params_and_chain
+                            fn_body:= bdy_with_init_params_chain_copyout
                           |})) in
           OK (newGfun :: newp)
         else Error(msg "spark2Cminor: too many local variables, stack size exceeded")
