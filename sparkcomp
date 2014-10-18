@@ -79,7 +79,9 @@ echo building coq file... adding extraction directive to coq file...done
 echo "building coq file ("$COQ_FILE")... done"
 
 echo "compiling coq file (generating ml by extraction)"
-make $COQVO_FILE
+coqc -R $resourcedir/../ia32 compcert.ia32 -R $resourcedir/../lib compcert.lib -R $resourcedir/../common compcert.common -R $resourcedir/../backend compcert.backend -R $resourcedir/../cfrontend compcert.cfrontend -R $resourcedir/../driver compcert.driver -R $resourcedir/../flocq compcert.flocq -R $resourcedir/../exportclight compcert.exportclight -R $resourcedir/../cparser compcert.cparser -I $resourcedir/spark $COQ_FILE
+# not portable:
+# make -C $resourcedir $COQVO_FILE
 echo "compiling coq file (generating ml by extraction)... done"
 echo "patching ml file (marshaling)..."
 echo ";;" >> $ML_FILE
@@ -91,18 +93,19 @@ echo "patching ml file (marshaling)... done"
 
 
 echo "compiling ml file..."
-echo ocamlbuild -I spark $MLNATIVE_FILE
-ocamlbuild -I spark $MLNATIVE_FILE
-mv $MLNATIVE_FILE_RELOCATED $MLNATIVE_FILE
+echo ocamlbuild -I $INPUT_DIRNAME $MLNATIVE_FILE
+ocamlbuild -I $INPUT_DIRNAME $MLNATIVE_FILE
+mv -f $MLNATIVE_FILE_RELOCATED $MLNATIVE_FILE
 echo "compiling ml file... done"
 echo "executing compiled ml file (for marshalling)..."
-./$MLNATIVE_FILE
+$MLNATIVE_FILE
 echo "executing compiled ml file (for marshalling)... done"
 
 echo "deleting old files $CMINOR_FILE and $ASM_FILE"
 rm -f $CMINOR_FILE $ASM_FILE
 echo "compiling the file with compcert (via input_value + spark2Cminor)"
-../ccomp -dcminor -S $MLO_FILE -o $ASM_FILE
+echo "$resourcedir/../ccomp -dcminor -S $MLO_FILE -o $ASM_FILE"
+$resourcedir/../ccomp -dcminor -S $MLO_FILE -o $ASM_FILE
 mv $CMINOR_FILE_RELOCATED $CMINOR_FILE
 echo "compiling the file with compcert (via input_value + spark2Cminor)... done"
 

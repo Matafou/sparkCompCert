@@ -460,8 +460,7 @@ Definition transl_decl_to_lident (stbl:symboltable) (lpspec:list parameter_speci
   let original := transl_decl_to_lident_ stbl decl in
   let with_parameter_copy := List.app (transl_lparameter_specification_to_lident stbl lpspec)
                                       original in
-  (* Adding the local copy of the chaining parameter *)
-  chaining_param :: with_parameter_copy.
+  with_parameter_copy.
 
 (*Definition transl_lparameter_id
          (CE:compilenv) (lpspec:list parameter_specification): (list AST.ident) :=
@@ -476,7 +475,10 @@ Definition transl_lparameter_specification_to_procsig
   do tparams <- transl_lparameter_specification_to_ltype stbl lparams ;
   OK ({|
          (* add a void* to the list of parameters, for frame chaining *)
-         AST.sig_args:= AST.Tint :: tparams ;
+         AST.sig_args:= match lvl with
+                          | 0 => tparams
+                          | _ => AST.Tint :: tparams
+                        end ;
          AST.sig_res := None ; (* procedure: no return type *)
          AST.sig_cc := default_calling_convention
        |}, lvl).
@@ -530,18 +532,18 @@ Fixpoint transl_stmt (stbl:symboltable) (CE:compilenv) (e:statement) {struct e}:
     | S_Procedure_Call _ _ pnum lexp =>
       do tle <- transl_exprlist stbl CE lexp ;
         do (procsig,lvl) <- transl_procsig stbl pnum ;
-        (* The height of CE is exactly the nesting level of the current procedure *)
-        let current_lvl := List.length CE in
+        (* The height of CE is exactly the nesting level of the current procedure + 1 *)
+        let current_lvl := (List.length CE - 1) in
         (* compute the expression denoting the address of the frame of
            the enclosing procedure. Note that it is not the current
            procedure. We have to get down to the depth of the called
-           procedure (minus 1). *)
+           procedure. *)
         do addr_enclosing_frame <- build_loads_ (current_lvl - lvl) ;
         (* Add it as one more argument to the procedure called. *)
         do tle' <- OK (addr_enclosing_frame :: tle) ;
         (* Call the procedure; procedure name does not change (except it is a positive) ? *)
         (* Question: what should be the name of a procedure in Cminor? *)
-        OK (Scall None procsig (Evar (transl_procid pnum)) tle')
+        OK (Scall (Some (transl_procid pnum)) procsig (Evar (transl_procid pnum)) tle')
 
     (* No loops yet. Cminor loops (and in Cshminor already) are
        infinite loops, and a failing test (the test is a statement,
@@ -617,7 +619,11 @@ Fixpoint build_frame_decl (stbl:symboltable) (fram_sz:localframe * Z)
    enclosing procedure, for chaining. Procedures are ignored. *)
 Fixpoint build_compilenv (stbl:symboltable) (enclosingCE:compilenv) (lvl:Symbol_Table_Module.level)
          (lparams:list parameter_specification) (decl:declaration) : res (compilenv*Z) :=
-  let stosz := build_frame_lparams stbl ((0,0%Z) :: nil, 4%Z) lparams in
+  let init := match lvl with
+                | 0 => nil (* no chaining for global procedures *)
+                | _ => (0,0%Z) :: nil
+              end in
+  let stosz := build_frame_lparams stbl (init, 4%Z) lparams in
   let (sto2,sz2) := build_frame_decl stbl stosz decl in
   let scope_lvl := List.length enclosingCE in
   OK (((scope_lvl,sto2)::enclosingCE),sz2).
@@ -655,7 +661,7 @@ Fixpoint store_params stbl (CE:compilenv) (lparams:list parameter_specification)
       do chnk <- compute_chnk stbl (E_Identifier 0 (prm.(parameter_name))) ;
       do recres <- store_params stbl CE lparams' statm ;
       do lexp <- transl_name stbl CE (E_Identifier 0 (prm.(parameter_name))) ;
-      let rexp := (* Should I do nothing for out (except in_out) params? *)
+      let rexp := (* Should I do nothing for in (except in_out) params? *)
           match prm.(parameter_mode) with
             | In => Evar id
             | _ => (Eload chnk (Evar id))
@@ -672,7 +678,7 @@ Fixpoint copy_out_params stbl (CE:compilenv)
     | cons prm lparams' =>
       let id := transl_paramid prm.(parameter_name) in
       do chnk <- compute_chnk stbl (E_Identifier 0 (prm.(parameter_name))) ;
-        do recres <- store_params stbl CE lparams' statm ;
+        do recres <- copy_out_params stbl CE lparams' statm ;
         do rexp <- transl_name stbl CE (E_Identifier 0 (prm.(parameter_name))) ;
         match prm.(parameter_mode) with
           | In => OK recres
@@ -729,8 +735,10 @@ Fixpoint transl_procedure_body (stbl:symboltable) (enclosingCE:compilenv)
         do (CE,stcksize) <- build_compilenv stbl enclosingCE lvl lparams decl ;
         if Coqlib.zle stcksize Integers.Int.max_unsigned
         then
-          (* generate nested procedure in CE environment *)
-          do newp <- transl_declaration_ stbl CE decl lfundef;
+          (* generate nested procedures inside [decl] with CE compile
+             environment with one more lvl. *)
+          do newlfundef <- transl_declaration stbl CE (S lvl) decl lfundef;
+          (* translate the statement of the procedure *)
           do bdy <- transl_stmt stbl CE statm ;
           (* Adding prelude: initialization of variables *)
           do bdy_with_init <- init_locals stbl CE decl bdy ;
@@ -738,22 +746,22 @@ Fixpoint transl_procedure_body (stbl:symboltable) (enclosingCE:compilenv)
           do bdy_with_init_params <- store_params stbl CE lparams bdy_with_init ;
           (* Adding prelude: copying chaining parameter into frame *)
           do bdy_with_init_params_chain <-
-             OK (Sseq (Sstore AST.Mint32 ((Econst (Oaddrstack (Integers.Int.zero))))
-                              (Evar chaining_param))
-                      bdy_with_init_params) ;
+             match lvl with
+               | 0 => OK bdy_with_init_params (* no chain fof global procedures *)
+               | _ => OK (Sseq (Sstore AST.Mint32 ((Econst (Oaddrstack (Integers.Int.zero))))
+                                       (Evar chaining_param))
+                               bdy_with_init_params)
+             end ;
           (* Adding postlude: copying back out params *)
-          do bdy_with_init_params_chain_copyout
-            <- copy_out_params stbl CE lparams bdy_with_init_params_chain;
+          do bdy_with_init_params_chain_copyout <-
+             copy_out_params stbl CE lparams bdy_with_init_params_chain ;
           do (procsig,_) <- transl_lparameter_specification_to_procsig stbl lvl lparams ;
-          (** TODO: add the code that would copy out argument with
-             "out" or "inout" mode. This should be done by doing the
-             following for a given "out" argument x of type T of a
-             procedure P:
+          (** For a given "out" (or inout) argument x of type T of a procedure P:
              - transform T into T*, and change conequently the calls to P and signature of P.
              - add code to copy *x into the local stack at the
-               beginning of the procedure (by default we copy x
-               itself for now), lets call x' this new variable
-             - replace all operations on x by operations on x'
+               beginning of the procedure, lets call x' this new
+               variable
+             - replace all operations on x by operations on x' (of type T unchanged)
              - add code at the end of the procedure to copy the value
                of x' into *x (this achieves the copyout operation). *)
           let tlparams := transl_lparameter_specification_to_lident stbl lparams in
@@ -762,26 +770,35 @@ Fixpoint transl_procedure_body (stbl:symboltable) (enclosingCE:compilenv)
               AST.Gfun (AST.Internal {|
                             fn_sig:= procsig;
                             (** list of idents of parameters (including the chaining one) *)
-                            fn_params := chaining_param :: tlparams;
+                            fn_params :=
+                              match lvl with
+                                | 0 => tlparams (* no chaining for global procedures *)
+                                | _ => chaining_param :: tlparams
+                              end;
                             (* list ident of local vars, including copy of parameters and chaining parameter *)
-                            fn_vars:= transl_decl_to_lident stbl lparams decl;
+                            fn_vars:=
+                              match lvl with
+                                | 0 => tlparams (* no chaining for global procedures *)
+                                | _ => chaining_param :: transl_decl_to_lident stbl lparams decl
+                              end;
                             fn_stackspace:= stcksize%Z;
                             fn_body:= bdy_with_init_params_chain_copyout
                           |})) in
-          OK (newGfun :: newp)
+          OK (newGfun :: newlfundef)
         else Error(msg "spark2Cminor: too many local variables, stack size exceeded")
   end
 
 (* FIXME: check the size needed for the declarations *)
-with transl_declaration_ (stbl:symboltable) (enclosingCE:compilenv)
-                         (decl:declaration) (lfundef:CMfundecls)
+with transl_declaration
+       (stbl:symboltable) (enclosingCE:compilenv)
+       (lvl:Symbol_Table_Module.level) (decl:declaration) (lfundef:CMfundecls)
      : res CMfundecls :=
   match decl with
       | D_Procedure_Body _ pbdy =>
-        transl_procedure_body stbl enclosingCE 0 pbdy lfundef
+        transl_procedure_body stbl enclosingCE lvl pbdy lfundef
       | D_Seq_Declaration _ decl1 decl2 =>
-        do p1 <- transl_declaration_ stbl enclosingCE decl1 lfundef;
-        do p2 <- transl_declaration_ stbl enclosingCE decl2 p1;
+        do p1 <- transl_declaration stbl enclosingCE lvl decl1 lfundef;
+        do p2 <- transl_declaration stbl enclosingCE lvl decl2 p1;
         OK p2
       | D_Object_Declaration astnum objdecl =>
         do tobjdecl <- OK (transl_paramid objdecl.(object_name),
@@ -793,16 +810,9 @@ with transl_declaration_ (stbl:symboltable) (enclosingCE:compilenv)
         OK (tobjdecl :: lfundef)
 
       | D_Type_Declaration _ _ =>
-        Error (msg "transl_global_declaration: D_Type_Declaration not yet implemented")
-      | D_Null_Declaration =>
-        Error (msg "transl_global_declaration: D_Null_Declaration not yet implemented")
+        Error (msg "transl_declaration: D_Type_Declaration not yet implemented")
+      | D_Null_Declaration => OK lfundef
   end.
-
-(* We have to build first the compilenv and then generate code. *)
-Definition transl_global_declaration (stbl:symboltable) (decl:declaration)
-           (lfundef:CMfundecls) : res CMfundecls :=
-  do (cenv,_) <- build_compilenv stbl nil 0(*module lvl*) nil(*params*) decl ;
-  transl_declaration_ stbl cenv decl lfundef.
 
 (** In Ada the main procedure is generally a procedure at toplevel
     (not inside a package or a procedure). This function returns the
@@ -831,12 +841,12 @@ Definition transl_program (stbl:symboltable) (decl:declaration) : res (Cminor.pr
     | None => Error (msg "No main procedure detected")
     | Some mainprocnum =>
       (* Check size returned by build_compilenv *)
-      do (cenv,_) <- build_compilenv stbl nil 0(*module lvl*) nil(*params*) decl ;
-      do lfdecl <- transl_declaration_ stbl cenv decl nil ;
+      do (cenv,_) <- build_compilenv stbl nil 0(*nesting lvl*) nil(*params*) decl ;
+      do lfdecl <- transl_declaration stbl cenv 0(*nesting lvl*) decl nil(*empty accumlator*) ;
       OK (build_empty_program_with_main mainprocnum lfdecl)
   end.
-
-(*
+Import symboltable.
+Load "sparktests/proc1".
 Definition from_sireum x y :=
   do stbl <- reduce_stbl x ;
   transl_program stbl y.
@@ -846,7 +856,7 @@ Set Printing Width 100.
 (* copy the content or prcoi.v here *)
 
 Eval compute in from_sireum Symbol_Table Coq_AST_Tree.
-*)
+x
 
 
 (* * Generation of a symbol table for a procedure.
