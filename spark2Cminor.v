@@ -12,6 +12,7 @@ Require Import BinPosDef.
 Notation " [ ] " := nil : list_scope.
 Notation " [ x ] " := (cons x nil) : list_scope.
 Notation " [ x ; .. ; y ] " := (cons x .. (cons y nil) ..) : list_scope.
+Notation "X ++ Y" := (String.append X Y) : spark_scope.
 
 (** * A symbol table with concrete types only *)
 
@@ -78,6 +79,8 @@ Definition update_sloc := Symbol_Table_Module.update_sloc.
 Definition range_of (tpnum:type): res range :=
   OK (Range 0 10) (* FIXME *).
 
+(* We add 80 to free names for Compcert *)
+Definition transl_num x := (Pos.of_nat (x+80)).
 
 (** [reduce_type stbl ty n] returns the basic type (which is not a
     base type à la Ada) of a type. Currently this function iters on a
@@ -98,12 +101,12 @@ Fixpoint reduce_type (stbl:symboltable.symboltable) (ty:type) (n:nat): res base_
 
         | Array_Type typnum =>
           match symboltable.fetch_type typnum stbl with
-            | None => Error [ MSG "transl_basetype: no such type num :" ; CTX (Pos.of_nat typnum)]
+            | None => Error [ MSG "transl_basetype: no such type num :" ; CTX (transl_num typnum)]
             | Some (Array_Type_Declaration _ _ tpidx tpcell) =>
               do typofcells <- reduce_type stbl tpcell n' ;
                 do rge <- range_of tpidx ;
                 OK (BArray_Type typofcells rge)
-            | _ => Error [ MSG "transl_basetype: not an array type :" ; CTX (Pos.of_nat typnum)]
+            | _ => Error [ MSG "transl_basetype: not an array type :" ; CTX (transl_num typnum)]
           end
         (* TODO: array and record types *)
         | Integer_Type _ => Error (msg "transl_basetype: Integer_Type Not yet implemented!!.")
@@ -167,7 +170,7 @@ Definition frame := CompilEnv.frame.
 (** We book one identifier for the chaining argument of all functions.
     Hopefully we can reuse it everywhere. *)
 
-Definition chaining_param := xH.
+Definition chaining_param := 80%positive.
 
 
 Definition transl_literal (l:literal): Cminor.constant :=
@@ -206,8 +209,6 @@ Fixpoint build_loads_ (m:nat) {struct m} : res Cminor.expr :=
         make_load subloads void_star
   end.
 
-Eval compute in build_loads_ 4.
-
 (** [build_loads m n] is the expression denoting the address
     of the variable at offset [n] in the enclosing frame [m] levels
     above the current frame. This is done by following pointers from
@@ -215,8 +216,6 @@ Eval compute in build_loads_ 4.
 Definition build_loads (m:nat) (n:Z) :=
   do indirections <- build_loads_ m ;
   OK (Ebinop Oadd indirections (Econst (Ointconst (Integers.Int.repr n)))).
-
-Eval compute in build_loads 4 2.
 
 Fixpoint transl_basetype (stbl:symboltable) (ty:base_type): res Ctypes.type :=
   match ty with
@@ -261,15 +260,15 @@ Definition error_msg_with_loc stbl astnum (nme:nat) :=
     | None => [CTX (Pos.of_nat nme) ; MSG "no location found" ]
   end.
 
-(** [transl_idnum stbl CE astnum nme] returns the expression that would
+(** [transl_variable stbl CE astnum nme] returns the expression that would
     evaluate to the *address* of variable [nme]. The compiler
     environment [CE] allows to 1) know the nesting level of the
     current procedure, 2) the nesting level of the procedure defining
     [nme]. From these two numbers we generate the right number of
     Loads to access the frame of [nme]. *)
-Definition transl_idnum (stbl:symboltable) (CE:compilenv) astnum (nme:idnum) : res Cminor.expr :=
+Definition transl_variable (stbl:symboltable) (CE:compilenv) astnum (nme:idnum) : res Cminor.expr :=
   match (CompilEnv.fetchG nme CE) with
-    | None =>  Error (MSG "transl_idnum: no such idnum." :: error_msg_with_loc stbl astnum nme)
+    | None =>  Error (MSG "transl_variable: no such idnum." :: error_msg_with_loc stbl astnum nme)
     | Some n =>
       match (CompilEnv.frameG nme CE) with
         | None =>  Error (msg "assert false.")
@@ -309,19 +308,10 @@ Definition transl_unop (op:unary_operator) : res Cminor.unary_operation :=
 
 
 
-Notation "{{ n }}" := (Integers.Int.repr n) : spark_scope.
-Notation "'[<<' n '>>]'" := (Econst (Ointconst (Integers.Int.repr n))) (at level 9) : spark_scope.
-Notation "'[<' n '>]'" := (E_Literal 704 (Integer_Literal n)%Z) (at level 9) : spark_scope.
-Notation "e1 <<*>> e2" := (Ebinop Omul e1 e2) (left associativity,at level 40) : spark_scope.
-Notation "e1 <<+>> e2" := (Ebinop Oadd e1 e2) (left associativity,at level 50) : spark_scope.
-Notation "e1 <<->> e2" := (Ebinop Osub e1 e2) (left associativity,at level 50) : spark_scope.
-Notation " <<->> e" := (Eunop Onegint e) (at level 35) : spark_scope.
-Notation "'VI'" := (Evar 112%positive) : spark_scope.
-Notation "'VARR'" := (Evar 113%positive) : spark_scope.
 
-Notation "X ++ Y" := (String.append X Y) : spark_scope.
 
-Open Scope spark_scope.
+
+
 
 (* This Fixpoint can be replaced by a Function if:
  1) in trunk (v8.5 when ready)
@@ -338,7 +328,7 @@ Fixpoint transl_expr (stbl:symboltable) (CE:compilenv) (e:expression): res Cmino
   match e with
     | E_Literal _ lit => OK (Econst (transl_literal lit))
     | E_Name astnum (E_Identifier _ id) =>
-      do addrid <- transl_idnum stbl CE astnum id ; (* get the address of the variable *)
+      do addrid <- transl_variable stbl CE astnum id ; (* get the address of the variable *)
 (*         match fetch_var id stbl with (* get its type *) *)
         match fetch_exp_type astnum stbl with (* get its type *)
           | None => Error ([MSG "transl_expr: no such variable " ; CTX (Pos.of_nat id)])
@@ -356,7 +346,7 @@ Fixpoint transl_expr (stbl:symboltable) (CE:compilenv) (e:expression): res Cmino
         do top <- transl_unop op;
         OK (Eunop top te)
     | E_Name astnum (E_Indexed_Component _ _ id e) => (* deref? *)
-      do tid <- (transl_idnum stbl CE astnum id);
+      do tid <- (transl_variable stbl CE astnum id);
 (*         match fetch_var id stbl with *)
         match fetch_exp_type astnum stbl with
           (* typid = type of the array (in spark) *)
@@ -366,9 +356,9 @@ Fixpoint transl_expr (stbl:symboltable) (CE:compilenv) (e:expression): res Cmino
               | Some (BArray_Type ty (Range min max)) =>
                 (** [id[e]] becomes  [Eload (<id>+(<e>-rangemin(id))*sizeof(<ty>))] *)
                 do tty <- transl_basetype stbl ty ;
-                  do cellsize <- OK [<< Ctypes.sizeof tty >>];
+                  do cellsize <- OK (Econst (Ointconst (Integers.Int.repr (Ctypes.sizeof tty))));
                   do te <- transl_expr stbl CE e ;
-                  do offs <- OK(Ebinop Cminor.Osub te [<<min>>]) ;
+                  do offs <- OK(Ebinop Cminor.Osub te (Econst (Ointconst (Integers.Int.repr min)))) ;
                   make_load
                     (Ebinop Cminor.Oadd tid (Ebinop Cminor.Omul offs cellsize)) tty
               | _ => Error (msg "transl_expr: is this really an array type?")
@@ -381,9 +371,9 @@ Fixpoint transl_expr (stbl:symboltable) (CE:compilenv) (e:expression): res Cmino
     *address* where the value of name [nme] is stored. *)
 Fixpoint transl_name (stbl:symboltable) (CE:compilenv) (nme:name): res Cminor.expr :=
   match nme with
-    | E_Identifier astnum id => (transl_idnum stbl CE astnum id) (* address of the variable *)
+    | E_Identifier astnum id => (transl_variable stbl CE astnum id) (* address of the variable *)
     | E_Indexed_Component  astnum _ id e =>
-      do tid <- transl_idnum stbl CE astnum id; (* address of the variable *)
+      do tid <- transl_variable stbl CE astnum id; (* address of the variable *)
 (*         match fetch_var id stbl with *)
         match fetch_exp_type astnum stbl with
           (* typid = type of the array (in spark) *)
@@ -393,9 +383,9 @@ Fixpoint transl_name (stbl:symboltable) (CE:compilenv) (nme:name): res Cminor.ex
               | Some (BArray_Type ty (Range min max)) =>
                 (** [id[e]] becomes  [Eload (<id>+(<e>-rangemin(id))*sizeof(<ty>))] *)
                 do tty <- transl_basetype stbl ty ;
-                  do cellsize <- OK [<<Ctypes.sizeof tty>>];
+                  do cellsize <- OK (Econst (Ointconst (Integers.Int.repr (Ctypes.sizeof tty))));
                   do te <- transl_expr stbl CE e ;
-                  do offs <- OK(Ebinop Cminor.Osub te [<<min>>]) ;
+                  do offs <- OK(Ebinop Cminor.Osub te (Econst (Ointconst (Integers.Int.repr min)))) ;
                   OK (Ebinop Cminor.Oadd tid (Ebinop Cminor.Omul offs cellsize))
             | _ => Error (msg "transl_expr: is this really an array type?")
           end
@@ -430,7 +420,7 @@ Fixpoint transl_lparameter_specification_to_ltype
       OK (Ctypes.typ_of_type ttyp :: tltyp)
   end.
 
-Definition transl_paramid := Pos.of_nat.
+Definition transl_paramid := transl_num.
 
 Fixpoint transl_lparameter_specification_to_lident
          (stbl:symboltable) (lpspec:list parameter_specification): (list AST.ident) :=
@@ -443,29 +433,19 @@ Fixpoint transl_lparameter_specification_to_lident
   end.
 
 
-Fixpoint transl_decl_to_lident_ (stbl:symboltable) (decl:declaration): list AST.ident :=
+Fixpoint transl_decl_to_lident (stbl:symboltable) (decl:declaration): list AST.ident :=
   match decl with
     | D_Null_Declaration => nil
     | D_Seq_Declaration _ decl1 decl2 =>
-      let lident1 := transl_decl_to_lident_ stbl decl1 in
-      let lident2 := transl_decl_to_lident_ stbl decl2 in
+      let lident1 := transl_decl_to_lident stbl decl1 in
+      let lident2 := transl_decl_to_lident stbl decl2 in
       List.app lident1 lident2
     | D_Object_Declaration _ objdecl => [transl_paramid objdecl.(object_name)]
     | D_Type_Declaration x x0 => nil
     | D_Procedure_Body x x0 => nil
   end.
 
-Definition transl_decl_to_lident (stbl:symboltable) (lpspec:list parameter_specification)
-           (decl:declaration): list AST.ident :=
-  let original := transl_decl_to_lident_ stbl decl in
-  let with_parameter_copy := List.app (transl_lparameter_specification_to_lident stbl lpspec)
-                                      original in
-  with_parameter_copy.
 
-(*Definition transl_lparameter_id
-         (CE:compilenv) (lpspec:list parameter_specification): (list AST.ident) :=
-  List.map (fun spec => transl_idnum astnum stbl CE (spec.(parameter_name))) lpspec.
-*)
 Definition default_calling_convention := {| AST.cc_vararg := true;
                                             AST.cc_structret := true |}.
 
@@ -496,7 +476,7 @@ Definition transl_procsig (stbl:symboltable) (pnum:procnum)
 
 (* We don't want to change procedure names so we probably need to
    avoid zero as a procedure name in spark. *)
-Definition transl_procid := Pos.of_nat.
+Definition transl_procid := transl_num.
 
 (** Compilation of statements *)
 Fixpoint transl_stmt (stbl:symboltable) (CE:compilenv) (e:statement) {struct e}: res stmt :=
@@ -619,11 +599,11 @@ Fixpoint build_frame_decl (stbl:symboltable) (fram_sz:localframe * Z)
    enclosing procedure, for chaining. Procedures are ignored. *)
 Fixpoint build_compilenv (stbl:symboltable) (enclosingCE:compilenv) (lvl:Symbol_Table_Module.level)
          (lparams:list parameter_specification) (decl:declaration) : res (compilenv*Z) :=
-  let init := match lvl with
-                | 0 => nil (* no chaining for global procedures *)
-                | _ => (0,0%Z) :: nil
+  let '(init,sz) := match lvl with
+                | 0 => (nil,0%Z) (* no chaining for global procedures *)
+                | _ => (((0,0%Z) :: nil),4%Z)
               end in
-  let stosz := build_frame_lparams stbl (init, 4%Z) lparams in
+  let stosz := build_frame_lparams stbl (init, sz) lparams in
   let (sto2,sz2) := build_frame_decl stbl stosz decl in
   let scope_lvl := List.length enclosingCE in
   OK (((scope_lvl,sto2)::enclosingCE),sz2).
@@ -777,10 +757,8 @@ Fixpoint transl_procedure_body (stbl:symboltable) (enclosingCE:compilenv)
                               end;
                             (* list ident of local vars, including copy of parameters and chaining parameter *)
                             fn_vars:=
-                              match lvl with
-                                | 0 => tlparams (* no chaining for global procedures *)
-                                | _ => chaining_param :: transl_decl_to_lident stbl lparams decl
-                              end;
+                              transl_decl_to_lident stbl decl
+                              ;
                             fn_stackspace:= stcksize%Z;
                             fn_body:= bdy_with_init_params_chain_copyout
                           |})) in
@@ -834,7 +812,7 @@ Fixpoint get_main_procedure (decl:declaration) : option procnum :=
     referencing the main procedure name. *)
 Definition build_empty_program_with_main procnum (lfundef:CMfundecls) :=
   {| AST.prog_defs := lfundef;
-     AST.prog_main := Pos.of_nat procnum |}.
+     AST.prog_main := transl_num procnum |}.
 
 Definition transl_program (stbl:symboltable) (decl:declaration) : res (Cminor.program) :=
   match get_main_procedure decl with
@@ -845,18 +823,52 @@ Definition transl_program (stbl:symboltable) (decl:declaration) : res (Cminor.pr
       do lfdecl <- transl_declaration stbl cenv 0(*nesting lvl*) decl nil(*empty accumlator*) ;
       OK (build_empty_program_with_main mainprocnum lfdecl)
   end.
-Import symboltable.
-Load "sparktests/proc1".
+
+(*
 Definition from_sireum x y :=
   do stbl <- reduce_stbl x ;
   transl_program stbl y.
 
-Set Printing Width 100.
+Set Printing Width 120.
 
 (* copy the content or prcoi.v here *)
+Open Scope positive_scope.
 
+
+(* These notation are complex BUT re-parsable. *)
+Notation "$ n" := (Evar n) (at level 80) : spark_scope.
+Notation "& n" := (Econst (Oaddrstack n))(at level 80) : spark_scope.
+Notation "'&_' n" := (Oaddrstack (Integers.Int.repr n))(at level 80) : spark_scope.
+Notation "'&__' n" := (Econst (Oaddrstack (Integers.Int.repr n)))(at level 80) : spark_scope.
+(* Notation "'⟨' n '⟩'" := (Integers.Int.repr n) : spark_scope. *)
+Open Scope spark_scope.
+Notation "'<_' n '_>'" := (Econst (Ointconst (Integers.Int.repr n))) (at level 9) : spark_scope.
+Notation "e1 <*> e2" := (Ebinop Omul e1 e2) (left associativity,at level 40) : spark_scope.
+Notation "e1 <+> e2" := (Ebinop Oadd e1 e2) (left associativity,at level 50) : spark_scope.
+Notation "e1 <-b> e2" := (Ebinop Osub e1 e2) (left associativity,at level 50) : spark_scope.
+Notation " <-u> e" := (Eunop Onegint e) (at level 35) : spark_scope.
+
+Notation "X ++ Y" := (String.append X Y) : spark_scope.
+
+(* Notation "'[<<' n + m '>>]'" :=  (Econst (Oaddrstack n) <<+>> [<<m>>])(at level 9) : spark_scope.  *)
+Notation "'Int32[' x ']'" := (Eload AST.Mint32 x) (at level 0) : spark_scope.
+Notation "'Int32[' e1 ']' <- e2" := (Sstore AST.Mint32 e1 e2)(at level 60) : spark_scope.
+(* Notation "'Int32[' e1 <+> e2 ']' <- e3" := (Sstore AST.Mint32 (Econst e1 <+> e2) e3)(at level 60) : spark_scope. *)
+Notation "s1 ;; s2" := (Sseq s1 s2) (at level 80,right associativity) : spark_scope.
+
+Import symboltable.
+
+Open Scope nat_scope.
+
+
+Load "sparktests/proc1".
+
+Set Printing All.
 Eval compute in from_sireum Symbol_Table Coq_AST_Tree.
-x
+
+
+
+*)
 
 
 (* * Generation of a symbol table for a procedure.

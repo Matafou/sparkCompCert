@@ -1,0 +1,109 @@
+#-*- sh -*-
+# This script performs a dirty compilation spark -> Compcert
+# Actually it performs several dirty transformations:
+#  foo.adb --[sireum bakar]--> foo.v
+#  foo.v  --[patch(extraction) + coqc]--> foo.ml
+#  foo.ml --[patch(marshal) + ocamlc + execution]--> foo.mlo (marshalled ml values)
+#  foo.mlo --[compcert(with spark2Cminor.v)]--> foo.s (+foo.cm).
+# usage sparkcomp source.adb [target.s]
+
+# Getting the directory containing the current script
+resourcedir=${0%/*}
+# contains the path for sireum, spark, compcert, and coqtags, filled
+# by ./configure.sh
+. $resourcedir/.config
+
+
+if [ $# -eq 1 -o $# -eq 2 ]; then
+    INPUT_FILENAME="$1"
+    if [[ ! -f $INPUT_FILENAME ]]; then
+	echo "Error: File ($INPUT_FILENAME) does not exist !"
+	exit
+    else
+	if [[ $INPUT_FILENAME != *".v" ]]; then
+	    echo "Warning: ($INPUT_FILENAME) should have .v extension."
+	    exit
+	fi
+    fi
+    INPUT_DIRNAME=`dirname $INPUT_FILENAME`
+    INPUT_BASENAME=`basename $INPUT_FILENAME .v`
+    if [ $# == 2 ] ; then
+	OUTPUT_FILENAME="$2"
+    else
+	OUTPUT_FILENAME=$INPUT_DIRNAME/$INPUT_BASENAME.mlo
+    fi
+else
+    echo "Usage: $0 spark_file_name.v [compcert_input_file_name.mlo]"
+    exit
+fi
+
+echo executing: $0 $INPUT_FILENAME $OUTPUT_FILENAME...
+
+COQ_FILE=$INPUT_FILENAME
+COQVO_FILE=$INPUT_DIRNAME/$INPUT_BASENAME.vo
+ML_FILE=$INPUT_DIRNAME/$INPUT_BASENAME.ml
+MLO_FILE=$INPUT_DIRNAME/$INPUT_BASENAME.mlo
+MLNATIVE_FILE=$INPUT_DIRNAME/$INPUT_BASENAME.native
+MLNATIVE_FILE_RELOCATED=$INPUT_BASENAME.native
+CMINOR_FILE=$INPUT_DIRNAME/$INPUT_BASENAME.cm
+CMINOR_FILE_RELOCATED=$INPUT_BASENAME.cm
+ASM_FILE=$INPUT_DIRNAME/$INPUT_BASENAME.s
+
+COQ_AST_TREE="Coq_AST_Tree"
+COQ_AST_TREE_X="Coq_AST_Tree_X"
+SYMBOL_TABLE="Symbol_Table"  
+
+echo -n emptying target file...
+> $OUTPUT_FILENAME  # empty the file
+echo done
+
+echo "compiling coq file (generating ml by extraction)"
+coqc -R $resourcedir/../ia32 compcert.ia32 -R $resourcedir/../lib compcert.lib -R $resourcedir/../common compcert.common -R $resourcedir/../backend compcert.backend -R $resourcedir/../cfrontend compcert.cfrontend -R $resourcedir/../driver compcert.driver -R $resourcedir/../flocq compcert.flocq -R $resourcedir/../exportclight compcert.exportclight -R $resourcedir/../cparser compcert.cparser -I $resourcedir/spark $COQ_FILE
+# not portable:
+# make -C $resourcedir $COQVO_FILE
+echo "compiling coq file (generating ml by extraction)... done"
+echo "patching ml file (marshaling)..."
+
+echo ";;" >> $ML_FILE
+echo "print_string \"generating ocaml values...\n\";" >> $ML_FILE
+echo "let oc = open_out \"$MLO_FILE\" in" >> $ML_FILE
+echo "let _ = output_value oc (symbol_Table, coq_AST_Tree) in" >> $ML_FILE
+echo "close_out oc" >> $ML_FILE
+
+echo "patching ml file (marshaling)... done"
+
+
+echo "compiling ml file..."
+echo ocamlbuild -I $INPUT_DIRNAME $MLNATIVE_FILE
+ocamlbuild -I $INPUT_DIRNAME $MLNATIVE_FILE
+mv -f $MLNATIVE_FILE_RELOCATED $MLNATIVE_FILE
+echo "compiling ml file... done"
+echo "executing compiled ml file (for marshalling)..."
+$MLNATIVE_FILE
+echo "executing compiled ml file (for marshalling)... done"
+
+echo "deleting old files $CMINOR_FILE and $ASM_FILE"
+rm -f $CMINOR_FILE $ASM_FILE
+echo "compiling the file with compcert (via input_value + spark2Cminor)"
+echo "$resourcedir/../ccomp -dcminor -S $MLO_FILE -o $ASM_FILE"
+$resourcedir/../ccomp -dcminor -S $MLO_FILE -o $ASM_FILE
+mv $CMINOR_FILE_RELOCATED $CMINOR_FILE
+echo "compiling the file with compcert (via input_value + spark2Cminor)... done"
+
+echo Cminor intermediate file $CMINOR_FILE:
+echo "****************************************************"
+cat $CMINOR_FILE
+echo "*****************************************************"
+
+
+
+# This is the part on runtime checks
+# sed 's/xx/x/g;s/XX/X/g;s/(\*\*//g;s/\*\*)//g' $1 >> $2
+
+# echo "Definition Ast_Tree_With_Expected_Checks := compile2_flagged_declaration_f $SYMBOL_TABLE $COQ_AST_TREE." >> $2
+# echo "Definition Return_Msgs := compare_with_expected_results Ast_Tree_With_Expected_Checks $COQ_AST_TREE_X." >> $2
+# echo "Definition Result := map_to_source_location $SYMBOL_TABLE Return_Msgs." >> $2
+
+# echo "Eval compute in Result." >> $2
+
+# eval "coqc $2" # run the test
