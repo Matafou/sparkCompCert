@@ -1,8 +1,37 @@
 -*- mode:outline -*-
 
 * TODO: refaire l'archi pour être un ss-rep de compcert et pas l'inverse.
+DONE
 
 * faire un printer pour sparkcoq et dumper à la compil.
+
+* Ce qu'il manque pour les procédures imbriquées:
+** les calls sont bizarre (extern?)
+** la signature de la fonction est fausse
+   car le level est à zéro à la sortie de sireum bakar.
+** l'argument de chaining est faux
+   pour la même raison.
+
+= "proc81"
+"proc81"('$81') : int -> void
+{
+  stack 8;
+  var '$82';
+  int32[&0 + 0] = int32['$81'];
+  int32[&0 + 4] = 29;
+  'proc82' = '$82'(int32[&0]) : void; ;; DEVRAIT ETRE: "proc82"(&0) : int -> void;
+  int32[&0 + 0] = int32[&0 + 4];
+  int32['$81'] = int32[&0 + 0];
+}
+"proc82"('$80') : int -> void
+{
+  stack 4;
+  int32[&0] = '$80';
+  int32[int32[&0] + 4] = int32[int32[&0] + 4] + 1;
+}
+var "$82" {}
+
+
 
 
 * La chaine Compcert:

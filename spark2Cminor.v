@@ -829,11 +829,6 @@ Definition from_sireum x y :=
   do stbl <- reduce_stbl x ;
   transl_program stbl y.
 
-Set Printing Width 120.
-
-(* copy the content or prcoi.v here *)
-Open Scope positive_scope.
-
 
 (* These notation are complex BUT re-parsable. *)
 Notation "$ n" := (Evar n) (at level 80) : spark_scope.
@@ -858,12 +853,14 @@ Notation "s1 ;; s2" := (Sseq s1 s2) (at level 80,right associativity) : spark_sc
 
 Import symboltable.
 
+(* copy the content or prcoi.v here *)
 Open Scope nat_scope.
-
 
 Load "sparktests/proc1".
 
-Set Printing All.
+(* Set Printing All. *)
+Set Printing Width 120.
+
 Eval compute in from_sireum Symbol_Table Coq_AST_Tree.
 
 
