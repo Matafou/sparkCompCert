@@ -79,8 +79,15 @@ clean::
 
 %.cm: %.mlo
 	../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump -c $< -o $(<:.mlo=.o) || true
-	sed -i -e 's/\x27\x24\([0-9][0-9]\)\x27(/\"proc\1\"(/' $@
+
+
+
+# previously needed was Replacing 'proc81' into "proc81"
+#	sed -i -e 's/\x27proc\([0-9]\+\)\x27(/\"proc\1\"(/' $@
 	rm -f $(<:.mlo=.o)
+# previously was replacing '$81' into "proc81"
+#	sed -i -e 's/\x27\x24\([0-9][0-9]\)\x27(/\"proc\1\"(/' $@
+
 
 clean::
 	rm -f *.cm *.s
@@ -94,16 +101,10 @@ clean::
 clean::
 	rm -f *.s *.o *~ *.sdump
 
-#
-#proc0.exe:: proc0main.o  proc0.o
-#	../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump $(<:.cm=.o) $(<:.cm=main.c) -o $@
-#
-
 %.exe: %main.o  %.o
 	../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump $(@:.exe=.o) $(@:.exe=main.o) -o $@
 
 proc0.exe:: proc0main.c proc0.o
-
 proc1.exe:: proc1main.o proc1.o
 proc2.exe:: proc2main.o proc2.o
 proc3.exe:: proc3main.o proc3.o

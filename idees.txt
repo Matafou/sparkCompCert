@@ -7,6 +7,12 @@ DONE
 
 * Ce qu'il manque pour les procédures imbriquées:
 ** les calls sont bizarre (extern?)
+   RESOLU TEMPORAIREMENT
+*** En fait il faut passer à Scall un pointeur sur la fonction. OK.
+*** Et il faut stocker le nom de la fonction dans la bonne table. (PAS OK)
+   je bidouille dans driver.ml pour cabler en dur les noms de
+   fonction. Il faudra faire mieux quand sireum sortira ce qu'il faut.
+
 ** la signature de la fonction est fausse
    car le level est à zéro à la sortie de sireum bakar.
 ** l'argument de chaining est faux
@@ -19,17 +25,10 @@ DONE
   var '$82';
   int32[&0 + 0] = int32['$81'];
   int32[&0 + 4] = 29;
-  'proc82' = '$82'(int32[&0]) : void; ;; DEVRAIT ETRE: "proc82"(&0) : int -> void;
+  "proc82"(int32[&0]) : void; ;; DEVRAIT ETRE: "proc82"(&0) : int -> void;
   int32[&0 + 0] = int32[&0 + 4];
   int32['$81'] = int32[&0 + 0];
 }
-"proc82"('$80') : int -> void
-{
-  stack 4;
-  int32[&0] = '$80';
-  int32[int32[&0] + 4] = int32[int32[&0] + 4] + 1;
-}
-var "$82" {}
 
 
 
@@ -257,3 +256,14 @@ Pour l'instant on fait la chose cradissime suivante (gnat2ml.sh):
 
 Dans l'idéal on veut sireum sort une versino xml de toto.v (toto.xml)
 et Driver.ml lit directement ce fichier.
+
+
+
+* Concernant la preuve
+
+Compcert a une série de preuve sur la préservation des noms de
+variable etc dans AST.v. Cependant il considèrent tous une notion de
+transformation qui vad'une définition vers une définition , or avec
+les procédure imbriquée c'est plutôt une fonction => plusieurs
+fonctions. Il faudra ajouter des variantes à ces définition sans
+doute.

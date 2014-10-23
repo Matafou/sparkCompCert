@@ -553,7 +553,7 @@ Fixpoint transl_stmt (stbl:symboltable) (CE:compilenv) (e:statement) {struct e}:
         do tle' <- OK (addr_enclosing_frame :: tle) ;
         (* Call the procedure; procedure name does not change (except it is a positive) ? *)
         (* Question: what should be the name of a procedure in Cminor? *)
-        OK (Scall None procsig (Evar (transl_procid pnum)) tle')
+        OK (Scall None procsig (Econst (Oaddrsymbol (transl_procid pnum) (Integers.Int.repr 0%Z))) tle')
 
     (* No loops yet. Cminor loops (and in Cshminor already) are
        infinite loops, and a failing test (the test is a statement,

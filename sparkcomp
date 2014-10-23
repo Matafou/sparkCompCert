@@ -1,5 +1,5 @@
 #-*- sh -*-
-# This script performs a dirty compilation spark -> Compcert
+# This script performs a dirty compilation spark -> Coq
 # Actually it performs several dirty transformations:
 #  foo.adb --[sireum bakar]--> foo.v
 #  foo.v  --[patch(extraction) + coqc]--> foo.ml
@@ -68,13 +68,6 @@ sed 's/_xx//g;s/_XX//g;s/(\*checks\*)//g' $COQ_FILE.template >> $COQ_FILE
 rm $COQ_FILE.template
 echo building coq file... invoking sireum bakar...done
 
-echo building coq file... adding extraction directive to coq file...
-echo -e "\n\n(* EXTRACTION COMMAND *)"  >> $COQ_FILE
-echo "(* This must stick to compcert extraction syle, or input_value will segfault... *)"  >> $COQ_FILE
-echo "Require Import ExtrOcamlBasic."  >> $COQ_FILE
-echo "Require Import ExtrOcamlString."  >> $COQ_FILE
-echo "Extraction \"$ML_FILE\" Symbol_Table Coq_AST_Tree." >> $COQ_FILE
-echo building coq file... adding extraction directive to coq file...done
 echo "building coq file ("$COQ_FILE")... done"
 
 $resourcedir/coqSparkComp $COQ_FILE $2
