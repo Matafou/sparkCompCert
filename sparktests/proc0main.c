@@ -7,5 +7,5 @@ int main(int argc, char ** argv)
 {
   int x = 7;
   proc81(&x);
-  printf(" x = %d", x);
+  printf(" x = %d\n", x);
 }

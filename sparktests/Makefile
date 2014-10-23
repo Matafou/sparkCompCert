@@ -6,7 +6,8 @@ CPP=cpp -P
 AS=$(CASM)
 CFLAGS=-g
 ASFLAGS=
-
+COQTAGS= -R ../../ia32 compcert.ia32 -R ../../lib compcert.lib -R ../../common compcert.common -R ../../backend compcert.backend -R ../../cfrontend compcert.cfrontend -R ../../driver compcert.driver -R ../../flocq compcert.flocq -R ../../exportclight compcert.exportclight -R ../../cparser compcert.cparser -I ../spark
+CC=../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump
 
 
 .SUFFIXES:
@@ -24,14 +25,19 @@ ASFLAGS=
 .cm.s:
 	$(CCOMP) $(FLAGS) $*.cm
 
-.c.o:
-	$(CC) $(CFLAGS) -c $<
+.c.cm:
+	../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump -c $< -o $(@:.cm=.o)
+	rm -f $(<:.c=.o)
+.cm.o:
+	../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump -c $< -o $@
 
-.s.o:
-	$(AS) $(ASFLAGS) -o $*.o $<
 
-.S.o:
-	$(AS) $(ASFLAGS) -o $*.o $<
+
+#.s.o:
+#	$(AS) $(ASFLAGS) -o $*.o $<
+
+#.S.o:
+#	$(AS) $(ASFLAGS) -o $*.o $<
 
 %.v: %.adb
 	rm -f $@.template
@@ -53,7 +59,7 @@ clean::
 	rm -f *proc*.v
 
 %.ml: %.v
-	coqc -R ../../ia32 compcert.ia32 -R ../../lib compcert.lib -R ../../common compcert.common -R ../../backend compcert.backend -R ../../cfrontend compcert.cfrontend -R ../../driver compcert.driver -R ../../flocq compcert.flocq -R ../../exportclight compcert.exportclight -R ../../cparser compcert.cparser -I ../spark $<
+	coqc $(COQTAGS) $<
 	echo ";;" >> $@
 	echo "print_string \"generating ocaml values...\n\";" >> $@
 	echo "let oc = open_out \"$(@:.ml=.mlo)\" in" >> $@
@@ -61,10 +67,10 @@ clean::
 	echo "close_out oc" >> $@
 
 clean::
-	rm -f *proc*.ml*
+	rm -f *proc*.ml* *.vo *.glob
 
 %.mlo: %.ml
-	ocamlbuild -I .. $(@:.mlo=.native)
+	ocamlbuild -no-hygiene -I .. $(@:.mlo=.native)
 	$(@:.mlo=.native)
 	rm -f $(@:.mlo=.native)
 
@@ -72,16 +78,12 @@ clean::
 	rm -f *.mlo
 
 %.cm: %.mlo
-	../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump -c $< -o $(<:.mlo=.o)
-	rm $(<:.mlo=.o)
+	../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump -c $< -o $(<:.mlo=.o) || true
+	sed -i -e 's/\x27\x24\([0-9][0-9]\)\x27(/\"proc\1\"(/' $@
+	rm -f $(<:.mlo=.o)
 
 clean::
 	rm -f *.cm *.s
-
-%.exe: %.cm
-	../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump -c $< -o $(<:.cm=.o)
-	../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump $(<:.cm=.o) $(<:.cm=main.c) -o $@
-
 
 clean::
 	rm -f *.exe
@@ -90,4 +92,21 @@ clean::
 .SECONDARY: $(PROGS:%=%.s)
 
 clean::
-	rm -f *.s *.o *~
+	rm -f *.s *.o *~ *.sdump
+
+#
+#proc0.exe:: proc0main.o  proc0.o
+#	../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump $(<:.cm=.o) $(<:.cm=main.c) -o $@
+#
+
+%.exe: %main.o  %.o
+	../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump $(@:.exe=.o) $(@:.exe=main.o) -o $@
+
+proc0.exe:: proc0main.c proc0.o
+
+proc1.exe:: proc1main.o proc1.o
+proc2.exe:: proc2main.o proc2.o
+proc3.exe:: proc3main.o proc3.o
+proc4.exe:: proc4main.o proc4.o
+proc5.exe:: proc5main.o proc5.o
+proc6.exe:: proc6main.o proc6.o

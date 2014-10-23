@@ -464,6 +464,36 @@ Definition transl_lparameter_specification_to_procsig
        |}, lvl).
 
 
+Fixpoint transl_paramexprlist (stbl: symboltable) (CE: compilenv) (el: list expression)
+         (lparams:list parameter_specification)
+         {struct el}: res (list Cminor.expr) :=
+  match (el,lparams) with
+  | (nil,nil) => OK nil
+  | ((e1 :: e2) , (p1::p2)) =>
+    match parameter_mode p1 with
+      | In =>
+          do te1 <- transl_expr stbl CE e1;
+          do te2 <- transl_paramexprlist stbl CE e2 p2;
+          OK (te1 :: te2)
+      | _ =>
+        match e1 with
+          | E_Name _ nme =>
+              do te1 <- transl_name stbl CE nme;
+              do te2 <- transl_paramexprlist stbl CE e2 p2;
+              OK (te1 :: te2)
+          | _ =>  Error (msg "Out or In Out parameters should be names")
+        end
+    end
+
+  | (_ , _) => Error (msg "Bad number of arguments")
+  end.
+
+Definition transl_params (stbl:symboltable) (pnum:procnum) (CE: compilenv)
+           (el: list expression): res (list Cminor.expr) :=
+  match fetch_proc pnum stbl with
+    | None => Error (msg "Unkonwn procedure")
+    | Some (lvl , pdecl) => transl_paramexprlist stbl CE el (procedure_parameter_profile pdecl)
+  end.
 
 
 Definition transl_procsig (stbl:symboltable) (pnum:procnum)
@@ -510,7 +540,7 @@ Fixpoint transl_stmt (stbl:symboltable) (CE:compilenv) (e:statement) {struct e}:
        be possible to exploit one or the other strategy for arrays and
        records? *)
     | S_Procedure_Call _ _ pnum lexp =>
-      do tle <- transl_exprlist stbl CE lexp ;
+      do tle <- transl_params stbl pnum CE lexp ;
         do (procsig,lvl) <- transl_procsig stbl pnum ;
         (* The height of CE is exactly the nesting level of the current procedure + 1 *)
         let current_lvl := (List.length CE - 1) in
@@ -523,7 +553,7 @@ Fixpoint transl_stmt (stbl:symboltable) (CE:compilenv) (e:statement) {struct e}:
         do tle' <- OK (addr_enclosing_frame :: tle) ;
         (* Call the procedure; procedure name does not change (except it is a positive) ? *)
         (* Question: what should be the name of a procedure in Cminor? *)
-        OK (Scall (Some (transl_procid pnum)) procsig (Evar (transl_procid pnum)) tle')
+        OK (Scall None procsig (Evar (transl_procid pnum)) tle')
 
     (* No loops yet. Cminor loops (and in Cshminor already) are
        infinite loops, and a failing test (the test is a statement,
@@ -856,7 +886,7 @@ Import symboltable.
 (* copy the content or prcoi.v here *)
 Open Scope nat_scope.
 
-Load "sparktests/proc1".
+Load "sparktests/proc2".
 
 (* Set Printing All. *)
 Set Printing Width 120.
