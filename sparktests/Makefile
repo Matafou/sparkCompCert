@@ -46,6 +46,7 @@ CC=../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump
 	echo "Require Import checks_comparison." >> $@
 	echo "" >> $@  # insert newline
 	sed -e 's/_xx//g;s/_XX//g;s/(\*checks\*)//g' $@.template >> $@
+	sed -i -e 's/Require Import checks_comparison\./Require Import String symboltable. Open Scope string_scope./' $@
 	rm -f $@.template
 	echo >> $@
 	echo >> $@
