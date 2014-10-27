@@ -1,11 +1,11 @@
 #include <stdio.h>
 
-void proc81(int * n);
+void proc0(int * n);
 
 
 int main(int argc, char ** argv)
 {
   int x = 7;
-  proc81(&x);
+  proc0(&x);
   printf(" x = %d\n", x);
 }

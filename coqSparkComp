@@ -53,6 +53,14 @@ COQ_AST_TREE="Coq_AST_Tree"
 COQ_AST_TREE_X="Coq_AST_Tree_X"
 SYMBOL_TABLE="Symbol_Table"  
 
+echo Adding extraction directive to $COQ_FILE...
+echo -e "\n\n(* EXTRACTION COMMAND *)"  >> $COQ_FILE
+echo "(* This must stick to compcert extraction syle, or input_value will segfault... *)"  >> $COQ_FILE
+echo "Require Import ExtrOcamlBasic."  >> $COQ_FILE
+echo "Require Import ExtrOcamlString."  >> $COQ_FILE
+echo "Extraction \"$ML_FILE\" Symbol_Table Coq_AST_Tree." >> $COQ_FILE
+echo Adding extraction directive to $COQ_FILE...done
+
 echo -n emptying target file...
 > $OUTPUT_FILENAME  # empty the file
 echo done

@@ -127,7 +127,7 @@ Definition type_of_decl (typdecl:type_declaration): res type :=
 
 
 Definition max_recursivity:nat := 30.
-
+(*
 Fixpoint reduce_stbl (stbl:symboltable.symboltable): res symboltable :=
   match stbl with
     | symboltable.mkSymbolTable vars procs types exps sloc =>
@@ -139,7 +139,7 @@ Fixpoint reduce_stbl (stbl:symboltable.symboltable): res symboltable :=
                   types;
       OK (mkSymbolTable vars procs redtypes exps sloc)
   end.
-
+*)
 
 
 
