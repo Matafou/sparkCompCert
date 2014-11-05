@@ -42,12 +42,12 @@ CC=../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump
 %.v: %.adb
 	rm -f $@.template
 	rm -f $@
-	$(SIREUM)/sireum bakar program -p Coq $< $@.template
-	echo "Require Import checks_comparison." >> $@
-	echo "" >> $@  # insert newline
-	sed -e 's/_xx//g;s/_XX//g;s/(\*checks\*)//g' $@.template >> $@
-	sed -i -e 's/Require Import checks_comparison\./Require Import String symboltable. Open Scope string_scope./' $@
-	rm -f $@.template
+	$(SIREUM)/sireum bakar program -p Coq $< $@
+#	$(SIREUM)/sireum bakar program -p Coq $< $@.template
+##	echo "Require Import checks_comparison." >> $@
+#	echo "" >> $@  # insert newline
+#	sed -e 's/_xx//g;s/_XX//g;s/(\*checks\*)//g' $@.template >> $@
+#	rm -f $@.template
 	echo >> $@
 	echo >> $@
 	echo "(* EXTRACTION COMMAND *)"  >> $@
@@ -55,6 +55,8 @@ CC=../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump
 	echo "Require Import ExtrOcamlBasic."  >> $@
 	echo "Require Import ExtrOcamlString."  >> $@
 	echo "Extraction \"$(@:.v=.ml)\" Symbol_Table Coq_AST_Tree." >> $@
+
+	sed -i -e 's/Require Import checks_comparison\.//' $@
 
 clean::
 	rm -f *proc*.v
@@ -112,3 +114,9 @@ proc3.exe:: proc3main.o proc3.o
 proc4.exe:: proc4main.o proc4.o
 proc5.exe:: proc5main.o proc5.o
 proc6.exe:: proc6main.o proc6.o
+#g.exe:: gmain.o g.o
+
+clean::
+	rm -f g.exe g.v g.ml g.mli 
+	rm -f gnatinspect.db*
+	rm -f *.ali

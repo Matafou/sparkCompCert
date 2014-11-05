@@ -1,1 +1,1 @@
-procedure proc3 (ARG2: in out Integer) ;
+procedure proc3 (X1: in out Integer) ;

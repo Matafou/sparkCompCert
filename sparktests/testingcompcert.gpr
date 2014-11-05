@@ -1,4 +1,7 @@
 project TestingCompcert is
 
+   for Source_Files use ("g.adb", "g.ads", "gmainada.adb", "proc0.adb", "proc0.ads", "proc1.adb", "proc1.ads", "proc2.adb", "proc2.ads", "proc3.adb", "proc3.ads", "proc4.adb", "proc4.ads");
+   for Main use ("gmainada.adb");
+
 end TestingCompcert;
 
