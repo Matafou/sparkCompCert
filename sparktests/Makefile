@@ -39,15 +39,12 @@ CC=../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump
 #.S.o:
 #	$(AS) $(ASFLAGS) -o $*.o $<
 
+# TODO: have an error when Sireum prints an error message.
+# or have sireum return an error code instead.
 %.v: %.adb
 	rm -f $@.template
 	rm -f $@
 	$(SIREUM)/sireum bakar program -p Coq $< $@
-#	$(SIREUM)/sireum bakar program -p Coq $< $@.template
-##	echo "Require Import checks_comparison." >> $@
-#	echo "" >> $@  # insert newline
-#	sed -e 's/_xx//g;s/_XX//g;s/(\*checks\*)//g' $@.template >> $@
-#	rm -f $@.template
 	echo >> $@
 	echo >> $@
 	echo "(* EXTRACTION COMMAND *)"  >> $@
@@ -81,16 +78,7 @@ clean::
 	rm -f *.mlo
 
 %.cm: %.mlo
-	../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump -c $< -o $(<:.mlo=.o) || true
-
-
-
-# previously needed was Replacing 'proc81' into "proc81"
-#	sed -i -e 's/\x27proc\([0-9]\+\)\x27(/\"proc\1\"(/' $@
-	rm -f $(<:.mlo=.o)
-# previously was replacing '$81' into "proc81"
-#	sed -i -e 's/\x27\x24\([0-9][0-9]\)\x27(/\"proc\1\"(/' $@
-
+	../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump -c $< -o $(<:.mlo=.o)
 
 clean::
 	rm -f *.cm *.s

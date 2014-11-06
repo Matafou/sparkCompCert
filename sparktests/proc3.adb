@@ -7,7 +7,7 @@ procedure proc3 (X1: in out Integer) is
   X2:  Integer := 3;
 
   procedure L (Y1: in Integer) is
-    Y2 : Integer := X1;
+    X1 : Integer := 99;
   begin
       X2 := Y1+X2;
       if X2 < 7 then L(Y1); end if;
