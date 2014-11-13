@@ -262,8 +262,50 @@ et Driver.ml lit directement ce fichier.
 * Concernant la preuve
 
 Compcert a une série de preuve sur la préservation des noms de
-variable etc dans AST.v. Cependant il considèrent tous une notion de
-transformation qui vad'une définition vers une définition , or avec
-les procédure imbriquée c'est plutôt une fonction => plusieurs
+variable etc dans AST.v. Cependant elles considèrent toutes une notion
+de transformation qui va d'une définition vers une définition , or
+avec les procédure imbriquée c'est plutôt une fonction => plusieurs
 fonctions. Il faudra ajouter des variantes à ces définition sans
 doute.
+
+** injections mémoire
+
+Je ccrois comprendre les injections mémoire: une injection d'un état
+mémoire vers un autre. Les deux états sont isomorphes plus ou moins.
+
+Mais je ne trouve pas l'endroit où il est dit que les *valeurs*
+contenues dans les états sont les mêmes. Je ne vois qu'un matching
+entre adresses... Questionner Xavier.
+
+*** Bon en fait si je vois c'est val_inject, sur les pointeurs
+    évidemment la relation dit simplement que les adresses pointée
+    obéissent à l'injection. Pas la peine de suivre le pointeur? Ça
+    suffit pour garantir que le graphe des poiteurs est isomorphe?
+    Pas sûr de comprendre...
+
+
+* Concernant le typage
+
+Dans Compcert les typedef sont éliminés dans une phase très tôt et
+ensuite toute la chaîne travaille sur la même notion de type de base
+sans typedef. Il faudra probablement faire pareil avec spark.
+
+
+Il faudra donc probablement une phase d'"élaboration" où les types
+sont remplacés par leur types "concret" ce qui n'est pas la notion de
+type de base de Ada, ici ont parle du type *vraiment* de base, après
+dépliage de toutes les couches de derived et subtypes. en Ada le type
+de base désigne le dépliage jusqu'à trouver un derived type, et là on
+s'arrête, alors que nous on veut le type concret final après dépliage
+de toutes les couches.
+
+Cette phase d'éloaboration se ferait donc en amont de la compilation.
+ 
+Ou alors: on laisse les type sans les déplier et c'est à la
+compilation que je concrétise le type.
+
+** ===> FAUX
+  en fait il semble que dans la phase C#minor -> Cminor on remplace
+  les type par des tailles mémoire. Il faudra néanmoins quand même
+  faire cette élaboration.
+

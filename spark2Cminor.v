@@ -1,13 +1,15 @@
 
 
 
-Require Import symboltable.
 Require Import Errors.
 (* Require Import language. *)
 Require Import Cminor.
 Require Cshmgen.
 Require Cminorgen.
 Require Import BinPosDef.
+Require Import Maps.
+Require Import symboltable.
+Require Import semantics.
 
 Notation " [ ] " := nil : list_scope.
 Notation " [ x ] " := (cons x nil) : list_scope.
@@ -42,14 +44,13 @@ Inductive base_type: Type :=
 
 
 
-
+(*
 (** symbol table for unflagged program, with expanded type defs. *)
 Module Symbol_Table_Elements <: SymTable_Element.
   Definition Procedure_Decl := procedure_body.
   Definition Type_Decl := base_type.
   Definition Source_Location := source_location.
 End Symbol_Table_Elements.
-
 (* TODO: have a set of function returning res type instead of option type. *)
 
 Module Symbol_Table_Module := SymbolTableM (Symbol_Table_Elements).
@@ -63,7 +64,7 @@ Definition reside_symtable_types := Symbol_Table_Module.reside_symtable_types.
 Definition reside_symtable_exps := Symbol_Table_Module.reside_symtable_exps.
 Definition reside_symtable_sloc := Symbol_Table_Module.reside_symtable_sloc.
 (* useless, vars are not filled in stbl. *)
-(* Definition fetch_var := Symbol_Table_Module.fetch_var. *)
+Definition fetch_var := Symbol_Table_Module.fetch_var.
 Definition fetch_proc := Symbol_Table_Module.fetch_proc.
 Definition fetch_type := Symbol_Table_Module.fetch_type.
 Definition fetch_exp_type := Symbol_Table_Module.fetch_exp_type.
@@ -73,6 +74,8 @@ Definition update_procs := Symbol_Table_Module.update_procs.
 Definition update_types := Symbol_Table_Module.update_types.
 Definition update_exps := Symbol_Table_Module.update_exps.
 Definition update_sloc := Symbol_Table_Module.update_sloc.
+*)
+
 
 
 
@@ -127,26 +130,13 @@ Definition type_of_decl (typdecl:type_declaration): res type :=
 
 
 Definition max_recursivity:nat := 30.
-(*
-Fixpoint reduce_stbl (stbl:symboltable.symboltable): res symboltable :=
-  match stbl with
-    | symboltable.mkSymbolTable vars procs types exps sloc =>
-      do redtypes <- mmap
-                  (fun x =>
-                     do typ <- type_of_decl (snd x);
-                     do redtype <- reduce_type stbl typ max_recursivity;
-                     OK (fst x , redtype))
-                  types;
-      OK (mkSymbolTable vars procs redtypes exps sloc)
+
+Definition fetch_var_type id st :=
+  match (Symbol_Table_Module.fetch_var id st) with
+    | None => Error
+                [MSG "fetch_var_type: not found :"; CTX (transl_num id)]
+    | Some (_,t) => OK t (* reduce_type st t max_recursivity *)
   end.
-*)
-
-
-
-
-
-
-
 
 (** A stack-like compile environment. *)
 
@@ -160,12 +150,42 @@ Notation localframe := CompilEnv.store.
 Definition frame := CompilEnv.frame.
 
 
+Fixpoint transl_basetype (stbl:symboltable) (ty:base_type): res Ctypes.type :=
+  match ty with
+    (* currently our formalization only defines one scalar type:
+       INTEGER, that we match to compcert 32 bits ints. *)
+    | BInteger rge => OK (Ctypes.Tint Ctypes.I32 Ctypes.Signed Ctypes.noattr)
+
+    (* Let us say that booleans are int32, which is probably stupid. *)
+    | BBoolean => OK (Ctypes.Tint Ctypes.I32 Ctypes.Signed Ctypes.noattr)
+
+    | BArray_Type tpcell (Range min max) =>
+      do typofcells <- transl_basetype stbl tpcell ;
+        OK (Ctypes.Tarray typofcells (max - min)%Z Ctypes.noattr) (* replace 0 by size of the array *)
+
+    | _ => Error (msg "transl_basetype: Not yet implemented!!.")
+  end.
 
 
+Definition transl_typenum (stbl:symboltable) (id:typenum): res Ctypes.type :=
+  match fetch_type id stbl with
+    | None => Error (msg "transl_typenum: no such type")
+    | Some t =>
+      do tdecl <- type_of_decl t;
+      do rt <- reduce_type stbl tdecl max_recursivity;
+        transl_basetype stbl rt
+  end.
 
-
-
-
+Definition transl_type (stbl:symboltable) (t:type): res Ctypes.type :=
+  match t with
+    | Boolean => transl_basetype stbl BBoolean
+    | Integer => transl_basetype stbl (BInteger (Range MinInt MaxInt))
+    | Subtype t' => transl_typenum stbl t'
+    | Derived_Type t' => transl_typenum stbl t'
+    | Integer_Type t' => transl_typenum stbl t'
+    | Array_Type t' => transl_typenum stbl t'
+    | Record_Type t => Error (msg "transl_type: no such type")
+  end.
 
 (** We book one identifier for the chaining argument of all functions.
     Hopefully we can reuse it everywhere. *)
@@ -181,8 +201,6 @@ Definition transl_literal (l:literal): Cminor.constant :=
     | Boolean_Literal true => Ointconst Integers.Int.one
     | Boolean_Literal false => Ointconst Integers.Int.zero
   end.
-
-
 
 Definition make_load (addr : Cminor.expr) (ty_res : Ctypes.type) :=
 match Ctypes.access_mode ty_res with
@@ -217,39 +235,6 @@ Definition build_loads (m:nat) (n:Z) :=
   do indirections <- build_loads_ m ;
   OK (Ebinop Oadd indirections (Econst (Ointconst (Integers.Int.repr n)))).
 
-Fixpoint transl_basetype (stbl:symboltable) (ty:base_type): res Ctypes.type :=
-  match ty with
-    (* currently our formalization only defines one scalar type:
-       INTEGER, that we match to compcert 32 bits ints. *)
-    | BInteger rge => OK (Ctypes.Tint Ctypes.I32 Ctypes.Signed Ctypes.noattr)
-
-    (* Let us say that booleans are int32, which is probably stupid. *)
-    | BBoolean => OK (Ctypes.Tint Ctypes.I32 Ctypes.Signed Ctypes.noattr)
-
-    | BArray_Type tpcell (Range min max) =>
-      do typofcells <- transl_basetype stbl tpcell ;
-        OK (Ctypes.Tarray typofcells (max - min)%Z Ctypes.noattr) (* replace 0 by size of the array *)
-
-    | _ => Error (msg "transl_basetype: Not yet implemented!!.")
-  end.
-
-
-Definition transl_typenum (stbl:symboltable) (id:typenum): res Ctypes.type :=
-  match fetch_type id stbl with
-    | None => Error (msg "transl_typenum: no such type")
-    | Some t => transl_basetype stbl t
-  end.
-
-Definition transl_type(stbl:symboltable) (t:type): res Ctypes.type :=
-  match t with
-    | Boolean => transl_basetype stbl BBoolean
-    | Integer => transl_basetype stbl (BInteger (Range MinInt MaxInt))
-    | Subtype t' => transl_typenum stbl t'
-    | Derived_Type t' => transl_typenum stbl t'
-    | Integer_Type t' => transl_typenum stbl t'
-    | Array_Type t' => transl_typenum stbl t'
-    | Record_Type t => Error (msg "transl_type: no such type")
-  end.
 
 
 Definition error_msg_with_loc stbl astnum (nme:nat) :=
@@ -265,7 +250,8 @@ Definition error_msg_with_loc stbl astnum (nme:nat) :=
     environment [CE] allows to 1) know the nesting level of the
     current procedure, 2) the nesting level of the procedure defining
     [nme]. From these two numbers we generate the right number of
-    Loads to access the frame of [nme]. *)
+    Loads to access the frame of [nme]. [astnum] is there for error
+    message only.*)
 Definition transl_variable (stbl:symboltable) (CE:compilenv) astnum (nme:idnum) : res Cminor.expr :=
   match (CompilEnv.fetchG nme CE) with
     | None =>  Error (MSG "transl_variable: no such idnum." :: error_msg_with_loc stbl astnum nme)
@@ -280,7 +266,6 @@ Definition transl_variable (stbl:symboltable) (CE:compilenv) astnum (nme:idnum) 
           end
       end
   end.
-
 
 
 Definition transl_binop (op:binary_operator): binary_operation :=
@@ -306,22 +291,21 @@ Definition transl_unop (op:unary_operator) : res Cminor.unary_operation :=
     | Not => OK Cminor.Onotint
   end.
 
-
-
-
-
-
-
+(** [value_at_addr stbl typ addr] returns the expression corresponding
+    to the content of the address denoted by the expression [addr].
+    [typ] should be the (none translated) expected type of the content. *)
+Definition value_at_addr stbl typ addr  :=
+  do ttyp <- transl_type stbl typ ;
+  make_load addr ttyp.
 
 (* This Fixpoint can be replaced by a Function if:
  1) in trunk (v8.5 when ready)
  2) we replace the notation for "do" expanding the def of bind.
-Notation "'do' X <- A ; B" := (match A with
-                                 | OK x => ((fun X => B) x)
-                                 | Error msg => Error msg
-                               end)
-                                (at level 200, X ident, A at level 100, B at level 200)
- : error_monad_scope. *)
+Notation "'do' X <- A ; B" :=
+ (match A with | OK x => ((fun X => B) x) | Error msg => Error msg end)
+ (at level 200, X ident, A at level 100, B at level 200) : error_monad_scope. *)
+
+
 (** [transl_expr stbl CE e] returns the code that evaluates to the
     value of expression [e]. *)
 Fixpoint transl_expr (stbl:symboltable) (CE:compilenv) (e:expression): res Cminor.expr :=
@@ -329,14 +313,15 @@ Fixpoint transl_expr (stbl:symboltable) (CE:compilenv) (e:expression): res Cmino
     | E_Literal _ lit => OK (Econst (transl_literal lit))
     | E_Name astnum (E_Identifier _ id) =>
       do addrid <- transl_variable stbl CE astnum id ; (* get the address of the variable *)
-(*         match fetch_var id stbl with (* get its type *) *)
-        match fetch_exp_type astnum stbl with (* get its type *)
+        (* get type from stbl or from actual value? *)
+        do typ <- fetch_var_type id stbl ;
+        value_at_addr stbl typ addrid
+(*        match fetch_exp_type astnum stbl with (* get type from stbl or from actual value? *)
           | None => Error ([MSG "transl_expr: no such variable " ; CTX (Pos.of_nat id)])
-          | Some (typ) =>
-            do ttyp <- transl_type stbl typ ;
-              make_load addrid ttyp (* load its content *)
-        end
-    | E_Name _ (E_Selected_Component _ _ _ _) => Error (msg "Not yet implemented")
+          | Some (typ) => value_at_addr stbl typ addrid
+        end *)
+
+    | E_Name _ (E_Selected_Component _ _ _) => Error (msg "transl_expr: record not yet implemented")
     | E_Binary_Operation _ op e1 e2 =>
       do te1 <- transl_expr stbl CE e1;
         do te2 <- transl_expr stbl CE e2;
@@ -345,8 +330,9 @@ Fixpoint transl_expr (stbl:symboltable) (CE:compilenv) (e:expression): res Cmino
       do te <- transl_expr stbl CE e;
         do top <- transl_unop op;
         OK (Eunop top te)
-    | E_Name astnum (E_Indexed_Component _ _ id e) => (* deref? *)
-      do tid <- (transl_variable stbl CE astnum id);
+    | E_Name astnum (E_Indexed_Component _ id e) => (* deref? *)
+      Error (msg "transl_expr: Array not yet implemented")
+(*      do tid <- (transl_variable stbl CE astnum id);
 (*         match fetch_var id stbl with *)
         match fetch_exp_type astnum stbl with
           (* typid = type of the array (in spark) *)
@@ -364,7 +350,7 @@ Fixpoint transl_expr (stbl:symboltable) (CE:compilenv) (e:expression): res Cmino
               | _ => Error (msg "transl_expr: is this really an array type?")
             end
           | _ => Error (msg "transl_expr: ")
-        end
+        end*)
   end.
 
 (** [transl_name stbl CE nme] returns the code that evaluates to the
@@ -372,14 +358,15 @@ Fixpoint transl_expr (stbl:symboltable) (CE:compilenv) (e:expression): res Cmino
 Fixpoint transl_name (stbl:symboltable) (CE:compilenv) (nme:name): res Cminor.expr :=
   match nme with
     | E_Identifier astnum id => (transl_variable stbl CE astnum id) (* address of the variable *)
-    | E_Indexed_Component  astnum _ id e =>
-      do tid <- transl_variable stbl CE astnum id; (* address of the variable *)
+    | E_Indexed_Component  astnum id e =>
+      Error (msg "transl_name: array not yet implemented")
+    (*      do tid <- transl_variable stbl CE astnum id; (* address of the variable *)
 (*         match fetch_var id stbl with *)
         match fetch_exp_type astnum stbl with
           (* typid = type of the array (in spark) *)
           | Some (language_basics.Array_Type typid) =>
             match fetch_type typid stbl with
-              | None => Error (msg "transl_expr: no such type")
+              | None => Error (msg "transl_name: no such type")
               | Some (BArray_Type ty (Range min max)) =>
                 (** [id[e]] becomes  [Eload (<id>+(<e>-rangemin(id))*sizeof(<ty>))] *)
                 do tty <- transl_basetype stbl ty ;
@@ -387,11 +374,11 @@ Fixpoint transl_name (stbl:symboltable) (CE:compilenv) (nme:name): res Cminor.ex
                   do te <- transl_expr stbl CE e ;
                   do offs <- OK(Ebinop Cminor.Osub te (Econst (Ointconst (Integers.Int.repr min)))) ;
                   OK (Ebinop Cminor.Oadd tid (Ebinop Cminor.Omul offs cellsize))
-            | _ => Error (msg "transl_expr: is this really an array type?")
+            | _ => Error (msg "transl_name: is this really an array type?")
           end
-        | _ => Error (msg "transl_expr: ")
-      end
-    | E_Selected_Component  _ _ _ _ =>  Error (msg "transl_name:Not yet implemented")
+        | _ => Error (msg "transl_name: ")
+      end*)
+    | E_Selected_Component  _ _ _ =>  Error (msg "transl_name:Not yet implemented")
   end.
 
 Fixpoint transl_exprlist (stbl: symboltable) (CE: compilenv) (el: list expression)
@@ -403,6 +390,314 @@ Fixpoint transl_exprlist (stbl: symboltable) (CE: compilenv) (el: list expressio
       do te2 <- transl_exprlist stbl CE e2;
       OK (te1 :: te2)
   end.
+
+
+(* ********************************************** *)
+
+
+(* 
+Definition concrete_type_of_basic_value (v:basic_value): type :=
+  match v with
+    | Int n => Integer
+    | Bool b => Boolean
+  end.
+ *)
+
+Definition concrete_type_of_value (v:value): res base_type :=
+  match v with
+    | Int v => OK (BInteger (Range MinInt MaxInt))
+    | Bool b => OK BBoolean
+    | ArrayV v =>  Error (msg "concrete_type_of_value: Arrays types not yet implemented!!.")
+    | RecordV v =>  Error (msg "concrete_type_of_value: Records types not yet implemented!!.")
+    | Undefined => Error (msg "concrete_type_of_value: Undefined type not yet implemented!!.")
+  end.
+
+
+Function transl_value (v:value): res Values.val :=
+  match v with
+    | Int v => OK (Values.Vint (Integers.Int.repr v))
+    | Bool true => OK (Values.Vint (Integers.Int.repr 1))
+    | Bool false => OK (Values.Vint (Integers.Int.repr 0))
+    | ArrayV v =>  Error (msg "concrete_type_of_value: Arrays types not yet implemented!!.")
+    | RecordV v =>  Error (msg "concrete_type_of_value: Records types not yet implemented!!.")
+    | Undefined => Error (msg "concrete_type_of_value: Undefined type not yet implemented!!.")
+  end.
+
+(* See CminorgenProof.v@205. *)
+Record match_env (st:symboltable) (s: semantics.STACK.stack) (CE:compilenv) (sp:Values.val)
+       (locenv: Cminor.env): Prop :=
+  mk_match_env {
+      (* We will need more than that probably. But for now let us use
+         a simple notion of matching: the value of a variable is equal
+         to the value of its translation. Its translation is currently
+         (an expression of the form ELoad((Eload(Eload ...(Eload(0))))
+         + n)). We could define a specialization of eval_expr for this
+           kind of expression but at some point the form of the
+           expression will complexify (some variables may stay
+           temporary instead of going in the stack, etc).
+
+         We also put well-typing constraints on the stack wrt symbol
+         table.
+       *)
+      me_vars:
+        forall id st astnum v typeofv,
+            STACK.fetchG id s = Some v ->
+            fetch_var_type id st = OK typeofv ->
+            exists e' v' rtypeofv typeofv' ld,
+              reduce_type st typeofv max_recursivity = OK rtypeofv /\
+              concrete_type_of_value v = OK rtypeofv /\ (* stack is well typed wrt st *)
+              transl_value v = OK v' /\
+              transl_type st typeofv = OK typeofv' /\
+              transl_variable st CE astnum id = OK e' /\
+              make_load e' typeofv' = OK ld /\
+              forall (g:genv)(m:Memory.Mem.mem),
+                Cminor.eval_expr g sp locenv m ld v'
+
+
+(*       me_vars:
+        forall id st astnum typeofv,
+          fetch_var_type id st = OK typeofv ->
+          exists (v:STACK.V) e' v' typeofv' ld,
+            STACK.fetchG id s = Some v ->
+            transl_variable st CE astnum id = OK e' ->
+            transl_type st typeofv = OK typeofv' /\
+            transl_value v = OK v' /\
+            make_load e' typeofv' = OK ld /\
+            forall (g:genv)(m:Memory.Mem.mem),
+              Cminor.eval_expr g sp locenv m ld v'
+ *)
+    }.
+
+Require Import LibHypsNaming.
+
+Ltac rename_hyp1 th :=
+  match th with
+    | eval_expr _ _ _ (Normal _) => fresh "h_eval_expr"
+    | eval_expr _ _ _ (Run_Time_Error _) => fresh "h_eval_expr_RE"
+    | eval_name _ _ _ (Normal _) => fresh "h_eval_name"
+    | eval_name _ _ _ (Run_Time_Error _) => fresh "h_eval_name_RE"
+    | eval_name _ _ _ _ => fresh "h_eval_name"
+    | do_overflow_check _ (Normal _) => fresh "h_overf_check"
+    | do_overflow_check _ (Run_Time_Error _) => fresh "h_overf_check_RE"
+    | Cminor.eval_constant _ _ _ = (Some _)  => fresh "h_eval_constant"
+    | Cminor.eval_constant _ _ _ = None  => fresh "h_eval_constant_None"
+    | eval_literal _ (Normal _)  => fresh "h_eval_literal"
+    | eval_literal _ (Run_Time_Error _)  => fresh "h_eval_literal_RE"
+    | eval_literal _ _  => fresh "h_eval_literal"
+    | Cminor.eval_expr _ _ _ _ _ _ => fresh "h_CM_eval_expr"
+    | match_env _ _ _ _ _ => fresh "h_match_env"
+    | transl_value _ = OK _ => fresh "heq_transl_value"
+    | transl_value _ = Run_Time_Error _ => fresh "heq_transl_value_RE"
+    | transl_variable _ _ _ _ = OK _ => fresh "heq_transl_variable"
+    | transl_variable _ _ _ _ = Run_Time_Error _ => fresh "heq_transl_variable_RE"
+    | fetch_exp_type _ _ = Some _ => fresh "heq_fetch_exp_type"
+    | fetch_exp_type _ _ = None => fresh "heq_fetch_exp_type_none"
+    | transl_type _ _ = OK _ => fresh "heq_transl_type"
+    | transl_type _ _ = Run_Time_Error _ => fresh "heq_transl_type_RE"
+    | make_load _ _ = OK _ => fresh "heq_make_load"
+    | make_load _ _ = Run_Time_Error _ => fresh "heq_make_load_RE"
+    | STACK.fetchG _ _ = Some _ => fresh "heq_SfetchG"
+    | STACK.fetchG _ _ = None => fresh "heq_SfetchG_none"
+    | do_run_time_check_on_binop _ _ _ (Normal _) =>  fresh "h_do_rtc_binop"
+    | do_run_time_check_on_binop _ _ _ (Run_Time_Error _) =>  fresh "h_do_rtc_binop_RE"
+    | reduce_type _ _ _ = OK _  => fresh "heq_reduce_type"
+    | reduce_type _ _ _ = Run_Time_Error _ => fresh "heq_reduce_type_RE"
+    | reduce_type _ _ _ = _  => fresh "heq_reduce_type"
+    | concrete_type_of_value _ = Run_Time_Error _ => fresh "concrete_type_of_value_RE"
+    | concrete_type_of_value _ = OK _ => fresh "concrete_type_of_value"
+  end.
+
+Ltac rename_hyp ::= rename_hyp1.
+
+Section EXPR_OK.
+
+Variable (stbl:symboltable)
+         (CE:compilenv) (locenv:env) (g:genv) (m:Memory.Mem.mem).
+
+Lemma transl_literal_ok :
+  forall (l:literal) v,
+    eval_literal l (Normal v) ->
+    forall sp,
+    exists v',
+      transl_value v = OK v'
+      /\ eval_constant g sp (transl_literal l) = Some v'.
+Proof.
+  !intros.
+  !destruct l;simpl in *.
+  - !inversion h_eval_literal.
+    !inversion h_overf_check.
+    simpl.
+    eauto.
+  - destruct b.
+    + !inversion h_eval_literal.
+      simpl.
+      eauto.
+    + !inversion h_eval_literal.
+      simpl.
+      eauto.
+Qed.
+
+
+Ltac eq_same e :=
+  match goal with
+    | H: e = OK ?t1 , H': e = OK ?t2 |- _ => rewrite H in H'; !inversion H'
+  end;
+  match goal with
+      | H: ?e = ?e |- _ => clear H
+  end.
+
+Lemma transl_expr_ok :
+  forall (s:STACK.stack) (e:expression) (v:value) (e':Cminor.expr)
+         (sp: Values.val),
+    eval_expr stbl s e (Normal v) ->
+    transl_expr stbl CE e = OK e' ->
+    match_env stbl s CE sp locenv ->
+    exists v', transl_value v = OK v' /\ Cminor.eval_expr g sp locenv m e' v'.
+Proof.
+  intros until sp.
+  intro h_eval_expr.
+  remember (Normal v) as Nv.
+  revert HeqNv.
+  revert v e' sp.
+  !induction h_eval_expr ;simpl;!intros; subst.
+  - !invclear heq.
+    !destruct h_match_env.
+    destruct (transl_literal_ok l v0 h_eval_literal sp) as [v' h_and].
+    !destruct h_and.
+    exists v'.
+    split.
+    + assumption.
+    + constructor.
+      assumption.
+  - !destruct n; try now inversion heq.
+     destruct (transl_variable st CE ast_num i) eqn:heq_trv;simpl in *
+     ; (try now inversion heq); rename e into trv_i.
+     destruct (fetch_var_type i st) eqn:heq_fetch_type; (try now inversion heq);simpl in heq.
+    unfold value_at_addr in heq.
+    destruct (transl_type st t) eqn:heq_typ;simpl in *;try now inversion heq.
+    !invclear h_eval_name.
+    destruct h_match_env.
+    specialize (me_vars0 i st ast_num v0 t heq_SfetchG heq_fetch_type).
+    decomp me_vars0.
+    rename x into e''. rename x0 into v1'. rename x1 into bastyp.
+    rename x2 into t'. rename x3 into e'''. rename H6 into h_eval_expr. clear me_vars0.
+    unfold make_load in heq.
+    destruct (Ctypes.access_mode t0) eqn:heq_acctyp; !invclear heq.
+    + exists v1'.
+      split.
+      * assumption.
+      * unfold make_load in heq_make_load.
+        eq_same (transl_type st t).
+        eq_same( transl_variable st CE ast_num i).
+        rewrite heq_acctyp in heq_make_load.
+        !invclear heq_make_load.
+        apply h_eval_expr.
+    + exists v1'.
+      split.
+      * assumption.
+      * unfold make_load in heq_make_load.
+        eq_same (transl_type st t).
+        eq_same( transl_variable st CE ast_num i).
+        rewrite heq_acctyp in heq_make_load.
+        !invclear heq_make_load.
+        apply h_eval_expr.
+    + exists v1'.
+      split.
+      * assumption.
+      * unfold make_load in heq_make_load.
+        eq_same (transl_type st t).
+        eq_same( transl_variable st CE ast_num i).
+        rewrite heq_acctyp in heq_make_load.
+        !invclear heq_make_load.
+        apply h_eval_expr.
+  - discriminate heq0.
+  - discriminate heq0.
+  - destruct (transl_expr st CE e1) eqn:heq_transl_expr1;(try now inversion heq);simpl in heq.
+    destruct (transl_expr st CE e2) eqn:heq_transl_expr2;(try now inversion heq);simpl in heq.
+    !invclear heq.
+    specialize (IHh_eval_expr1 v1 e sp (refl_equal (Normal v1)) (refl_equal (OK e)) h_match_env).
+    specialize (IHh_eval_expr2 v2 e0 sp (refl_equal (Normal v2)) (refl_equal (OK e0)) h_match_env).
+    decomp IHh_eval_expr1.
+    decomp IHh_eval_expr2.
+    XXX (* gérer les différents cas de do_run_time_check_on_binop ... (Normal v). *)
+    
+
+              exists v.
+    + inversion heq.
+      simpl in *.
+      unfold id in *.
+      apply IHh_eval_expr;auto.
+      
+    simpl in heq.
+    (try now inversion heq). ;simpl in heq.
+
+
+
+    destruct (transl_variable rstbl CE a i) eqn:heq_trv;simpl in *; (try now inversion heq); rename e into trv_i.
+    destruct (fetch_exp_type a rstbl) eqn:heq_fetch; try now inversion heq.
+    unfold value_at_addr in heq.
+    destruct (transl_type rstbl t) eqn:heq_typ;simpl in *;try now inversion heq.
+    !invclear h_eval_name.
+    unfold make_load in heq.
+    destruct (Ctypes.access_mode t0) eqn:heq_acctyp; !invclear heq.
+    + destruct h_match_env.
+
+      destruct (me_vars0 i rstbl a trv_i v t heq_SfetchG) as [v' me_vars1].
+      * admit. (* propriété de cohérence de la pile, c'est du typage. *)
+      * assumption.
+      * clear me_vars0.
+        decomp me_vars1.
+        exists v'.
+        { split.
+          - assumption.
+          - unfold make_load in heq_make_load. rewrite heq_acctyp in heq_make_load.
+        reflexivity.
+    + destruct h_match_env.
+      eapply (me_vars0 i rstbl a );try now eassumption.
+      * admit. (* propriété de cohérence de la pile, c'est du typage. *)
+      * unfold make_load. rewrite heq_acctyp.
+        reflexivity.
+    + destruct h_match_env.
+      eapply (me_vars0 i rstbl a );try now eassumption.
+      * admit. (* propriété de cohérence de la pile, c'est du typage. *)
+      * unfold make_load. rewrite heq_acctyp.
+        reflexivity.
+        
+  - destruct (transl_expr rstbl CE e1) eqn:heq_tr_e1;try now inversion heq.
+    destruct (transl_expr rstbl CE e2) eqn:heq_tr_e2;try now inversion heq.
+    simpl in heq.
+    !invclear heq.
+    !invclear h_eval_expr.
+    !destruct (transl_value v1).
+    
+    !inversion h_do_rtc_binop.
+    + !invclear heq.
+      !invclear heq.
+
+
+
+
+
+(*
+
+    Lemma transl_name_ok :
+      forall a a0 i e e' t t' v v' s sp,
+        transl_variable rstbl CE a i = OK e ->
+        fetch_exp_type a rstbl = Some t ->
+        transl_type rstbl t = OK t' ->
+        make_load e t' = OK e' ->
+        match_env s CE sp locenv ->
+        transl_value v = OK v' ->
+        eval_name stbl s (E_Identifier a0 i) (Normal v) ->
+        Cminor.eval_expr g sp locenv m e' v'.
+    Proof.
+      !intros.
+    Qed.
+
+
+ *)
+(* ********************************************** *)
+
 
 
 (* FIXME *)
