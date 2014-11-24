@@ -1,11 +1,13 @@
 
 
 
+Require Import LibHypsNaming.
 Require Import Errors.
 (* Require Import language. *)
 Require Import Cminor.
-Require Cshmgen.
-Require Cminorgen.
+Require Ctypes.
+(* Require Cshmgen. *)
+(* Require Cminorgen. *)
 Require Import BinPosDef.
 Require Import Maps.
 Require Import symboltable.
@@ -32,7 +34,39 @@ Notation "X ++ Y" := (String.append X Y) : spark_scope.
 Import Symbol_Table_Module.
 Open Scope error_monad_scope.
 
-Parameter MinInt MaxInt: Z.
+Open Scope Z_scope.
+
+
+Lemma wordsize_ok : wordsize = Integers.Int.wordsize.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma modulus_ok: modulus = Integers.Int.modulus.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma half_modulus_ok: half_modulus = Integers.Int.half_modulus.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma max_unsigned_ok: max_unsigned = Integers.Int.max_unsigned.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma max_signed_ok: max_signed = Integers.Int.max_signed.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma min_signed_ok: min_signed = Integers.Int.min_signed.
+Proof.
+  reflexivity.
+Qed.
+
 
 (** The [base_type] of a type is the corresponding concrete type. *)
 Inductive base_type: Type :=
@@ -129,7 +163,7 @@ Definition type_of_decl (typdecl:type_declaration): res type :=
   end.
 
 
-Definition max_recursivity:nat := 30.
+Definition max_recursivity:nat := 30%nat.
 
 Definition fetch_var_type id st :=
   match (Symbol_Table_Module.fetch_var id st) with
@@ -179,7 +213,7 @@ Definition transl_typenum (stbl:symboltable) (id:typenum): res Ctypes.type :=
 Definition transl_type (stbl:symboltable) (t:type): res Ctypes.type :=
   match t with
     | Boolean => transl_basetype stbl BBoolean
-    | Integer => transl_basetype stbl (BInteger (Range MinInt MaxInt))
+    | Integer => transl_basetype stbl (BInteger (Range min_signed max_signed))
     | Subtype t' => transl_typenum stbl t'
     | Derived_Type t' => transl_typenum stbl t'
     | Integer_Type t' => transl_typenum stbl t'
@@ -221,7 +255,7 @@ Definition void_star := (Ctypes.Tpointer Ctypes.Tvoid default_attr).
     procedure frame. The type of all Load is ( void * ). *)
 Fixpoint build_loads_ (m:nat) {struct m} : res Cminor.expr :=
   match m with
-    | 0 => OK (Econst (Oaddrstack (Integers.Int.zero)))
+    | O => OK (Econst (Oaddrstack (Integers.Int.zero)))
     | S m' =>
       do subloads <- build_loads_ m' ;
         make_load subloads void_star
@@ -405,7 +439,7 @@ Definition concrete_type_of_basic_value (v:basic_value): type :=
 
 Definition concrete_type_of_value (v:value): res base_type :=
   match v with
-    | Int v => OK (BInteger (Range MinInt MaxInt))
+    | Int v => OK (BInteger (Range min_signed max_signed))
     | Bool b => OK BBoolean
     | ArrayV v =>  Error (msg "concrete_type_of_value: Arrays types not yet implemented!!.")
     | RecordV v =>  Error (msg "concrete_type_of_value: Records types not yet implemented!!.")
@@ -451,8 +485,12 @@ Record match_env (st:symboltable) (s: semantics.STACK.stack) (CE:compilenv) (sp:
               transl_variable st CE astnum id = OK e' /\
               make_load e' typeofv' = OK ld /\
               forall (g:genv)(m:Memory.Mem.mem),
-                Cminor.eval_expr g sp locenv m ld v'
-
+                Cminor.eval_expr g sp locenv m ld v';
+      
+      me_overflow:
+        forall id n,
+          STACK.fetchG id s = Some (Int n) ->
+          do_overflow_check n (Normal (Int n))
 
 (*       me_vars:
         forall id st astnum typeofv,
@@ -468,8 +506,7 @@ Record match_env (st:symboltable) (s: semantics.STACK.stack) (CE:compilenv) (sp:
  *)
     }.
 
-Require Import LibHypsNaming.
-
+(** Hypothesis renaming stuff *)
 Ltac rename_hyp1 th :=
   match th with
     | eval_expr _ _ _ (Normal _) => fresh "h_eval_expr"
@@ -477,8 +514,12 @@ Ltac rename_hyp1 th :=
     | eval_name _ _ _ (Normal _) => fresh "h_eval_name"
     | eval_name _ _ _ (Run_Time_Error _) => fresh "h_eval_name_RE"
     | eval_name _ _ _ _ => fresh "h_eval_name"
-    | do_overflow_check _ (Normal _) => fresh "h_overf_check"
     | do_overflow_check _ (Run_Time_Error _) => fresh "h_overf_check_RE"
+    | do_overflow_check _ _ => fresh "h_overf_check"
+    | do_range_check _ _ _ (Run_Time_Error _) => fresh "h_do_range_check_RE"
+    | do_range_check _ _ _ _ => fresh "h_do_range_check"
+    | do_run_time_check_on_binop _ _ _ (Run_Time_Error _) => fresh "h_do_rtc_binop_RTE"
+    | do_run_time_check_on_binop _ _ _ _ => fresh "h_do_rtc_binop"
     | Cminor.eval_constant _ _ _ = (Some _)  => fresh "h_eval_constant"
     | Cminor.eval_constant _ _ _ = None  => fresh "h_eval_constant_None"
     | eval_literal _ (Normal _)  => fresh "h_eval_literal"
@@ -498,24 +539,24 @@ Ltac rename_hyp1 th :=
     | make_load _ _ = Run_Time_Error _ => fresh "heq_make_load_RE"
     | STACK.fetchG _ _ = Some _ => fresh "heq_SfetchG"
     | STACK.fetchG _ _ = None => fresh "heq_SfetchG_none"
-    | do_run_time_check_on_binop _ _ _ (Normal _) =>  fresh "h_do_rtc_binop"
     | do_run_time_check_on_binop _ _ _ (Run_Time_Error _) =>  fresh "h_do_rtc_binop_RE"
+    | do_run_time_check_on_binop _ _ _ _ =>  fresh "h_do_rtc_binop"
+    | do_run_time_check_on_unop _ _ (Run_Time_Error _) =>  fresh "h_do_rtc_unop_RE"
+    | do_run_time_check_on_unop _ _ _ =>  fresh "h_do_rtc_unop"
     | reduce_type _ _ _ = OK _  => fresh "heq_reduce_type"
     | reduce_type _ _ _ = Run_Time_Error _ => fresh "heq_reduce_type_RE"
     | reduce_type _ _ _ = _  => fresh "heq_reduce_type"
     | concrete_type_of_value _ = Run_Time_Error _ => fresh "concrete_type_of_value_RE"
     | concrete_type_of_value _ = OK _ => fresh "concrete_type_of_value"
+    | in_bound _ _ _ => fresh "h_inbound"
+    | do_division_check _ _ _ => fresh "h_do_division_check"
+    | do_division_check _ _ (Run_Time_Error _) => fresh "h_do_division_check_RTE"
   end.
 
 Ltac rename_hyp ::= rename_hyp1.
 
-Section EXPR_OK.
-
-Variable (stbl:symboltable)
-         (CE:compilenv) (locenv:env) (g:genv) (m:Memory.Mem.mem).
-
 Lemma transl_literal_ok :
-  forall (l:literal) v,
+  forall g (l:literal) v,
     eval_literal l (Normal v) ->
     forall sp,
     exists v',
@@ -546,29 +587,555 @@ Ltac eq_same e :=
       | H: ?e = ?e |- _ => clear H
   end.
 
+(* Transform hypothesis of the form do_range_check into disequalities. *)
+Ltac inv_rtc :=
+  repeat
+    progress
+    try match goal with
+          | H:do_range_check _ _ _ (Normal (Int _)) |- _ => !invclear H
+          | H: in_bound _ _ true |- _ => !invclear H
+          | H:(_ >=? _) && (_ >=? _) = true |- _ =>
+            rewrite andb_true_iff in H;
+              try rewrite Z.geb_le in H;
+              try rewrite Z.geb_le in H;
+              let h1 := fresh "h_le"in
+              let h2 := fresh "h_le"in
+              destruct H as [h1 h2 ]
+          | H:(_ <=? _) && (_ <=? _) = true |- _ =>
+            rewrite andb_true_iff in H;
+              try rewrite Z.leb_le in H;
+              try rewrite Z.leb_le in H;
+              let h1 := fresh "h_le"in
+              let h2 := fresh "h_le"in
+              destruct H as [h1 h2 ]
+        end.
+
+
+(** In this section we prove that basic operators of SPARK behave,
+    when they don't raise a runtime error, like Compcert ones. *)
+
+(* TODO: maybe we should use do_overflow_check here, we will see. *)
+Lemma add_ok :
+  forall n n0 v v1 v2,
+    do_range_check v1 min_signed max_signed (Normal (Int v1)) ->
+    do_range_check v2 min_signed max_signed (Normal (Int v2)) ->
+    do_run_time_check_on_binop Plus (Int v1) (Int v2) (Normal (Int v)) ->
+    transl_value (Int v1) = OK (Values.Vint n) ->
+    transl_value (Int v2) = OK (Values.Vint n0) ->
+    Math.binary_operation Plus (Int v1) (Int v2) = Some (Int v) ->
+    Values.Val.add (Values.Vint n) (Values.Vint n0) = Values.Vint (Integers.Int.repr v).
+Proof.
+  !intros.
+  simpl in *.
+  !invclear heq_transl_value.
+  !invclear heq_transl_value0.
+  !invclear heq.
+  apply f_equal.
+  !invclear h_do_rtc_binop;simpl in *; try match goal with H: Plus <> Plus |- _ => elim H;auto end.
+  clear H heq.
+  inv_rtc.
+  rewrite min_signed_ok, max_signed_ok in *.
+  rewrite Integers.Int.add_signed.
+  rewrite !Integers.Int.signed_repr;auto 2.
+Qed.
+
+Lemma sub_ok :
+  forall n n0 v v1 v2,
+    do_range_check v1 min_signed max_signed (Normal (Int v1)) ->
+    do_range_check v2 min_signed max_signed (Normal (Int v2)) ->
+    do_run_time_check_on_binop Minus (Int v1) (Int v2) (Normal (Int v)) ->
+    transl_value (Int v1) = OK (Values.Vint n) ->
+    transl_value (Int v2) = OK (Values.Vint n0) ->
+    Math.binary_operation Minus (Int v1) (Int v2) = Some (Int v) ->
+    Values.Val.sub (Values.Vint n) (Values.Vint n0) = Values.Vint (Integers.Int.repr v).
+Proof.
+  !intros.
+  simpl in *.
+  !invclear heq_transl_value.
+  !invclear heq_transl_value0.
+  !invclear heq.
+  apply f_equal.
+  !invclear h_do_rtc_binop;simpl in *; try match goal with H: ?A <> ?A |- _ => elim H;auto end.
+  clear H heq.
+  inv_rtc.
+  rewrite min_signed_ok, max_signed_ok in *.
+  rewrite Integers.Int.sub_signed.
+  rewrite !Integers.Int.signed_repr;auto 2.
+Qed.
+
+Lemma mult_ok :
+  forall n n0 v v1 v2,
+    do_range_check v1 min_signed max_signed (Normal (Int v1)) ->
+    do_range_check v2 min_signed max_signed (Normal (Int v2)) ->
+    do_run_time_check_on_binop Multiply (Int v1) (Int v2) (Normal (Int v)) ->
+    transl_value (Int v1) = OK (Values.Vint n) ->
+    transl_value (Int v2) = OK (Values.Vint n0) ->
+    Math.binary_operation Multiply (Int v1) (Int v2) = Some (Int v) ->
+    Values.Val.mul (Values.Vint n) (Values.Vint n0) = Values.Vint (Integers.Int.repr v).
+Proof.
+  !intros.
+  simpl in *.
+  !invclear heq_transl_value.
+  !invclear heq_transl_value0.
+  !invclear heq.
+  apply f_equal.
+  !invclear h_do_rtc_binop;simpl in *; try match goal with H: ?A <> ?A |- _ => elim H;auto end.
+  clear H heq.
+  inv_rtc.
+  rewrite min_signed_ok, max_signed_ok in *.
+  rewrite Integers.Int.mul_signed.
+  rewrite !Integers.Int.signed_repr;auto 2.
+Qed.
+
+Set Printing Width 80.
+
+(** Compcert division return None if dividend is min_int and divisor
+    in -1, because the result would be max_int +1. In Spark's
+    semantics the division is performed but then it fails overflow
+    checks. *)
+(*  How to compile this? probably by performing a check before. *)
+Lemma div_ok :
+  forall n n0 v v1 v2,
+    do_range_check v1 min_signed max_signed (Normal (Int v1)) ->
+    do_range_check v2 min_signed max_signed (Normal (Int v2)) ->
+    do_run_time_check_on_binop Divide (Int v1) (Int v2) (Normal (Int v)) ->
+    transl_value (Int v1) = OK (Values.Vint n) ->
+    transl_value (Int v2) = OK (Values.Vint n0) ->
+    Math.binary_operation Divide (Int v1) (Int v2) = Some (Int v) ->
+    Values.Val.divs (Values.Vint n) (Values.Vint n0) = Some (Values.Vint (Integers.Int.repr v)).
+Proof.
+  !intros.
+  simpl in *.
+  !invclear heq_transl_value.
+  !invclear heq_transl_value0.
+  !invclear heq.
+  !invclear h_do_rtc_binop;simpl in *; try match goal with H: ?A <> ?A |- _ => elim H;auto end.
+  { decompose [or] H;discriminate. }
+  inv_rtc.
+  rewrite min_signed_ok, max_signed_ok in *.
+  !inversion h_do_division_check.
+  apply Zeq_bool_neq in heq_Z_false.
+  rewrite Integers.Int.eq_false;auto.
+  - simpl.
+    (* the case where division overflows is dealt with by the overflow
+       check in spark semantic. Ths division is performed on Z and
+       then overflow is checked and may fails. *)
+    destruct (Integers.Int.eq (Integers.Int.repr v1)
+                              (Integers.Int.repr Integers.Int.min_signed) &&
+                              Integers.Int.eq (Integers.Int.repr v2) Integers.Int.mone)
+             eqn:h_divoverf.
+    + apply andb_true_iff in h_divoverf.
+      destruct h_divoverf as [h_divoverf1 h_divoverf2].
+      exfalso.
+      assert (v1_is_min_int: v1 = Integers.Int.min_signed).
+      { 
+        rewrite Integers.Int.eq_signed in h_divoverf1.
+        unfold Coqlib.zeq in h_divoverf1;auto.
+        rewrite !Integers.Int.signed_repr in h_divoverf1;try (split;omega).
+        destruct (Z.eq_dec v1 Integers.Int.min_signed);try discriminate.
+        assumption. }
+      assert (v2_is_min_int: v2 = -1).
+      { rewrite Integers.Int.eq_signed in h_divoverf2.
+        unfold Coqlib.zeq in h_divoverf2;auto.
+        rewrite !Integers.Int.signed_repr in h_divoverf2;try (split;omega).
+        destruct (Z.eq_dec v2 (Integers.Int.signed Integers.Int.mone));try discriminate.
+        assumption. }
+      subst.
+      change (Zneg xH) with  (Z.opp (Zpos xH)) in h_overf_check.
+      rewrite Zquot.Zquot_opp_r in h_overf_check.
+      rewrite Z.quot_1_r in h_overf_check.
+      !inversion h_overf_check.
+      inv_rtc.
+      cbv in h_le4.
+      auto.
+    + unfold Integers.Int.divs.
+      rewrite !Integers.Int.signed_repr;auto 2.
+
+  - unfold Integers.Int.zero.
+    intro abs.
+    apply heq_Z_false.
+    rewrite <- (Integers.Int.signed_repr v2).
+    + rewrite abs.
+      rewrite (Integers.Int.signed_repr 0);auto.
+      split; intro;discriminate.      
+    + split;auto.
+Qed.
+
+
+
+
+(* *** Hack to workaround a current limitation of Functional Scheme wrt to Function. *)
+(*
+This should work, but Funcitonal SCheme does not generate the
+inversion stuff currently. So we defined by hand the expanded versions
+binopexp and unopexp with Function.
+
+Definition binopexp :=
+  Eval unfold
+       Math.binary_operation
+  , Math.and
+  , Math.or
+  , Math.eq
+  , Math.ne
+  , Math.lt
+  , Math.le
+  , Math.gt
+  , Math.ge
+  , Math.add
+  , Math.sub
+  , Math.mul
+  , Math.div
+  in Math.binary_operation.
+
+Definition unopexp :=
+  Eval unfold
+       Math.unary_operation, Math.unary_plus, Math.unary_minus, Math.unary_not in Math.unary_operation.
+
+Functional Scheme binopnind := Induction for binopexp Sort Prop.
+Functional Scheme unopnind := Induction for unopexp Sort Prop.
+*)
+
+Function unopexp (op : unary_operator) (v : value) :=
+  match op with
+    | Unary_Plus =>
+      match v with
+        | Undefined => None
+        | Int _ => Some v
+        | Bool _ => None
+        | ArrayV _ => None
+        | RecordV _ => None
+      end
+    | Unary_Minus =>
+      match v with
+        | Undefined => None
+        | Int v' => Some (Int (- v'))
+        | Bool _ => None
+        | ArrayV _ => None
+        | RecordV _ => None
+      end
+    | Not =>
+      match v with
+        | Undefined => None
+        | Int _ => None
+        | Bool v' => Some (Bool (negb v'))
+        | ArrayV _ => None
+        | RecordV _ => None
+      end
+  end.
+
+Function binopexp (op : binary_operator) (v1 v2 : value) :=
+  match op with
+    | And =>
+      match v1 with
+        | Undefined => None
+        | Int _ => None
+        | Bool v1' =>
+          match v2 with
+            | Undefined => None
+            | Int _ => None
+            | Bool v2' => Some (Bool (v1' && v2'))
+            | ArrayV _ => None
+            | RecordV _ => None
+          end
+        | ArrayV _ => None
+        | RecordV _ => None
+      end
+    | Or =>
+      match v1 with
+        | Undefined => None
+        | Int _ => None
+        | Bool v1' =>
+          match v2 with
+            | Undefined => None
+            | Int _ => None
+            | Bool v2' => Some (Bool (v1' || v2'))
+            | ArrayV _ => None
+            | RecordV _ => None
+          end
+        | ArrayV _ => None
+        | RecordV _ => None
+      end
+    | Equal =>
+      match v1 with
+        | Undefined => None
+        | Int v1' =>
+          match v2 with
+            | Undefined => None
+            | Int v2' => Some (Bool (Zeq_bool v1' v2'))
+            | Bool _ => None
+            | ArrayV _ => None
+            | RecordV _ => None
+          end
+        | Bool _ => None
+        | ArrayV _ => None
+        | RecordV _ => None
+      end
+    | Not_Equal =>
+      match v1 with
+        | Undefined => None
+        | Int v1' =>
+          match v2 with
+            | Undefined => None
+            | Int v2' => Some (Bool (Zneq_bool v1' v2'))
+            | Bool _ => None
+            | ArrayV _ => None
+            | RecordV _ => None
+          end
+        | Bool _ => None
+        | ArrayV _ => None
+        | RecordV _ => None
+      end
+    | Less_Than =>
+      match v1 with
+        | Undefined => None
+        | Int v1' =>
+          match v2 with
+            | Undefined => None
+            | Int v2' => Some (Bool (v1' <? v2'))
+            | Bool _ => None
+            | ArrayV _ => None
+            | RecordV _ => None
+          end
+        | Bool _ => None
+        | ArrayV _ => None
+        | RecordV _ => None
+      end
+    | Less_Than_Or_Equal =>
+      match v1 with
+        | Undefined => None
+        | Int v1' =>
+          match v2 with
+            | Undefined => None
+            | Int v2' => Some (Bool (v1' <=? v2'))
+            | Bool _ => None
+            | ArrayV _ => None
+            | RecordV _ => None
+          end
+        | Bool _ => None
+        | ArrayV _ => None
+        | RecordV _ => None
+      end
+    | Greater_Than =>
+      match v1 with
+        | Undefined => None
+        | Int v1' =>
+          match v2 with
+            | Undefined => None
+            | Int v2' => Some (Bool (v1' >? v2'))
+            | Bool _ => None
+            | ArrayV _ => None
+            | RecordV _ => None
+          end
+        | Bool _ => None
+        | ArrayV _ => None
+        | RecordV _ => None
+      end
+    | Greater_Than_Or_Equal =>
+      match v1 with
+        | Undefined => None
+        | Int v1' =>
+          match v2 with
+            | Undefined => None
+            | Int v2' => Some (Bool (v1' >=? v2'))
+            | Bool _ => None
+            | ArrayV _ => None
+            | RecordV _ => None
+          end
+        | Bool _ => None
+        | ArrayV _ => None
+        | RecordV _ => None
+      end
+    | Plus =>
+      match v1 with
+        | Undefined => None
+        | Int v1' =>
+          match v2 with
+            | Undefined => None
+            | Int v2' => Some (Int (v1' + v2'))
+            | Bool _ => None
+            | ArrayV _ => None
+            | RecordV _ => None
+          end
+        | Bool _ => None
+        | ArrayV _ => None
+        | RecordV _ => None
+      end
+    | Minus =>
+      match v1 with
+        | Undefined => None
+        | Int v1' =>
+          match v2 with
+            | Undefined => None
+            | Int v2' => Some (Int (v1' - v2'))
+            | Bool _ => None
+            | ArrayV _ => None
+            | RecordV _ => None
+          end
+        | Bool _ => None
+        | ArrayV _ => None
+        | RecordV _ => None
+      end
+    | Multiply =>
+      match v1 with
+        | Undefined => None
+        | Int v1' =>
+          match v2 with
+            | Undefined => None
+            | Int v2' => Some (Int (v1' * v2'))
+            | Bool _ => None
+            | ArrayV _ => None
+            | RecordV _ => None
+          end
+        | Bool _ => None
+        | ArrayV _ => None
+        | RecordV _ => None
+      end
+    | Divide =>
+      match v1 with
+        | Undefined => None
+        | Int v1' =>
+          match v2 with
+            | Undefined => None
+            | Int v2' => Some (Int (v1' ÷ v2'))
+            | Bool _ => None
+            | ArrayV _ => None
+            | RecordV _ => None
+          end
+        | Bool _ => None
+        | ArrayV _ => None
+        | RecordV _ => None
+      end
+  end.
+
+Lemma binopexp_ok: forall x y z, Math.binary_operation x y z = binopexp x y z .
+Proof.
+  reflexivity.
+Qed.
+
+Lemma unopexp_ok: forall x y, Math.unary_operation x y = unopexp x y.
+Proof.
+  reflexivity.
+Qed.
+
+(* *** And of the hack *)
+
+(** [safe_stack s] means that every value in s correct wrt to
+    overflows.
+TODO: extend with other values than Int: floats, arrays, records. *)
+Definition safe_stack s :=
+  forall id n,
+    STACK.fetchG id s = Some (Int n)
+    -> do_overflow_check n (Normal (Int n)).
+
+(** Since unary_plus is a nop, it is an exception to the otherwise
+    general property that the spark semantics always returns a checked
+    value (or a runtime error). *)
+Definition is_not_unaryplus e :=
+  match e with
+    | E_Unary_Operation x x0 x1 =>
+      match x0 with
+        | Unary_Plus => False
+        | _ => True
+      end
+    | _ => True
+  end.
+
+(** Hypothesis renaming stuff *)
+Ltac rename_hyp2 th :=
+  match th with
+    | is_not_unaryplus _ => fresh "h_isnotunplus"
+    | safe_stack _ => fresh "h_safe_stack"
+    | _ => rename_hyp1 th
+  end.
+
+Ltac rename_hyp ::= rename_hyp2.
+
+Lemma eval_literal_overf :
+  forall (l:literal) n, 
+    eval_literal l (Normal (Int n)) ->
+    do_overflow_check n (Normal (Int n)).
+Proof.
+  !intros.
+  !inversion h_eval_literal.
+  !inversion h_overf_check.
+  assumption.
+Qed.
+
+
+Lemma eval_name_overf : forall s st nme n,
+                          safe_stack s
+                          -> eval_name st s nme (Normal (Int n))
+                          -> do_overflow_check n (Normal (Int n)).
+Proof.
+  !intros.
+  !inversion h_eval_name. (* l'environnement retourne toujours des valeur rangées. *)
+  - unfold safe_stack in *.
+    eapply h_safe_stack;eauto.
+  - admit. (* Arrays *)
+  - admit. (* records *)
+Qed.
+
+(** on a safe stack, any expression that evaluates into a value,
+    evaluates to a not overflowing value, except if it is a unary_plus
+    (in which case no check is made). *)
+Lemma eval_expr_overf :
+  forall st s, safe_stack s ->
+            forall (e:expression) n, 
+              is_not_unaryplus e -> 
+              eval_expr st s e (Normal (Int n)) ->
+              do_overflow_check n (Normal (Int n)).
+Proof.
+  !intros.
+  !inversion h_eval_expr;subst.
+  - eapply eval_literal_overf;eauto.
+  - eapply eval_name_overf;eauto.
+  - !invclear h_do_rtc_binop.
+    + inversion h_overf_check;subst;auto.
+    + inversion h_overf_check;subst;auto.
+    + rewrite binopexp_ok in *.
+      functional inversion heq;subst;try match goal with H: ?A <> ?A |- _ => elim H;auto end.
+  - !invclear h_do_rtc_unop.
+    + inversion h_overf_check;subst;auto.
+    + rewrite unopexp_ok in *.
+      !functional inversion heq;subst;try match goal with H: ?A <> ?A |- _ => elim H;auto end.
+      simpl in h_isnotunplus.
+      elim h_isnotunplus.
+Qed.
+
+
+
+
 Lemma transl_expr_ok :
-  forall (s:STACK.stack) (e:expression) (v:value) (e':Cminor.expr)
+  forall stbl CE locenv g m (s:STACK.stack) (e:expression) (v:value) (e':Cminor.expr)
          (sp: Values.val),
     eval_expr stbl s e (Normal v) ->
     transl_expr stbl CE e = OK e' ->
     match_env stbl s CE sp locenv ->
-    exists v', transl_value v = OK v' /\ Cminor.eval_expr g sp locenv m e' v'.
+    exists v',
+      transl_value v = OK v'
+      /\ Cminor.eval_expr g sp locenv m e' v'
+      /\ match v with
+           | (Int n) => do_overflow_check n (Normal (Int n))
+           | _ => True
+         end.
 Proof.
   intros until sp.
   intro h_eval_expr.
   remember (Normal v) as Nv.
   revert HeqNv.
   revert v e' sp.
-  !induction h_eval_expr ;simpl;!intros; subst.
+  !induction h_eval_expr;simpl;!intros; subst.
   - !invclear heq.
     !destruct h_match_env.
-    destruct (transl_literal_ok l v0 h_eval_literal sp) as [v' h_and].
+    destruct (transl_literal_ok g l v0 h_eval_literal sp) as [v' h_and].
     !destruct h_and.
     exists v'.
-    split.
+    repeat split.
     + assumption.
     + constructor.
       assumption.
+    + destruct v0;auto.
+      eapply eval_literal_overf;eauto.
   - !destruct n; try now inversion heq.
      destruct (transl_variable st CE ast_num i) eqn:heq_trv;simpl in *
      ; (try now inversion heq); rename e into trv_i.
@@ -584,7 +1151,7 @@ Proof.
     unfold make_load in heq.
     destruct (Ctypes.access_mode t0) eqn:heq_acctyp; !invclear heq.
     + exists v1'.
-      split.
+      repeat split.
       * assumption.
       * unfold make_load in heq_make_load.
         eq_same (transl_type st t).
@@ -592,8 +1159,11 @@ Proof.
         rewrite heq_acctyp in heq_make_load.
         !invclear heq_make_load.
         apply h_eval_expr.
+      * destruct v0;auto.
+        eapply me_overflow0.
+        eauto.
     + exists v1'.
-      split.
+      repeat split.
       * assumption.
       * unfold make_load in heq_make_load.
         eq_same (transl_type st t).
@@ -601,8 +1171,11 @@ Proof.
         rewrite heq_acctyp in heq_make_load.
         !invclear heq_make_load.
         apply h_eval_expr.
+      * destruct v0;auto.
+        eapply me_overflow0.
+        eauto.
     + exists v1'.
-      split.
+      repeat split.
       * assumption.
       * unfold make_load in heq_make_load.
         eq_same (transl_type st t).
@@ -610,6 +1183,9 @@ Proof.
         rewrite heq_acctyp in heq_make_load.
         !invclear heq_make_load.
         apply h_eval_expr.
+      * destruct v0;auto.
+        eapply me_overflow0.
+        eauto.
   - discriminate heq0.
   - discriminate heq0.
   - destruct (transl_expr st CE e1) eqn:heq_transl_expr1;(try now inversion heq);simpl in heq.
@@ -617,8 +1193,236 @@ Proof.
     !invclear heq.
     specialize (IHh_eval_expr1 v1 e sp (refl_equal (Normal v1)) (refl_equal (OK e)) h_match_env).
     specialize (IHh_eval_expr2 v2 e0 sp (refl_equal (Normal v2)) (refl_equal (OK e0)) h_match_env).
-    decomp IHh_eval_expr1.
-    decomp IHh_eval_expr2.
+    decomp IHh_eval_expr1. clear IHh_eval_expr1. rename H2 into hmatch1.
+    decomp IHh_eval_expr2. clear IHh_eval_expr2. rename H2 into hmatch2.
+    !inversion h_do_rtc_binop; try !invclear h_overf_check. rename H into h_or_op.
+    + destruct h_or_op as [ | h_or_op]; [subst|destruct h_or_op;subst].
+      * simpl in heq.
+        (* shoul dbe a functional inversion *)
+        !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in heq.
+        inversion heq;subst.
+        exists (Values.Vint (Integers.Int.repr (n+n0))).
+        { (repeat split);simpl;auto.
+          - econstructor.
+            { apply h_CM_eval_expr. }
+            { apply h_CM_eval_expr0. }
+            simpl.
+            !invclear heq_transl_value.
+            !invclear heq_transl_value0.
+            rewrite (add_ok _ _ (n + n0) n n0);auto.
+            + constructor.
+              inversion hmatch1.
+              assumption.
+            + constructor.
+              inversion hmatch2.
+              assumption.
+          - constructor.
+            assumption. }
+      * simpl in heq.
+        destruct v1;try discriminate; destruct v2;try discriminate;simpl in heq.
+        inversion heq. subst.
+        exists (Values.Vint (Integers.Int.repr (n-n0))).
+        { (repeat split);auto.
+          - econstructor.
+            { apply h_CM_eval_expr. }
+            { apply h_CM_eval_expr0. }
+            simpl.
+            !invclear heq_transl_value.
+            !invclear heq_transl_value0.
+            rewrite (sub_ok _ _ (n - n0) n n0);auto.
+            + constructor.
+              inversion hmatch1.
+              assumption.
+            + constructor.
+              inversion hmatch2.
+              assumption.
+          - constructor.
+            assumption. }
+      * simpl in heq.
+        destruct v1;try discriminate; destruct v2;try discriminate;simpl in heq.
+        inversion heq. subst.
+        exists (Values.Vint (Integers.Int.repr (n*n0))).
+        { (repeat split);auto.
+          - econstructor.
+            { apply h_CM_eval_expr. }
+            { apply h_CM_eval_expr0. }
+            simpl.
+            !invclear heq_transl_value.
+            !invclear heq_transl_value0.
+            rewrite (mult_ok _ _ (n * n0) n n0);auto.
+            + constructor.
+              inversion hmatch1.
+              assumption.
+            + constructor.
+              inversion hmatch2.
+              assumption.
+          - constructor.
+            assumption. }
+
+        
+    + exists (Values.Vint (Integers.Int.repr (Z.quot v3 v4))).
+      { (repeat split);auto.
+        - !invclear heq_transl_value.
+          !invclear heq_transl_value0.
+          simpl.
+          apply f_equal.
+          apply f_equal.
+          apply f_equal.
+          !inversion h_do_division_check.
+          simpl in heq.
+          !inversion heq.
+          reflexivity.
+        - econstructor.
+          { apply h_CM_eval_expr. }
+          { apply h_CM_eval_expr0. }
+          simpl.
+          !invclear heq_transl_value.
+          !invclear heq_transl_value0.
+          rewrite (div_ok _ _ (Z.quot v3 v4) v3 v4);auto.
+          + constructor.
+            inversion hmatch1.
+            assumption.
+          + constructor.
+            inversion hmatch2.
+            assumption.
+          +  eapply Do_Check_On_Divide;eauto.
+             !inversion h_do_division_check.
+             simpl in heq.
+             !invclear heq.
+             apply Do_Overflow_Check_OK.
+             assumption.
+        - !inversion h_do_division_check.
+          simpl in heq.
+          !invclear heq.
+          apply Do_Overflow_Check_OK.
+          assumption. }
+    + destruct op;simpl in *; try match goal with H: ?A <> ?A |- _ => elim H;auto end.
+      * clear hmatch1 hmatch2.
+        repeat match goal with | H:?X <> ?Y |-_ => clear H end.
+        exists (Values.Val.and x x0).
+        { repeat split.
+          - !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
+            !invclear heq.
+            destruct n;destruct n0;simpl
+            ;inversion heq_transl_value
+            ;inversion heq_transl_value0
+            ; reflexivity.
+          - econstructor;eauto.
+          - !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
+            !invclear heq.
+            trivial. }
+      * clear hmatch1 hmatch2.
+        repeat match goal with | H:?X <> ?Y |-_ => clear H end.
+        exists (Values.Val.or x x0).
+        { repeat split.
+          - !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
+            !invclear heq.
+            destruct n;destruct n0;simpl
+            ;inversion heq_transl_value
+            ;inversion heq_transl_value0
+            ; reflexivity.
+          - econstructor;eauto.
+          - !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
+            !invclear heq.
+            trivial. }
+
+(*         XXXX etc. TRansformer tout ça en lemmes. *)
+      * 
+
+
+
+            !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
+            !invclear heq.
+            destruct n;destruct n0;simpl
+            ;!invclear heq_transl_value
+            ;!invclear heq_transl_value0
+            ;subst.
+            simpl.
+            assumption.
+            ; reflexivity.
+          - 
+        }
+        
+
+      !inversion h_do_rtc_binop.
+       * decompose [or] H;subst; try match goal with H: ?A <> ?A |- _ => elim H;auto end.
+       * match goal with H: ?A <> ?A |- _ => elim H;auto end.
+       * 
+      destruct (eval_binop (transl_binop op) x x0 m) eqn:heq_eval.
+      Focus 2.
+      * destruct op;simpl in heq_eval;inversion heq_eval.
+        try match goal with H: ?A <> ?A |- _ => elim H;auto end.
+      * !inversion h_do_rtc_binop.
+
+
+
+        destruct op;simpl in heq_eval;!invclear heq_eval;subst;try match goal with H: ?A <> ?A |- _ => elim H;auto end.
+
+        !inversion h_do_rtc_binop.
+        exists (Values.Val.and x x0).
+        
+
+
+
+      * destruct v1. ;try discriminate; destruct v2;try discriminate;simpl in *.
+        { exists (Values.Val.and x x0);repeat split;simpl;auto.
+          - destruct n;destruct n0;simpl in *
+            ; !invclear heq_transl_value; !invclear heq_transl_value0;simpl.
+inversion heq.
+            
+            reflexivity.
+        }
+        
+        
+      { (repeat split);auto.
+        - econstructor.
+          { apply h_CM_eval_expr. }
+          { apply h_CM_eval_expr0. }
+          simpl.
+          !invclear heq_transl_value.
+            !invclear heq_transl_value0.
+            rewrite (mult_ok _ _ (n * n0) n n0);auto.
+            + constructor.
+              inversion hmatch1.
+              assumption.
+            + constructor.
+              inversion hmatch2.
+              assumption.
+          - constructor.
+            assumption. }
+
+      exists (Int n).
+      
+      
+
+
+
+
+
+  - constructor.
+          assumption. }
+
+      inversion H.
+      inversion H2.
+      subst v0.
+      rewrite add_ok in 
+      
+
+
+
+      inversion h_overf_check;subst;simpl.
+      exists (Values.Vint (Integers.Int.repr v)).
+      split;auto.
+      econstructor.
+      apply h_CM_eval_expr.
+      apply h_CM_eval_expr0.
+      decomp H0;subst;simpl.
+      rewrite add_ok.
+
+      * .
+      simpl.
+
+
     XXX (* gérer les différents cas de do_run_time_check_on_binop ... (Normal v). *)
     
 
