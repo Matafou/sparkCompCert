@@ -293,7 +293,7 @@ Definition transl_unop (op:unary_operator) : res Cminor.unary_operation :=
   match op with
     | Unary_Plus => Error (msg "unary plus should be removed")
     | Unary_Minus => OK Cminor.Onegint
-    | Not => OK Cminor.Onotint
+    | Not => OK Cminor.Onotint (* FIXME: this is bit-wise negation *)
   end.
 
 (** [value_at_addr stbl typ addr] returns the expression corresponding

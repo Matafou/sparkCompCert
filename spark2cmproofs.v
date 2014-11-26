@@ -7,6 +7,7 @@ Require Ctypes.
 Require Import symboltable.
 Require Import semantics.
 
+
 Lemma wordsize_ok : wordsize = Integers.Int.wordsize.
 Proof.
   reflexivity.
@@ -41,6 +42,57 @@ Import Symbol_Table_Module.
 Open Scope error_monad_scope.
 
 Open Scope Z_scope.
+
+(* Auxiliary lemmas, should go in Compcert? *)
+Lemma repr_inj:
+  forall v1 v2,
+    Integers.Int.min_signed <= v1 <= Integers.Int.max_signed ->
+    Integers.Int.min_signed <= v2 <= Integers.Int.max_signed ->
+    Integers.Int.repr v1 = Integers.Int.repr v2 ->
+    v1 = v2.
+Proof.
+  intros v1 v2 hinbound1 hinboun2.
+  !intros.
+  assert (h: Integers.Int.signed(Integers.Int.repr v1)
+             = Integers.Int.signed(Integers.Int.repr v2)).
+  { rewrite heq. reflexivity. }
+  rewrite Integers.Int.signed_repr in h;auto.
+  rewrite Integers.Int.signed_repr in h;auto.
+Qed.
+
+Lemma repr_inj_neq:
+  forall v1 v2,
+    Integers.Int.min_signed <= v1 <= Integers.Int.max_signed ->
+    Integers.Int.min_signed <= v2 <= Integers.Int.max_signed ->
+    v1 <> v2 -> 
+    Integers.Int.repr v1 <> Integers.Int.repr v2.
+Proof.
+  intros v1 v2 hinbound1 hinboun2 hneq.
+  intro abs.
+  apply repr_inj in abs;auto.
+Qed.
+
+(* These should be part of std lib maybe.  *)
+
+Lemma Zneq_bool_false: forall x y : Z, x = y -> Zneq_bool x y = false.
+Proof.
+  !intros.
+  subst.
+  unfold Zneq_bool.
+  rewrite Fcore_Zaux.Zcompare_Eq;auto.
+Qed.
+  
+Lemma Zneq_bool_true: forall x y : Z, x <> y -> Zneq_bool x y = true.
+Proof.
+  intros x y hneq.
+  apply Z.lt_gt_cases in hneq.
+  !destruct hneq.
+  - unfold Zneq_bool.
+    rewrite Fcore_Zaux.Zcompare_Lt;auto.
+  - unfold Zneq_bool.
+    rewrite Fcore_Zaux.Zcompare_Gt;auto.
+Qed.
+
 
 
 (* See CminorgenProof.v@205. *)
@@ -177,28 +229,52 @@ Ltac eq_same e :=
 Ltac inv_rtc :=
   repeat
     progress
-    try match goal with
-          | H:do_range_check _ _ _ (Normal (Int _)) |- _ => !invclear H
-          | H: in_bound _ _ true |- _ => !invclear H
-          | H:(_ >=? _) && (_ >=? _) = true |- _ =>
-            rewrite andb_true_iff in H;
-              try rewrite Z.geb_le in H;
-              try rewrite Z.geb_le in H;
-              let h1 := fresh "h_le"in
-              let h2 := fresh "h_le"in
-              destruct H as [h1 h2 ]
-          | H:(_ <=? _) && (_ <=? _) = true |- _ =>
-            rewrite andb_true_iff in H;
-              try rewrite Z.leb_le in H;
-              try rewrite Z.leb_le in H;
-              let h1 := fresh "h_le"in
-              let h2 := fresh "h_le"in
-              destruct H as [h1 h2 ]
-        end.
+    (try match goal with
+           | H: do_overflow_check _ (Normal (Int _)) |- _ => !invclear H
+           | H: do_range_check _ _ _ (Normal (Int _)) |- _ => !invclear H
+           | H: in_bound _ _ true |- _ => !invclear H
+           | H:(_ >=? _) && (_ >=? _) = true |- _ =>
+             rewrite andb_true_iff in H;
+           try rewrite Z.geb_le in H;
+           try rewrite Z.geb_le in H;
+           let h1 := fresh "h_le"in
+           let h2 := fresh "h_le"in
+           destruct H as [h1 h2 ]
+           | H:(_ <=? _) && (_ <=? _) = true |- _ =>
+             rewrite andb_true_iff in H;
+           try rewrite Z.leb_le in H;
+           try rewrite Z.leb_le in H;
+           let h1 := fresh "h_le"in
+           let h2 := fresh "h_le"in
+           destruct H as [h1 h2 ]
+         end; auto 2).
 
 
 (** In this section we prove that basic operators of SPARK behave,
     when they don't raise a runtime error, like Compcert ones. *)
+
+Lemma not_ok: forall v1 v0 x,
+                     transl_value v1 = OK x ->
+                     Math.unary_not v1 = Some v0 ->
+                     transl_value v0 = OK (Values.Val.notbool x).
+Proof.
+  !intros.
+  !destruct v1;try discriminate;simpl in *.
+  !invclear heq.
+  destruct n;simpl
+  ;inversion heq_transl_value
+  ; subst.
+  simpl.
+  fold Integers.Int.mone.
+  repeat apply f_equal.
+  - rewrite Integers.Int.eq_false.
+    + reflexivity.
+    + apply Integers.Int.one_not_zero.
+  - simpl.
+    rewrite Integers.Int.eq_true.
+    reflexivity.
+Qed.
+
 
 Lemma and_ok: forall v1 v2 v0 x x0,
                      transl_value v1 = OK x ->
@@ -237,7 +313,7 @@ Lemma eq_ok: forall v1 v2 v0 x x0,
                      do_overflow_check v2 (Normal (Int v2)) ->
                      Math.eq (Int v1) (Int v2) = Some v0 ->
                      transl_value v0
-                     = OK (Values.Val.cmp Integers.Ceq (Values.Vint (Integers.Int.repr v1)) (Values.Vint (Integers.Int.repr v2))).
+                     = OK (Values.Val.cmp Integers.Ceq x x0).
 Proof.
   !intros.
   !invclear heq.
@@ -257,11 +333,209 @@ Proof.
     simpl.
     rewrite Integers.Int.eq_false.
     + reflexivity.
-    + intro abs. 
-      admit.
+    + apply repr_inj_neq.
+      * inv_rtc.
+      * inv_rtc.
+      * assumption.
 Qed.
 
+
+
+Lemma neq_ok: forall v1 v2 v0 x x0,
+                     transl_value (Int v1) = OK x ->
+                     transl_value (Int v2) = OK x0 ->
+                     do_overflow_check v1 (Normal (Int v1)) ->
+                     do_overflow_check v2 (Normal (Int v2)) ->
+                     Math.ne (Int v1) (Int v2) = Some v0 ->
+                     transl_value v0
+                     = OK (Values.Val.cmp Integers.Cne x x0).
+Proof.
+  !intros.
+  !invclear heq.
+  !invclear heq_transl_value.
+  !invclear heq_transl_value0.
+  simpl.
+  unfold Values.Val.cmp.
+  simpl.
+  !destruct (Z.eq_dec v1 v2).
+  - subst.
+    rewrite Zneq_bool_false;auto.
+    rewrite Integers.Int.eq_true.
+    reflexivity.
+  - subst.
+    rewrite Zneq_bool_true;auto.
+    rewrite Integers.Int.eq_false.
+    + reflexivity.
+    + apply repr_inj_neq.
+      * inv_rtc.
+      * inv_rtc.
+      * assumption.
+Qed.
+
+
+Lemma le_ok: forall v1 v2 v0 x x0,
+                     transl_value (Int v1) = OK x ->
+                     transl_value (Int v2) = OK x0 ->
+                     do_overflow_check v1 (Normal (Int v1)) ->
+                     do_overflow_check v2 (Normal (Int v2)) ->
+                     Math.le (Int v1) (Int v2) = Some v0 ->
+                     transl_value v0
+                     = OK (Values.Val.cmp Integers.Cle x x0).
+Proof.
+  !intros.
+  !invclear heq.
+  !invclear heq_transl_value.
+  !invclear heq_transl_value0.
+  simpl.
+  !destruct (Z.le_decidable v1 v2).
+  - rewrite Fcore_Zaux.Zle_bool_true;auto.
+    unfold Values.Val.cmp.
+    simpl.
+    unfold Integers.Int.lt.
+    rewrite Coqlib.zlt_false.
+    + reflexivity.
+    + rewrite Integers.Int.signed_repr;inv_rtc.
+      rewrite Integers.Int.signed_repr;inv_rtc.
+      auto with zarith.
+  - { rewrite Fcore_Zaux.Zle_bool_false.
+      - unfold Values.Val.cmp.
+        simpl.
+        unfold Integers.Int.lt.
+        rewrite Coqlib.zlt_true.
+        + reflexivity.
+        + rewrite Integers.Int.signed_repr;inv_rtc.
+          rewrite Integers.Int.signed_repr;inv_rtc.
+          auto with zarith.
+      - apply Z.nle_gt.
+        assumption. }
+Qed.
+
+
+Lemma ge_ok: forall v1 v2 v0 x x0,
+                     transl_value (Int v1) = OK x ->
+                     transl_value (Int v2) = OK x0 ->
+                     do_overflow_check v1 (Normal (Int v1)) ->
+                     do_overflow_check v2 (Normal (Int v2)) ->
+                     Math.ge (Int v1) (Int v2) = Some v0 ->
+                     transl_value v0
+                     = OK (Values.Val.cmp Integers.Cge x x0).
+Proof.
+  !intros.
+  !invclear heq.
+  !invclear heq_transl_value.
+  !invclear heq_transl_value0.
+  simpl.
+  rewrite Z.geb_leb.
+  !destruct (Z.le_decidable v2 v1).
+  - rewrite Fcore_Zaux.Zle_bool_true;auto.
+    unfold Values.Val.cmp.
+    simpl.
+    unfold Integers.Int.lt.
+    rewrite Coqlib.zlt_false.
+    + reflexivity.
+    + rewrite Integers.Int.signed_repr;inv_rtc.
+      rewrite Integers.Int.signed_repr;inv_rtc.
+      auto with zarith.
+  - { rewrite Fcore_Zaux.Zle_bool_false.
+      - unfold Values.Val.cmp.
+        simpl.
+        unfold Integers.Int.lt.
+        rewrite Coqlib.zlt_true.
+        + reflexivity.
+        + rewrite Integers.Int.signed_repr;inv_rtc.
+          rewrite Integers.Int.signed_repr;inv_rtc.
+          auto with zarith.
+      - apply Z.nle_gt.
+        assumption. }
+Qed.
+
+Lemma lt_ok: forall v1 v2 v0 x x0,
+                     transl_value (Int v1) = OK x ->
+                     transl_value (Int v2) = OK x0 ->
+                     do_overflow_check v1 (Normal (Int v1)) ->
+                     do_overflow_check v2 (Normal (Int v2)) ->
+                     Math.lt (Int v1) (Int v2) = Some v0 ->
+                     transl_value v0
+                     = OK (Values.Val.cmp Integers.Clt x x0).
+Proof.
+  !intros.
+  !invclear heq.
+  !invclear heq_transl_value.
+  !invclear heq_transl_value0.
+  simpl.
+  !destruct (Z.lt_decidable v1 v2).
+  - rewrite Fcore_Zaux.Zlt_bool_true;auto.
+    unfold Values.Val.cmp.
+    simpl.
+    unfold Integers.Int.lt.
+    rewrite Coqlib.zlt_true.
+    + reflexivity.
+    + rewrite Integers.Int.signed_repr;inv_rtc.
+      rewrite Integers.Int.signed_repr;inv_rtc.
+  - { rewrite Fcore_Zaux.Zlt_bool_false.
+      - unfold Values.Val.cmp.
+        simpl.
+        unfold Integers.Int.lt.
+        rewrite Coqlib.zlt_false.
+        + reflexivity.
+        + rewrite Integers.Int.signed_repr;inv_rtc.
+          rewrite Integers.Int.signed_repr;inv_rtc.
+      - auto with zarith. }
+Qed.
+
+Lemma gt_ok: forall v1 v2 v0 x x0,
+                     transl_value (Int v1) = OK x ->
+                     transl_value (Int v2) = OK x0 ->
+                     do_overflow_check v1 (Normal (Int v1)) ->
+                     do_overflow_check v2 (Normal (Int v2)) ->
+                     Math.gt (Int v1) (Int v2) = Some v0 ->
+                     transl_value v0
+                     = OK (Values.Val.cmp Integers.Cgt x x0).
+Proof.
+  !intros.
+  !invclear heq.
+  !invclear heq_transl_value.
+  !invclear heq_transl_value0.
+  simpl.
+  rewrite Z.gtb_ltb.
+  !destruct (Z.lt_decidable v2 v1).
+  - rewrite Fcore_Zaux.Zlt_bool_true;auto.
+    unfold Values.Val.cmp.
+    simpl.
+    unfold Integers.Int.lt.
+    rewrite Coqlib.zlt_true.
+    + reflexivity.
+    + rewrite Integers.Int.signed_repr;inv_rtc.
+      rewrite Integers.Int.signed_repr;inv_rtc.
+  - { rewrite Fcore_Zaux.Zlt_bool_false.
+      - unfold Values.Val.cmp.
+        simpl.
+        unfold Integers.Int.lt.
+        rewrite Coqlib.zlt_false.
+        + reflexivity.
+        + rewrite Integers.Int.signed_repr;inv_rtc.
+          rewrite Integers.Int.signed_repr;inv_rtc.
+      - auto with zarith. }
+Qed.
+
+
 (* TODO: maybe we should use do_overflow_check here, we will see. *)
+
+(* strangely this one does not need overflow preconditions *)
+Lemma unaryneg_ok :
+  forall n v1 v,
+    transl_value (Int v1) = OK (Values.Vint n) ->
+    Math.unary_operation Unary_Minus (Int v1) = Some (Int v) ->
+    Values.Val.negint (Values.Vint n) = Values.Vint (Integers.Int.repr v).
+Proof.
+  !intros.
+  simpl in *.
+  !invclear heq.
+  !invclear heq_transl_value.
+  apply f_equal.
+  apply Integers.Int.neg_repr.
+Qed.
+
 Lemma add_ok :
   forall n n0 v v1 v2,
     do_range_check v1 min_signed max_signed (Normal (Int v1)) ->
@@ -388,12 +662,7 @@ Proof.
         destruct (Z.eq_dec v2 (Integers.Int.signed Integers.Int.mone));try discriminate.
         assumption. }
       subst.
-      change (Zneg xH) with  (Z.opp (Zpos xH)) in h_overf_check.
-      rewrite Zquot.Zquot_opp_r in h_overf_check.
-      rewrite Z.quot_1_r in h_overf_check.
-      !inversion h_overf_check.
-      inv_rtc.
-      cbv in h_le4.
+      vm_compute in h_le0.
       auto.
     + unfold Integers.Int.divs.
       rewrite !Integers.Int.signed_repr;auto 2.
@@ -931,7 +1200,186 @@ Proof.
       * clear hmatch1 hmatch2.
         repeat match goal with | H:?X <> ?Y |-_ => clear H end.
         exists (Values.Val.and x x0).
+        { repeat split;auto.
+          - eapply and_ok;eauto.
+          - econstructor;eauto.
+          - (* functional inversion *)
+            !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in heq.
+            inversion heq.
+            auto. }
+      * clear hmatch1 hmatch2.
+        repeat match goal with | H:?X <> ?Y |-_ => clear H end.
+        exists (Values.Val.or x x0).
+        { repeat split;auto.
+          - eapply or_ok;eauto.
+          - econstructor;eauto.
+          - (* functional inversion *)
+            !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in heq.
+            inversion heq.
+            auto. }
+
+      * repeat match goal with | H:?X <> ?Y |-_ => clear H end.
+        destruct v1;try discriminate; destruct v2;try discriminate;simpl in heq.
+        !invclear heq.
+        exists (Values.Val.cmp Integers.Ceq (Values.Vint (Integers.Int.repr n))
+                               (Values.Vint (Integers.Int.repr n0))).
+        { repeat split;auto.
+          - eapply eq_ok with n n0;auto.
+          - econstructor.
+            { apply h_CM_eval_expr. }
+            { apply h_CM_eval_expr0. }
+            simpl in *.
+            simpl in heq_transl_value0.
+            !invclear heq_transl_value.
+            !invclear heq_transl_value0.
+            reflexivity. }
+      * repeat match goal with | H:?X <> ?Y |-_ => clear H end.
+        destruct v1;try discriminate; destruct v2;try discriminate;simpl in heq.
+        !invclear heq.
+        exists (Values.Val.cmp Integers.Cne (Values.Vint (Integers.Int.repr n))
+                               (Values.Vint (Integers.Int.repr n0))).
+        { repeat split;auto.
+          - eapply neq_ok with n n0;auto.
+          - econstructor.
+            { apply h_CM_eval_expr. }
+            { apply h_CM_eval_expr0. }
+            simpl in *.
+            !invclear heq_transl_value.
+            !invclear heq_transl_value0.
+            reflexivity. }
+      * repeat match goal with | H:?X <> ?Y |-_ => clear H end.
+        destruct v1;try discriminate; destruct v2;try discriminate;simpl in heq.
+        !invclear heq.
+        exists (Values.Val.cmp Integers.Clt (Values.Vint (Integers.Int.repr n))
+                               (Values.Vint (Integers.Int.repr n0))).
+        { repeat split;auto.
+          - eapply lt_ok with n n0;auto.
+          - econstructor.
+            { apply h_CM_eval_expr. }
+            { apply h_CM_eval_expr0. }
+            simpl in *.
+            !invclear heq_transl_value.
+            !invclear heq_transl_value0.
+            reflexivity. }
+
+      * repeat match goal with | H:?X <> ?Y |-_ => clear H end.
+        destruct v1;try discriminate; destruct v2;try discriminate;simpl in heq.
+        !invclear heq.
+        exists (Values.Val.cmp Integers.Cle (Values.Vint (Integers.Int.repr n))
+                               (Values.Vint (Integers.Int.repr n0))).
+        { repeat split;auto.
+          - eapply le_ok with n n0;auto.
+          - econstructor.
+            { apply h_CM_eval_expr. }
+            { apply h_CM_eval_expr0. }
+            simpl in *.
+            !invclear heq_transl_value.
+            !invclear heq_transl_value0.
+            reflexivity. }
+
+      * repeat match goal with | H:?X <> ?Y |-_ => clear H end.
+        destruct v1;try discriminate; destruct v2;try discriminate;simpl in heq.
+        !invclear heq.
+        exists (Values.Val.cmp Integers.Cgt (Values.Vint (Integers.Int.repr n))
+                               (Values.Vint (Integers.Int.repr n0))).
+        { repeat split;auto.
+          - eapply gt_ok with n n0;auto.
+          - econstructor.
+            { apply h_CM_eval_expr. }
+            { apply h_CM_eval_expr0. }
+            simpl in *.
+            !invclear heq_transl_value.
+            !invclear heq_transl_value0.
+            reflexivity. }
+
+      * repeat match goal with | H:?X <> ?Y |-_ => clear H end.
+        destruct v1;try discriminate; destruct v2;try discriminate;simpl in heq.
+        !invclear heq.
+        exists (Values.Val.cmp Integers.Cge (Values.Vint (Integers.Int.repr n))
+                               (Values.Vint (Integers.Int.repr n0))).
+        { repeat split;auto.
+          - eapply ge_ok with n n0;auto.
+          - econstructor.
+            { apply h_CM_eval_expr. }
+            { apply h_CM_eval_expr0. }
+            simpl in *.
+            !invclear heq_transl_value.
+            !invclear heq_transl_value0.
+            reflexivity. }
+
+  - inversion heq0.
+  - destruct (transl_expr st CE e) eqn:heq_transl_expr1;simpl in heq;(try now inversion heq).
+    specialize (IHh_eval_expr v e0 sp (refl_equal (Normal v)) (refl_equal (OK e0)) h_match_env).
+    decomp IHh_eval_expr. clear IHh_eval_expr. rename H2 into hmatch.
+    !inversion h_do_rtc_unop;simpl in *; !invclear heq.
+    + try !invclear h_overf_check.
+      exists (Values.Vint (Integers.Int.repr v')).
+      repeat (split;auto).
+      * apply eval_Eunop with x;auto.
+        simpl.
+        destruct v;try discriminate.
+        simpl in heq_transl_value.
+        apply f_equal.
+        !invclear heq_transl_value.
+        eapply unaryneg_ok with n;auto.
+      * constructor.
+        assumption.
+    + destruct op;try discriminate.
+      * elim hneq;reflexivity.
+      * clear hneq.
+        simpl in *.
+        exists (Values.Val.notbool x).
         { repeat split.
+          - eapply not_ok;eauto.
+          - !invclear heq.
+            apply eval_Eunop with x;auto.
+            simpl.
+        
+        !invclear heq.
+        unfold Math.unary_not  in heq0.
+        destruct v;try discriminate.
+        !invclear heq0.
+        simpl in *.
+        { destruct n;simpl in *.
+          - !invclear heq_transl_value.
+            exists (Values.Vint (Integers.Int.repr 0));repeat (split;auto).
+            apply eval_Eunop with (Values.Vint (Integers.Int.repr 1)).
+            + assumption.
+            + simpl.
+              reflexivity.
+            econstructor;auto.
+                               (Values.Vint (Integers.Int.repr 0))).
+        { destruct n;simpl in *.
+
+        simpl in heq_transl_value.
+        assert (transl_value (Bool (negb n)) = OK (Values.Vint (1-x))).
+        simpl in heq0.
+        !invclear heq0.
+        simpl.
+        exists (transl_value (Bool (negb n))).
+        simpl.
+        exists (Values.Vint (Integers.Int.repr )).
+        eapply not_ok.
+
+        destruct 
+    
+
+    
+        
+            
+            
+        
+        
+        exists (Values.Vint (Integers.Int.repr (n*n0))).
+        { (repeat split);auto.
+          - econstructor.
+            { apply h_CM_eval_expr. }
+            { apply h_CM_eval_expr0. }
+            simpl.
+            !invclear heq_transl_value.
+
+
+            inversion 
           - XXX
 
  !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
