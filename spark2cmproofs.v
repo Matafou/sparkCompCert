@@ -1309,9 +1309,10 @@ Proof.
 
   - inversion heq0.
   - destruct (transl_expr st CE e) eqn:heq_transl_expr1;simpl in heq;(try now inversion heq).
+    2: destruct op;discriminate.
     specialize (IHh_eval_expr v e0 sp (refl_equal (Normal v)) (refl_equal (OK e0)) h_match_env).
     decomp IHh_eval_expr. clear IHh_eval_expr. rename H2 into hmatch.
-    !inversion h_do_rtc_unop;simpl in *; !invclear heq.
+    !invclear h_do_rtc_unop;simpl in *; !invclear heq.
     + try !invclear h_overf_check.
       exists (Values.Vint (Integers.Int.repr v')).
       repeat (split;auto).
@@ -1328,236 +1329,27 @@ Proof.
       * elim hneq;reflexivity.
       * clear hneq.
         simpl in *.
+        !invclear heq.
         exists (Values.Val.notbool x).
         { repeat split.
           - eapply not_ok;eauto.
-          - !invclear heq.
-            apply eval_Eunop with x;auto.
+          - econstructor; eauto.
+            econstructor; eauto.
+            econstructor; eauto.
             simpl.
-        
-        !invclear heq.
-        unfold Math.unary_not  in heq0.
-        destruct v;try discriminate.
-        !invclear heq0.
-        simpl in *.
-        { destruct n;simpl in *.
-          - !invclear heq_transl_value.
-            exists (Values.Vint (Integers.Int.repr 0));repeat (split;auto).
-            apply eval_Eunop with (Values.Vint (Integers.Int.repr 1)).
-            + assumption.
-            + simpl.
+            destruct v;simpl in *;try discriminate.
+            clear heq0 hmatch.
+            destruct n;simpl in *.
+            + !invclear heq_transl_value.
+              vm_compute.
               reflexivity.
-            econstructor;auto.
-                               (Values.Vint (Integers.Int.repr 0))).
-        { destruct n;simpl in *.
-
-        simpl in heq_transl_value.
-        assert (transl_value (Bool (negb n)) = OK (Values.Vint (1-x))).
-        simpl in heq0.
-        !invclear heq0.
-        simpl.
-        exists (transl_value (Bool (negb n))).
-        simpl.
-        exists (Values.Vint (Integers.Int.repr )).
-        eapply not_ok.
-
-        destruct 
-    
-
-    
-        
-            
-            
-        
-        
-        exists (Values.Vint (Integers.Int.repr (n*n0))).
-        { (repeat split);auto.
-          - econstructor.
-            { apply h_CM_eval_expr. }
-            { apply h_CM_eval_expr0. }
-            simpl.
-            !invclear heq_transl_value.
-
-
-            inversion 
-          - XXX
-
- !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
-            !invclear heq.
-            destruct n;destruct n0;simpl
-            ;inversion heq_transl_value
-            ;inversion heq_transl_value0
-            ; reflexivity.
-          - econstructor;eauto.
-          - !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
-            !invclear heq.
+            + !invclear heq_transl_value.
+              vm_compute.
+              reflexivity.
+          - destruct v;simpl in *;try discriminate.
+            !invclear heq0.
             trivial. }
-      * clear hmatch1 hmatch2.
-        repeat match goal with | H:?X <> ?Y |-_ => clear H end.
-        exists (Values.Val.or x x0).
-        { repeat split.
-          - !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
-            !invclear heq.
-            destruct n;destruct n0;simpl
-            ;inversion heq_transl_value
-            ;inversion heq_transl_value0
-            ; reflexivity.
-          - econstructor;eauto.
-          - !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
-            !invclear heq.
-            trivial. }
-
-(*         XXXX etc. TRansformer tout ça en lemmes. *)
-      * 
-
-
-
-            !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
-            !invclear heq.
-            destruct n;destruct n0;simpl
-            ;!invclear heq_transl_value
-            ;!invclear heq_transl_value0
-            ;subst.
-            simpl.
-            assumption.
-            ; reflexivity.
-          - 
-        }
-        
-
-      !inversion h_do_rtc_binop.
-       * decompose [or] H;subst; try match goal with H: ?A <> ?A |- _ => elim H;auto end.
-       * match goal with H: ?A <> ?A |- _ => elim H;auto end.
-       * 
-      destruct (eval_binop (transl_binop op) x x0 m) eqn:heq_eval.
-      Focus 2.
-      * destruct op;simpl in heq_eval;inversion heq_eval.
-        try match goal with H: ?A <> ?A |- _ => elim H;auto end.
-      * !inversion h_do_rtc_binop.
-
-
-
-        destruct op;simpl in heq_eval;!invclear heq_eval;subst;try match goal with H: ?A <> ?A |- _ => elim H;auto end.
-
-        !inversion h_do_rtc_binop.
-        exists (Values.Val.and x x0).
-        
-
-
-
-      * destruct v1. ;try discriminate; destruct v2;try discriminate;simpl in *.
-        { exists (Values.Val.and x x0);repeat split;simpl;auto.
-          - destruct n;destruct n0;simpl in *
-            ; !invclear heq_transl_value; !invclear heq_transl_value0;simpl.
-inversion heq.
-            
-            reflexivity.
-        }
-        
-        
-      { (repeat split);auto.
-        - econstructor.
-          { apply h_CM_eval_expr. }
-          { apply h_CM_eval_expr0. }
-          simpl.
-          !invclear heq_transl_value.
-            !invclear heq_transl_value0.
-            rewrite (mult_ok _ _ (n * n0) n n0);auto.
-            + constructor.
-              inversion hmatch1.
-              assumption.
-            + constructor.
-              inversion hmatch2.
-              assumption.
-          - constructor.
-            assumption. }
-
-      exists (Int n).
-      
-      
-
-
-
-
-
-  - constructor.
-          assumption. }
-
-      inversion H.
-      inversion H2.
-      subst v0.
-      rewrite add_ok in 
-      
-
-
-
-      inversion h_overf_check;subst;simpl.
-      exists (Values.Vint (Integers.Int.repr v)).
-      split;auto.
-      econstructor.
-      apply h_CM_eval_expr.
-      apply h_CM_eval_expr0.
-      decomp H0;subst;simpl.
-      rewrite add_ok.
-
-      * .
-      simpl.
-
-
-    XXX (* gérer les différents cas de do_run_time_check_on_binop ... (Normal v). *)
-    
-
-              exists v.
-    + inversion heq.
-      simpl in *.
-      unfold id in *.
-      apply IHh_eval_expr;auto.
-      
-    simpl in heq.
-    (try now inversion heq). ;simpl in heq.
-
-
-
-    destruct (transl_variable rstbl CE a i) eqn:heq_trv;simpl in *; (try now inversion heq); rename e into trv_i.
-    destruct (fetch_exp_type a rstbl) eqn:heq_fetch; try now inversion heq.
-    unfold value_at_addr in heq.
-    destruct (transl_type rstbl t) eqn:heq_typ;simpl in *;try now inversion heq.
-    !invclear h_eval_name.
-    unfold make_load in heq.
-    destruct (Ctypes.access_mode t0) eqn:heq_acctyp; !invclear heq.
-    + destruct h_match_env.
-
-      destruct (me_vars0 i rstbl a trv_i v t heq_SfetchG) as [v' me_vars1].
-      * admit. (* propriété de cohérence de la pile, c'est du typage. *)
-      * assumption.
-      * clear me_vars0.
-        decomp me_vars1.
-        exists v'.
-        { split.
-          - assumption.
-          - unfold make_load in heq_make_load. rewrite heq_acctyp in heq_make_load.
-        reflexivity.
-    + destruct h_match_env.
-      eapply (me_vars0 i rstbl a );try now eassumption.
-      * admit. (* propriété de cohérence de la pile, c'est du typage. *)
-      * unfold make_load. rewrite heq_acctyp.
-        reflexivity.
-    + destruct h_match_env.
-      eapply (me_vars0 i rstbl a );try now eassumption.
-      * admit. (* propriété de cohérence de la pile, c'est du typage. *)
-      * unfold make_load. rewrite heq_acctyp.
-        reflexivity.
-        
-  - destruct (transl_expr rstbl CE e1) eqn:heq_tr_e1;try now inversion heq.
-    destruct (transl_expr rstbl CE e2) eqn:heq_tr_e2;try now inversion heq.
-    simpl in heq.
-    !invclear heq.
-    !invclear h_eval_expr.
-    !destruct (transl_value v1).
-    
-    !inversion h_do_rtc_binop.
-    + !invclear heq.
-      !invclear heq.
+Qed.
 
 
 

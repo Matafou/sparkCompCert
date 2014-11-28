@@ -289,11 +289,13 @@ Definition transl_binop (op:binary_operator): binary_operation :=
     | Greater_Than_Or_Equal => Cminor.Ocmp Integers.Cge
   end.
 
+(* boolean negation does not have a counterpart in compcert, so it
+   must be treated outside of this function (not b is translated into <b>!=0) *)
 Definition transl_unop (op:unary_operator) : res Cminor.unary_operation :=
   match op with
     | Unary_Plus => Error (msg "unary plus should be removed")
     | Unary_Minus => OK Cminor.Onegint
-    | Not => OK Cminor.Onotint (* FIXME: this is bit-wise negation *)
+    | Not => Error (msg "Not expected here")
   end.
 
 (** [value_at_addr stbl typ addr] returns the expression corresponding
@@ -331,7 +333,10 @@ Fixpoint transl_expr (stbl:symboltable) (CE:compilenv) (e:expression): res Cmino
       do te1 <- transl_expr stbl CE e1;
         do te2 <- transl_expr stbl CE e2;
         OK (Ebinop (transl_binop op) te1 te2)
-    | E_Unary_Operation _ op e =>
+    | E_Unary_Operation _ Not e => (* (not b) is translated as (<b> == 0) *)
+      do te <- transl_expr stbl CE e;
+        OK (Ebinop (Ocmp Integers.Ceq) te (Econst (Ointconst Integers.Int.zero)))
+    | E_Unary_Operation _ op e => (* all unary ops. except not *)
       do te <- transl_expr stbl CE e;
         do top <- transl_unop op;
         OK (Eunop top te)
