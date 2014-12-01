@@ -365,7 +365,7 @@ Fixpoint transl_expr (stbl:symboltable) (CE:compilenv) (e:expression): res Cmino
 
 (** [transl_name stbl CE nme] returns the code that evaluates to the
     *address* where the value of name [nme] is stored. *)
-Fixpoint transl_name (stbl:symboltable) (CE:compilenv) (nme:name): res Cminor.expr :=
+Fixpoint transl_name (stbl:symboltable) (CE:compilenv) (nme:name) {struct nme}: res Cminor.expr :=
   match nme with
     | E_Identifier astnum id => (transl_variable stbl CE astnum id) (* address of the variable *)
     | E_Indexed_Component astnum id e =>

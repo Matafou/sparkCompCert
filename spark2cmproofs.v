@@ -1354,23 +1354,55 @@ Qed.
 
 
 
+Lemma transl_name_ok :
+  forall stbl CE locenv g m (s:STACK.stack) (nme:name) (v:value) (typeofv:type) (e' e'':Cminor.expr) rtypeofv typeofv'
+         (sp: Values.val),
+    eval_name stbl s nme (Normal v) ->
+    concrete_type_of_value v = OK rtypeofv ->
+    transl_name stbl CE nme = OK e' ->
+    match_env stbl s CE sp locenv ->
+    make_load e' typeofv' = OK e'' ->
+    exists v',
+      transl_value v = OK v'
+      /\ Cminor.eval_expr g sp locenv m e'' v'
+      /\ match v with
+           | (Int n) => do_overflow_check n (Normal (Int n))
+           | _ => True
+         end.
+Proof.
+  XXX Changed the statement (added a make_laod).
+  intros until sp.
+  intro h_eval_name.
+  remember (Normal v) as Nv.
+  revert HeqNv.
+  revert v e' sp.
+  !induction h_eval_name;simpl;!intros; subst;try discriminate.
+  - !invclear heq.
+    + destruct (fetch_var_type x st) eqn:heq_fetch_type.
+      pose (h_me:= h_match_env.(me_vars _ _ _ _ _)).
+      clearbody h_me.
+      rename x into i.
+      specialize (h_me i st ast_num v0 t heq_SfetchG heq_fetch_type).
+      decomp h_me. clear h_me.
+      rename x into e''. rename x0 into v1'. rename x1 into bastyp.
+      rename x2 into t'. rename x3 into e'''. rename H6 into h_eval_expr. 
+      exists v1'.
+      repeat split.
+      * assumption.
+      * rewrite heq_transl_variable in heq_transl_variable0.
+        !invclear heq_transl_variable0.
+      
+    + exists v;simpl.
+      repeat split.
+      pose (h_me:= h_match_env.(me_vars _ _ _ _ _)).
+      clearbody h_me.
+      specialize (h_me x st ast_num v0).
 
-(*
+    unfold value_at_addr in heq.
+    destruct (transl_type st t) eqn:heq_typ;simpl in *;try now inversion heq.
 
-    Lemma transl_name_ok :
-      forall a a0 i e e' t t' v v' s sp,
-        transl_variable rstbl CE a i = OK e ->
-        fetch_exp_type a rstbl = Some t ->
-        transl_type rstbl t = OK t' ->
-        make_load e t' = OK e' ->
-        match_env s CE sp locenv ->
-        transl_value v = OK v' ->
-        eval_name stbl s (E_Identifier a0 i) (Normal v) ->
-        Cminor.eval_expr g sp locenv m e' v'.
-    Proof.
-      !intros.
-    Qed.
+    specialize (me_vars0 x st ast_num v0 t heq_SfetchG).
 
 
- *)
-(* ********************************************** *)
+
+  
