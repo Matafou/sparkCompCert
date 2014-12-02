@@ -147,6 +147,9 @@ Record match_env (st:symboltable) (s: semantics.STACK.stack) (CE:compilenv) (sp:
 (** Hypothesis renaming stuff *)
 Ltac rename_hyp1 th :=
   match th with
+    | fetch_var_type _ _ = Run_Time_Error _ => fresh "heq_fetch_var_type_ERR"
+    | fetch_var_type _ _ = _ => fresh "heq_fetch_var_type"
+    | fetch_var_type _ _ = _ => fresh "heq_fetch_var_type"
     | eval_expr _ _ _ (Normal _) => fresh "h_eval_expr"
     | eval_expr _ _ _ (Run_Time_Error _) => fresh "h_eval_expr_RE"
     | eval_name _ _ _ (Normal _) => fresh "h_eval_name"
@@ -173,6 +176,8 @@ Ltac rename_hyp1 th :=
     | fetch_exp_type _ _ = None => fresh "heq_fetch_exp_type_none"
     | transl_type _ _ = OK _ => fresh "heq_transl_type"
     | transl_type _ _ = Run_Time_Error _ => fresh "heq_transl_type_RE"
+    | transl_basetype _ _ = OK _ => fresh "heq_transl_basetype"
+    | transl_basetype _ _ = Run_Time_Error _ => fresh "heq_transl_basetype_RE"
     | make_load _ _ = OK _ => fresh "heq_make_load"
     | make_load _ _ = Run_Time_Error _ => fresh "heq_make_load_RE"
     | STACK.fetchG _ _ = Some _ => fresh "heq_SfetchG"
@@ -1351,17 +1356,32 @@ Proof.
             trivial. }
 Qed.
 
+(* TODO: replace this y the real typing function *)
+Definition type_of_name stbl (nme:name): res type :=
+  match nme with
+    | E_Identifier astnum id => fetch_var_type id stbl
+    | E_Indexed_Component astnum x0 x1 => Error (msg "type_of_name: arrays not treated yet")
+    | E_Selected_Component astnum x0 x1 => Error (msg "transl_basetype: records not treated yet")
+  end.
 
-
+(* TODO: follow the TODO above *)
+Ltac rename_hyp_nme ht :=
+  match ht with
+    | type_of_name _ _ = Error _ => fresh "heq_type_of_name_ERR"
+    | type_of_name _ _ = _ => fresh "heq_type_of_name"
+    | _ => rename_hyp2 ht
+  end.
+Ltac rename_hyp ::= rename_hyp_nme.
 
 Lemma transl_name_ok :
-  forall stbl CE locenv g m (s:STACK.stack) (nme:name) (v:value) (typeofv:type) (e' e'':Cminor.expr) rtypeofv typeofv'
-         (sp: Values.val),
+  forall stbl CE locenv g m (s:STACK.stack) (nme:name) (v:value) (e' e'':Cminor.expr)
+         typeof_nme typeof_nme' (sp: Values.val),
     eval_name stbl s nme (Normal v) ->
-    concrete_type_of_value v = OK rtypeofv ->
+    type_of_name stbl nme = OK typeof_nme ->
+    transl_type stbl typeof_nme = OK typeof_nme' ->
     transl_name stbl CE nme = OK e' ->
     match_env stbl s CE sp locenv ->
-    make_load e' typeofv' = OK e'' ->
+    make_load e' typeof_nme' = OK e'' ->
     exists v',
       transl_value v = OK v'
       /\ Cminor.eval_expr g sp locenv m e'' v'
@@ -1370,39 +1390,29 @@ Lemma transl_name_ok :
            | _ => True
          end.
 Proof.
-  XXX Changed the statement (added a make_laod).
   intros until sp.
   intro h_eval_name.
   remember (Normal v) as Nv.
   revert HeqNv.
   revert v e' sp.
   !induction h_eval_name;simpl;!intros; subst;try discriminate.
-  - !invclear heq.
-    + destruct (fetch_var_type x st) eqn:heq_fetch_type.
-      pose (h_me:= h_match_env.(me_vars _ _ _ _ _)).
-      clearbody h_me.
-      rename x into i.
-      specialize (h_me i st ast_num v0 t heq_SfetchG heq_fetch_type).
-      decomp h_me. clear h_me.
-      rename x into e''. rename x0 into v1'. rename x1 into bastyp.
-      rename x2 into t'. rename x3 into e'''. rename H6 into h_eval_expr. 
-      exists v1'.
-      repeat split.
-      * assumption.
-      * rewrite heq_transl_variable in heq_transl_variable0.
-        !invclear heq_transl_variable0.
-      
-    + exists v;simpl.
-      repeat split.
-      pose (h_me:= h_match_env.(me_vars _ _ _ _ _)).
-      clearbody h_me.
-      specialize (h_me x st ast_num v0).
-
-    unfold value_at_addr in heq.
-    destruct (transl_type st t) eqn:heq_typ;simpl in *;try now inversion heq.
-
-    specialize (me_vars0 x st ast_num v0 t heq_SfetchG).
+  !invclear heq.
+  !destruct h_match_env.
+  rename x into i.
+  specialize (me_vars0 i st ast_num v0 typeof_nme heq_SfetchG heq_fetch_var_type).
+  decomp me_vars0. clear me_vars0.
+  rename x into exp''. rename x0 into v1'. rename x1 into bastyp.
+  rename x2 into t'. rename x3 into e'''. rename H6 into h_eval_expr. 
+  exists v1'.
+  { repeat split.
+    * assumption.
+    * repeat match goal with
+               | H1: (?A = _) , H2: (?A = _) |- _  => rewrite H1 in H2; !invclear H2
+             end.
+      apply h_eval_expr.
+    * destruct v0;eauto. }
+Qed.
 
 
 
-  
+
