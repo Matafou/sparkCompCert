@@ -93,6 +93,14 @@ Proof.
     rewrite Fcore_Zaux.Zcompare_Gt;auto.
 Qed.
 
+(* TODO: replace this y the real typing function *)
+Definition type_of_name (stbl:symboltable) (nme:name): res type :=
+  match nme with
+    | E_Identifier astnum id => fetch_var_type id stbl
+    | E_Indexed_Component astnum x0 x1 => Error (msg "type_of_name: arrays not treated yet")
+    | E_Selected_Component astnum x0 x1 => Error (msg "transl_basetype: records not treated yet")
+  end.
+
 
 
 (* See CminorgenProof.v@205. *)
@@ -112,7 +120,7 @@ Record match_env (st:symboltable) (s: semantics.STACK.stack) (CE:compilenv) (sp:
          table.
        *)
       me_vars:
-        forall id st astnum v typeofv,
+        forall id astnum v typeofv,
             STACK.fetchG id s = Some v ->
             fetch_var_type id st = OK typeofv ->
             exists e' v' rtypeofv typeofv' ld,
@@ -124,35 +132,36 @@ Record match_env (st:symboltable) (s: semantics.STACK.stack) (CE:compilenv) (sp:
               make_load e' typeofv' = OK ld /\
               forall (g:genv)(m:Memory.Mem.mem),
                 Cminor.eval_expr g sp locenv m ld v';
-      
+
+      me_transl:
+        forall (g:genv)(m:Memory.Mem.mem)
+               nme v addrof_nme load_addrof_nme typ_nme cm_typ_nme,
+          eval_name st s nme (Normal v) ->
+          type_of_name st nme = OK typ_nme ->
+          transl_name st CE nme = OK addrof_nme ->
+          transl_type st typ_nme = OK cm_typ_nme ->
+          make_load addrof_nme cm_typ_nme = OK load_addrof_nme ->
+          exists v',
+            transl_value v = OK v' /\
+            Cminor.eval_expr g sp locenv m load_addrof_nme v';
+
       me_overflow:
         forall id n,
           STACK.fetchG id s = Some (Int n) ->
           do_overflow_check n (Normal (Int n))
-
-(*       me_vars:
-        forall id st astnum typeofv,
-          fetch_var_type id st = OK typeofv ->
-          exists (v:STACK.V) e' v' typeofv' ld,
-            STACK.fetchG id s = Some v ->
-            transl_variable st CE astnum id = OK e' ->
-            transl_type st typeofv = OK typeofv' /\
-            transl_value v = OK v' /\
-            make_load e' typeofv' = OK ld /\
-            forall (g:genv)(m:Memory.Mem.mem),
-              Cminor.eval_expr g sp locenv m ld v'
- *)
     }.
 
 (** Hypothesis renaming stuff *)
 Ltac rename_hyp1 th :=
   match th with
-    | fetch_var_type _ _ = Run_Time_Error _ => fresh "heq_fetch_var_type_ERR"
+    | fetch_var_type _ _ = Error _ => fresh "heq_fetch_var_type_ERR"
     | fetch_var_type _ _ = _ => fresh "heq_fetch_var_type"
-    | fetch_var_type _ _ = _ => fresh "heq_fetch_var_type"
-    | eval_expr _ _ _ (Normal _) => fresh "h_eval_expr"
+    | fetch_exp_type _ _ = Error _ => fresh "heq_fetch_exp_type_ERR"
+    | symboltable.fetch_exp_type _ _ = _ => fresh "heq_fetch_exp_type"
+    | symboltable.fetch_exp_type _ _ = Error _ => fresh "heq_fetch_exp_type_ERR"
+    | fetch_exp_type _ _ = _ => fresh "heq_fetch_exp_type" (* symboltable.fetch_exp_type *)
     | eval_expr _ _ _ (Run_Time_Error _) => fresh "h_eval_expr_RE"
-    | eval_name _ _ _ (Normal _) => fresh "h_eval_name"
+    | eval_expr _ _ _ _ => fresh "h_eval_expr"
     | eval_name _ _ _ (Run_Time_Error _) => fresh "h_eval_name_RE"
     | eval_name _ _ _ _ => fresh "h_eval_name"
     | do_overflow_check _ (Run_Time_Error _) => fresh "h_overf_check_RE"
@@ -163,37 +172,44 @@ Ltac rename_hyp1 th :=
     | do_run_time_check_on_binop _ _ _ _ => fresh "h_do_rtc_binop"
     | Cminor.eval_constant _ _ _ = (Some _)  => fresh "h_eval_constant"
     | Cminor.eval_constant _ _ _ = None  => fresh "h_eval_constant_None"
-    | eval_literal _ (Normal _)  => fresh "h_eval_literal"
     | eval_literal _ (Run_Time_Error _)  => fresh "h_eval_literal_RE"
     | eval_literal _ _  => fresh "h_eval_literal"
+    | eval_stmt _ _ _ (Run_Time_Error _) => fresh "h_eval_stmt_RE"
+    | eval_stmt _ _ _ _ => fresh "h_eval_stmt"
+    | transl_stmt _ _ _ = Error _ => fresh "heq_transl_stmt_ERR"
+    | transl_stmt _ _ _ = _ => fresh "heq_transl_stmt"
     | Cminor.eval_expr _ _ _ _ _ _ => fresh "h_CM_eval_expr"
     | match_env _ _ _ _ _ => fresh "h_match_env"
-    | transl_value _ = OK _ => fresh "heq_transl_value"
-    | transl_value _ = Run_Time_Error _ => fresh "heq_transl_value_RE"
-    | transl_variable _ _ _ _ = OK _ => fresh "heq_transl_variable"
-    | transl_variable _ _ _ _ = Run_Time_Error _ => fresh "heq_transl_variable_RE"
+    | transl_value _ = Error _ => fresh "heq_transl_value_RE"
+    | transl_value _ = _ => fresh "heq_transl_value"
+    | transl_variable _ _ _ _ = Error _ => fresh "heq_transl_variable_RE"
+    | transl_variable _ _ _ _ = _ => fresh "heq_transl_variable"
     | fetch_exp_type _ _ = Some _ => fresh "heq_fetch_exp_type"
     | fetch_exp_type _ _ = None => fresh "heq_fetch_exp_type_none"
-    | transl_type _ _ = OK _ => fresh "heq_transl_type"
-    | transl_type _ _ = Run_Time_Error _ => fresh "heq_transl_type_RE"
-    | transl_basetype _ _ = OK _ => fresh "heq_transl_basetype"
-    | transl_basetype _ _ = Run_Time_Error _ => fresh "heq_transl_basetype_RE"
-    | make_load _ _ = OK _ => fresh "heq_make_load"
-    | make_load _ _ = Run_Time_Error _ => fresh "heq_make_load_RE"
+    | transl_type _ _ = Error _ => fresh "heq_transl_type_RE"
+    | transl_type _ _ = _ => fresh "heq_transl_type"
+    | transl_basetype _ _ = Error _ => fresh "heq_transl_basetype_RE"
+    | transl_basetype _ _ = _ => fresh "heq_transl_basetype"
+    | make_load _ _ = Error _ => fresh "heq_make_load_RE"
+    | make_load _ _ = _ => fresh "heq_make_load"
     | STACK.fetchG _ _ = Some _ => fresh "heq_SfetchG"
     | STACK.fetchG _ _ = None => fresh "heq_SfetchG_none"
+    | storeUpdate _ _ _ _ (Run_Time_Error _) => fresh "h_storeupdate_RTE"
+    | storeUpdate _ _ _ _ _ => fresh "h_storeupdate"
     | do_run_time_check_on_binop _ _ _ (Run_Time_Error _) =>  fresh "h_do_rtc_binop_RE"
     | do_run_time_check_on_binop _ _ _ _ =>  fresh "h_do_rtc_binop"
     | do_run_time_check_on_unop _ _ (Run_Time_Error _) =>  fresh "h_do_rtc_unop_RE"
     | do_run_time_check_on_unop _ _ _ =>  fresh "h_do_rtc_unop"
-    | reduce_type _ _ _ = OK _  => fresh "heq_reduce_type"
-    | reduce_type _ _ _ = Run_Time_Error _ => fresh "heq_reduce_type_RE"
+    | reduce_type _ _ _ = Error _ => fresh "heq_reduce_type_RE"
     | reduce_type _ _ _ = _  => fresh "heq_reduce_type"
-    | concrete_type_of_value _ = Run_Time_Error _ => fresh "concrete_type_of_value_RE"
-    | concrete_type_of_value _ = OK _ => fresh "concrete_type_of_value"
+    | concrete_type_of_value _ = Error _ => fresh "concrete_type_of_value_RE"
+    | concrete_type_of_value _ = _ => fresh "concrete_type_of_value"
     | in_bound _ _ _ => fresh "h_inbound"
-    | do_division_check _ _ _ => fresh "h_do_division_check"
     | do_division_check _ _ (Run_Time_Error _) => fresh "h_do_division_check_RTE"
+    | do_division_check _ _ _ => fresh "h_do_division_check"
+    (* TODO: remove when we remove type_of_name by the real one. *)
+    | type_of_name _ _ = Error _ => fresh "heq_type_of_name_ERR"
+    | type_of_name _ _ = _ => fresh "heq_type_of_name"
   end.
 
 Ltac rename_hyp ::= rename_hyp1.
@@ -1023,7 +1039,43 @@ Proof.
       elim h_isnotunplus.
 Qed.
 
-
+Lemma transl_name_ok :
+  forall stbl CE locenv g m (s:STACK.stack) (nme:name) (v:value) (e' e'':Cminor.expr)
+         typeof_nme typeof_nme' (sp: Values.val),
+    eval_name stbl s nme (Normal v) ->
+    type_of_name stbl nme = OK typeof_nme ->
+    transl_type stbl typeof_nme = OK typeof_nme' ->
+    transl_name stbl CE nme = OK e' ->
+    match_env stbl s CE sp locenv ->
+    make_load e' typeof_nme' = OK e'' ->
+    exists v',
+      transl_value v = OK v'
+      /\ Cminor.eval_expr g sp locenv m e'' v'
+      /\ match v with
+           | (Int n) => do_overflow_check n (Normal (Int n))
+           | _ => True
+         end.
+Proof.
+  intros until sp.
+  intro h_eval_name.
+  remember (Normal v) as Nv.
+  revert HeqNv.
+  revert v e' sp.
+  !induction h_eval_name;simpl;!intros; subst;try discriminate.
+  !invclear heq.
+  !destruct h_match_env.
+  rename x into i.
+  specialize (me_transl0 g m (E_Identifier ast_num i) v0 e' e'' typeof_nme typeof_nme').
+  (* TODO: automate this or make it disappear. *)
+  !! (fun _ => assert (eval_name st s (E_Identifier ast_num i) (Normal v0))) g.
+  { constructor.
+    assumption. }
+  simpl in me_transl0.
+  specialize (me_transl0 h_eval_name heq_fetch_var_type heq_transl_variable heq_transl_type heq_make_load).
+  decomp me_transl0. clear me_transl0.
+  exists x;repeat split;auto.
+  destruct v0;eauto.
+Qed.
 
 
 Lemma transl_expr_ok :
@@ -1058,14 +1110,26 @@ Proof.
     + destruct v0;auto.
       eapply eval_literal_overf;eauto.
   - !destruct n; try now inversion heq.
-     destruct (transl_variable st CE ast_num i) eqn:heq_trv;simpl in *
-     ; (try now inversion heq); rename e into trv_i.
+    inversion h_eval_name;subst.
+    destruct (transl_variable st CE ast_num i) eqn:heq_trv;simpl in *
+    ; (try now inversion heq); rename e into trv_i.
+
+
      destruct (fetch_var_type i st) eqn:heq_fetch_type; (try now inversion heq);simpl in heq.
     unfold value_at_addr in heq.
     destruct (transl_type st t) eqn:heq_typ;simpl in *;try now inversion heq.
     !invclear h_eval_name.
+
     destruct h_match_env.
-    specialize (me_vars0 i st ast_num v0 t heq_SfetchG heq_fetch_type).
+    specialize (me_transl0 g m i ast_num v0 t heq_SfetchG heq_fetch_type).
+
+
+
+
+xxxx
+
+    destruct h_match_env.
+    specialize (me_vars0 i ast_num v0 t heq_SfetchG heq_fetch_type).
     decomp me_vars0.
     rename x into e''. rename x0 into v1'. rename x1 into bastyp.
     rename x2 into t'. rename x3 into e'''. rename H6 into h_eval_expr. clear me_vars0.
@@ -1356,63 +1420,53 @@ Proof.
             trivial. }
 Qed.
 
-(* TODO: replace this y the real typing function *)
-Definition type_of_name stbl (nme:name): res type :=
-  match nme with
-    | E_Identifier astnum id => fetch_var_type id stbl
-    | E_Indexed_Component astnum x0 x1 => Error (msg "type_of_name: arrays not treated yet")
-    | E_Selected_Component astnum x0 x1 => Error (msg "transl_basetype: records not treated yet")
-  end.
 
-(* TODO: follow the TODO above *)
-Ltac rename_hyp_nme ht :=
-  match ht with
-    | type_of_name _ _ = Error _ => fresh "heq_type_of_name_ERR"
-    | type_of_name _ _ = _ => fresh "heq_type_of_name"
-    | _ => rename_hyp2 ht
-  end.
-Ltac rename_hyp ::= rename_hyp_nme.
 
-Lemma transl_name_ok :
-  forall stbl CE locenv g m (s:STACK.stack) (nme:name) (v:value) (e' e'':Cminor.expr)
-         typeof_nme typeof_nme' (sp: Values.val),
-    eval_name stbl s nme (Normal v) ->
-    type_of_name stbl nme = OK typeof_nme ->
-    transl_type stbl typeof_nme = OK typeof_nme' ->
-    transl_name stbl CE nme = OK e' ->
+
+Lemma transl_stmt_ok :
+  forall stbl CE locenv g m (s:STACK.stack) (stm:statement)
+         (stm':Cminor.stmt) (s':STACK.stack) sp f,
+    eval_stmt stbl s stm (Normal s') ->
     match_env stbl s CE sp locenv ->
-    make_load e' typeof_nme' = OK e'' ->
-    exists v',
-      transl_value v = OK v'
-      /\ Cminor.eval_expr g sp locenv m e'' v'
-      /\ match v with
-           | (Int n) => do_overflow_check n (Normal (Int n))
-           | _ => True
-         end.
+    transl_stmt stbl CE stm = (OK stm') ->
+    exists tr g' m' o,
+    Cminor.exec_stmt g f sp locenv m stm' tr g' m' o.
 Proof.
-  intros until sp.
-  intro h_eval_name.
-  remember (Normal v) as Nv.
-  revert HeqNv.
-  revert v e' sp.
-  !induction h_eval_name;simpl;!intros; subst;try discriminate.
-  !invclear heq.
-  !destruct h_match_env.
-  rename x into i.
-  specialize (me_vars0 i st ast_num v0 typeof_nme heq_SfetchG heq_fetch_var_type).
-  decomp me_vars0. clear me_vars0.
-  rename x into exp''. rename x0 into v1'. rename x1 into bastyp.
-  rename x2 into t'. rename x3 into e'''. rename H6 into h_eval_expr. 
-  exists v1'.
-  { repeat split.
-    * assumption.
-    * repeat match goal with
-               | H1: (?A = _) , H2: (?A = _) |- _  => rewrite H1 in H2; !invclear H2
-             end.
-      apply h_eval_expr.
-    * destruct v0;eauto. }
+  intros until f.
+  intro h_eval_stmt.
+  remember (Normal s') as hN.
+  revert HeqhN.
+  !induction h_eval_stmt;simpl; intros HeqhN h_match_env heq_transl_stmt;try discriminate;try !invclear heq_transl_stmt; try !invclear HeqhN.
+  - repeat econstructor.
+  - destruct (transl_expr st CE e) eqn:heq_tr_expr;simpl in heq.
+    +
+      { eapply transl_expr_ok in heq_tr_expr.
+        (* bug of renaming tactic *)
+        - idall.
+          (*actuall heq_tr_expr is not changed into (id ...) so unid heq_tr_expr fails *)
+          (* unid heq_tr_expr. *)
+          decompose [ex and] heq_tr_expr.
+          rename_norm.
+          unidall.
+          clear heq_tr_expr.
+          rename H2 into hmatch.
+          destruct (transl_name st CE x) eqn:heq_tr_name;simpl in heq.
+          + !invclear heq.
+            repeat econstructor.
+            2: eapply h_CM_eval_expr.
+            !destruct h_match_env.
+            
+            Focus 2.
+            
+            * admit.
+          apply h_CM_eval_expr0.
+          destruct h_match_env.
+
+        apply 
+  - repeat econstructor.
+  - repeat econstructor.
+  - repeat econstructor.
+  -
 Qed.
-
-
 
 
