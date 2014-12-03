@@ -143,7 +143,10 @@ Definition fetch_var_type id st :=
     | Some (_,t) => OK t (* reduce_type st t max_recursivity *)
   end.
 
-(** A stack-like compile environment. *)
+(** A stack-like compile environment.
+  The compile environment a mapping from variables names (idnum) to
+  offset in the local Cminor local stack. The type information is
+  stored in symboltable (fed by sireum). *)
 
 Module OffsetEntry <: environment.ENTRY.
   Definition T := Z.
@@ -154,7 +157,9 @@ Definition compilenv := CompilEnv.stack.
 Notation localframe := CompilEnv.store.
 Definition frame := CompilEnv.frame.
 
+(** ** translating types *)
 
+(* Translating basic types, i.e. concrete types *)
 Fixpoint transl_basetype (stbl:symboltable) (ty:base_type): res Ctypes.type :=
   match ty with
     (* currently our formalization only defines one scalar type:
@@ -171,7 +176,7 @@ Fixpoint transl_basetype (stbl:symboltable) (ty:base_type): res Ctypes.type :=
     | _ => Error (msg "transl_basetype: Not yet implemented!!.")
   end.
 
-
+(** translating type identifiers *)
 Definition transl_typenum (stbl:symboltable) (id:typenum): res Ctypes.type :=
   match fetch_type id stbl with
     | None => Error (msg "transl_typenum: no such type")
@@ -181,6 +186,7 @@ Definition transl_typenum (stbl:symboltable) (id:typenum): res Ctypes.type :=
         transl_basetype stbl rt
   end.
 
+(** Translating spark types into Compcert types *)
 Definition transl_type (stbl:symboltable) (t:type): res Ctypes.type :=
   match t with
     | Boolean => transl_basetype stbl BBoolean
@@ -192,8 +198,10 @@ Definition transl_type (stbl:symboltable) (t:type): res Ctypes.type :=
     | Record_Type t => Error (msg "transl_type: no such type")
   end.
 
+(** ** Translating expressions  *)
+
 (** We book one identifier for the chaining argument of all functions.
-    Hopefully we can reuse it everywhere. *)
+    Hopefully we can use the same everywhere. *)
 
 Definition chaining_param := 80%positive.
 
