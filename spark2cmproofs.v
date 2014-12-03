@@ -6,7 +6,7 @@ Require Import Cminor.
 Require Ctypes.
 Require Import symboltable.
 Require Import semantics.
-
+Require Import function_utils.
 
 Lemma wordsize_ok : wordsize = Integers.Int.wordsize.
 Proof.
@@ -103,53 +103,6 @@ Definition type_of_name (stbl:symboltable) (nme:name): res type :=
 
 
 
-(* See CminorgenProof.v@205. *)
-Record match_env (st:symboltable) (s: semantics.STACK.stack) (CE:compilenv) (sp:Values.val)
-       (locenv: Cminor.env): Prop :=
-  mk_match_env {
-      (* We will need more than that probably. But for now let us use
-         a simple notion of matching: the value of a variable is equal
-         to the value of its translation. Its translation is currently
-         (an expression of the form ELoad((Eload(Eload ...(Eload(0))))
-         + n)). We could define a specialization of eval_expr for this
-           kind of expression but at some point the form of the
-           expression will complexify (some variables may stay
-           temporary instead of going in the stack, etc).
-
-         We also put well-typing constraints on the stack wrt symbol
-         table.
-       *)
-      me_vars:
-        forall id astnum v typeofv,
-            STACK.fetchG id s = Some v ->
-            fetch_var_type id st = OK typeofv ->
-            exists e' v' rtypeofv typeofv' ld,
-              reduce_type st typeofv max_recursivity = OK rtypeofv /\
-              concrete_type_of_value v = OK rtypeofv /\ (* stack is well typed wrt st *)
-              transl_value v = OK v' /\
-              transl_type st typeofv = OK typeofv' /\
-              transl_variable st CE astnum id = OK e' /\
-              make_load e' typeofv' = OK ld /\
-              forall (g:genv)(m:Memory.Mem.mem),
-                Cminor.eval_expr g sp locenv m ld v';
-
-      me_transl:
-        forall (g:genv)(m:Memory.Mem.mem)
-               nme v addrof_nme load_addrof_nme typ_nme cm_typ_nme,
-          eval_name st s nme (Normal v) ->
-          type_of_name st nme = OK typ_nme ->
-          transl_name st CE nme = OK addrof_nme ->
-          transl_type st typ_nme = OK cm_typ_nme ->
-          make_load addrof_nme cm_typ_nme = OK load_addrof_nme ->
-          exists v',
-            transl_value v = OK v' /\
-            Cminor.eval_expr g sp locenv m load_addrof_nme v';
-
-      me_overflow:
-        forall id n,
-          STACK.fetchG id s = Some (Int n) ->
-          do_overflow_check n (Normal (Int n))
-    }.
 
 (** Hypothesis renaming stuff *)
 Ltac rename_hyp1 th :=
@@ -179,7 +132,6 @@ Ltac rename_hyp1 th :=
     | transl_stmt _ _ _ = Error _ => fresh "heq_transl_stmt_ERR"
     | transl_stmt _ _ _ = _ => fresh "heq_transl_stmt"
     | Cminor.eval_expr _ _ _ _ _ _ => fresh "h_CM_eval_expr"
-    | match_env _ _ _ _ _ => fresh "h_match_env"
     | transl_value _ = Error _ => fresh "heq_transl_value_RE"
     | transl_value _ = _ => fresh "heq_transl_value"
     | transl_variable _ _ _ _ = Error _ => fresh "heq_transl_variable_RE"
@@ -237,6 +189,11 @@ Proof.
       eauto.
 Qed.
 
+Ltac remove_refl :=
+  repeat
+    match goal with
+      | H: ?e = ?e |- _ => clear H
+    end.
 
 Ltac eq_same e :=
   match goal with
@@ -245,6 +202,19 @@ Ltac eq_same e :=
   match goal with
       | H: ?e = ?e |- _ => clear H
   end.
+
+
+Ltac eq_same_clear :=
+  repeat progress
+    (repeat remove_refl;
+     repeat match goal with
+              | H: ?A = _ , H': ?A = _ |- _ => rewrite H in H'; !inversion H'
+              | H: OK ?A = OK ?B |- _ => !inversion H
+              | H: Some ?A = Some ?B |- _ => !inversion H
+              | H: ?A <> ?A |- _ => elim H;reflexivity
+            end).
+
+
 
 (* Transform hypothesis of the form do_range_check into disequalities. *)
 Ltac inv_rtc :=
@@ -327,29 +297,45 @@ Proof.
   ; reflexivity.
 Qed.
 
+
+Definition check_overflow_value (v:value) :=
+  match v with
+    | Undefined => True
+    | Int n => do_overflow_check n (Normal (Int n))
+    | Bool n => True
+    | ArrayV a => True(* FIXME *)
+    | RecordV r => True (* FIXME *)
+  end.
+
+Ltac rename_hyp2 th :=
+  match th with
+    | check_overflow_value _ => fresh "h_check_overf"
+    | _ => rename_hyp1 th
+  end.
+
+Ltac rename_hyp ::= rename_hyp2.
+
+
 Lemma eq_ok: forall v1 v2 v0 x x0,
-                     transl_value (Int v1) = OK x ->
-                     transl_value (Int v2) = OK x0 ->
-                     do_overflow_check v1 (Normal (Int v1)) ->
-                     do_overflow_check v2 (Normal (Int v2)) ->
-                     Math.eq (Int v1) (Int v2) = Some v0 ->
-                     transl_value v0
-                     = OK (Values.Val.cmp Integers.Ceq x x0).
+               check_overflow_value v1 -> 
+               check_overflow_value v2 -> 
+               transl_value v1 = OK x ->
+               transl_value v2 = OK x0 ->
+               Math.eq v1 v2 = Some v0 ->
+               transl_value v0 = OK (Values.Val.cmp Integers.Ceq x x0).
 Proof.
   !intros.
+  !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
   !invclear heq.
-  !invclear heq_transl_value.
-  !invclear heq_transl_value0.
-  simpl.
-  !destruct (Z.eq_dec v1 v2).
+  eq_same_clear.
+  !destruct (Z.eq_dec n n0).
   - subst.
     rewrite Fcore_Zaux.Zeq_bool_true;auto.
     unfold Values.Val.cmp.
     simpl.
     rewrite Integers.Int.eq_true.
     reflexivity.
-  - subst.
-    rewrite Fcore_Zaux.Zeq_bool_false;auto.
+  - rewrite Fcore_Zaux.Zeq_bool_false;auto.
     unfold Values.Val.cmp.
     simpl.
     rewrite Integers.Int.eq_false.
@@ -361,30 +347,28 @@ Proof.
 Qed.
 
 
-
 Lemma neq_ok: forall v1 v2 v0 x x0,
-                     transl_value (Int v1) = OK x ->
-                     transl_value (Int v2) = OK x0 ->
-                     do_overflow_check v1 (Normal (Int v1)) ->
-                     do_overflow_check v2 (Normal (Int v2)) ->
-                     Math.ne (Int v1) (Int v2) = Some v0 ->
-                     transl_value v0
-                     = OK (Values.Val.cmp Integers.Cne x x0).
+               check_overflow_value v1 -> 
+               check_overflow_value v2 -> 
+               transl_value v1 = OK x ->
+               transl_value v2 = OK x0 ->
+               Math.ne v1 v2 = Some v0 ->
+               transl_value v0 = OK (Values.Val.cmp Integers.Cne x x0).
 Proof.
   !intros.
+  !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
   !invclear heq.
-  !invclear heq_transl_value.
-  !invclear heq_transl_value0.
-  simpl.
-  unfold Values.Val.cmp.
-  simpl.
-  !destruct (Z.eq_dec v1 v2).
+  eq_same_clear.
+  !destruct (Z.eq_dec n n0).
   - subst.
     rewrite Zneq_bool_false;auto.
+    unfold Values.Val.cmp.
+    simpl.
     rewrite Integers.Int.eq_true.
     reflexivity.
-  - subst.
-    rewrite Zneq_bool_true;auto.
+  - rewrite Zneq_bool_true;auto.
+    unfold Values.Val.cmp.
+    simpl.
     rewrite Integers.Int.eq_false.
     + reflexivity.
     + apply repr_inj_neq.
@@ -393,22 +377,19 @@ Proof.
       * assumption.
 Qed.
 
-
 Lemma le_ok: forall v1 v2 v0 x x0,
-                     transl_value (Int v1) = OK x ->
-                     transl_value (Int v2) = OK x0 ->
-                     do_overflow_check v1 (Normal (Int v1)) ->
-                     do_overflow_check v2 (Normal (Int v2)) ->
-                     Math.le (Int v1) (Int v2) = Some v0 ->
-                     transl_value v0
-                     = OK (Values.Val.cmp Integers.Cle x x0).
+               check_overflow_value v1 -> 
+               check_overflow_value v2 -> 
+               transl_value v1 = OK x ->
+               transl_value v2 = OK x0 ->
+               Math.le v1 v2 = Some v0 ->
+               transl_value v0 = OK (Values.Val.cmp Integers.Cle x x0).
 Proof.
   !intros.
+  !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
   !invclear heq.
-  !invclear heq_transl_value.
-  !invclear heq_transl_value0.
-  simpl.
-  !destruct (Z.le_decidable v1 v2).
+  eq_same_clear.
+  !destruct (Z.le_decidable n n0).
   - rewrite Fcore_Zaux.Zle_bool_true;auto.
     unfold Values.Val.cmp.
     simpl.
@@ -433,21 +414,19 @@ Qed.
 
 
 Lemma ge_ok: forall v1 v2 v0 x x0,
-                     transl_value (Int v1) = OK x ->
-                     transl_value (Int v2) = OK x0 ->
-                     do_overflow_check v1 (Normal (Int v1)) ->
-                     do_overflow_check v2 (Normal (Int v2)) ->
-                     Math.ge (Int v1) (Int v2) = Some v0 ->
-                     transl_value v0
-                     = OK (Values.Val.cmp Integers.Cge x x0).
+               check_overflow_value v1 -> 
+               check_overflow_value v2 -> 
+               transl_value v1 = OK x ->
+               transl_value v2 = OK x0 ->
+               Math.ge v1 v2 = Some v0 ->
+               transl_value v0 = OK (Values.Val.cmp Integers.Cge x x0).
 Proof.
   !intros.
+  !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
   !invclear heq.
-  !invclear heq_transl_value.
-  !invclear heq_transl_value0.
-  simpl.
+  eq_same_clear.
   rewrite Z.geb_leb.
-  !destruct (Z.le_decidable v2 v1).
+  !destruct (Z.le_decidable n0 n).
   - rewrite Fcore_Zaux.Zle_bool_true;auto.
     unfold Values.Val.cmp.
     simpl.
@@ -471,20 +450,19 @@ Proof.
 Qed.
 
 Lemma lt_ok: forall v1 v2 v0 x x0,
-                     transl_value (Int v1) = OK x ->
-                     transl_value (Int v2) = OK x0 ->
-                     do_overflow_check v1 (Normal (Int v1)) ->
-                     do_overflow_check v2 (Normal (Int v2)) ->
-                     Math.lt (Int v1) (Int v2) = Some v0 ->
-                     transl_value v0
-                     = OK (Values.Val.cmp Integers.Clt x x0).
+               check_overflow_value v1 -> 
+               check_overflow_value v2 -> 
+               transl_value v1 = OK x ->
+               transl_value v2 = OK x0 ->
+               Math.lt v1 v2 = Some v0 ->
+               transl_value v0 = OK (Values.Val.cmp Integers.Clt x x0).
 Proof.
   !intros.
+  !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
   !invclear heq.
-  !invclear heq_transl_value.
-  !invclear heq_transl_value0.
+  eq_same_clear.
   simpl.
-  !destruct (Z.lt_decidable v1 v2).
+  !destruct (Z.lt_decidable n n0).
   - rewrite Fcore_Zaux.Zlt_bool_true;auto.
     unfold Values.Val.cmp.
     simpl.
@@ -503,23 +481,22 @@ Proof.
           rewrite Integers.Int.signed_repr;inv_rtc.
       - auto with zarith. }
 Qed.
+
 
 Lemma gt_ok: forall v1 v2 v0 x x0,
-                     transl_value (Int v1) = OK x ->
-                     transl_value (Int v2) = OK x0 ->
-                     do_overflow_check v1 (Normal (Int v1)) ->
-                     do_overflow_check v2 (Normal (Int v2)) ->
-                     Math.gt (Int v1) (Int v2) = Some v0 ->
-                     transl_value v0
-                     = OK (Values.Val.cmp Integers.Cgt x x0).
+               check_overflow_value v1 -> 
+               check_overflow_value v2 -> 
+               transl_value v1 = OK x ->
+               transl_value v2 = OK x0 ->
+               Math.gt v1 v2 = Some v0 ->
+               transl_value v0 = OK (Values.Val.cmp Integers.Cgt x x0).
 Proof.
   !intros.
+  !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
   !invclear heq.
-  !invclear heq_transl_value.
-  !invclear heq_transl_value0.
-  simpl.
+  eq_same_clear.
   rewrite Z.gtb_ltb.
-  !destruct (Z.lt_decidable v2 v1).
+  !destruct (Z.lt_decidable n0 n).
   - rewrite Fcore_Zaux.Zlt_bool_true;auto.
     unfold Values.Val.cmp.
     simpl.
@@ -539,42 +516,41 @@ Proof.
       - auto with zarith. }
 Qed.
 
-
-(* TODO: maybe we should use do_overflow_check here, we will see. *)
 
 (* strangely this one does not need overflow preconditions *)
 Lemma unaryneg_ok :
   forall n v1 v,
-    transl_value (Int v1) = OK (Values.Vint n) ->
-    Math.unary_operation Unary_Minus (Int v1) = Some (Int v) ->
-    Values.Val.negint (Values.Vint n) = Values.Vint (Integers.Int.repr v).
+    transl_value v1 = OK n ->
+    Math.unary_operation Unary_Minus v1 = Some v ->
+    transl_value v = OK (Values.Val.negint n).
 Proof.
   !intros.
   simpl in *.
-  !invclear heq.
-  !invclear heq_transl_value.
-  apply f_equal.
-  apply Integers.Int.neg_repr.
+  destruct v1;simpl in *;try discriminate.
+  eq_same_clear.
+  simpl.
+  rewrite Integers.Int.neg_repr.
+  reflexivity.
 Qed.
 
 Lemma add_ok :
-  forall n n0 v v1 v2,
-    do_range_check v1 min_signed max_signed (Normal (Int v1)) ->
-    do_range_check v2 min_signed max_signed (Normal (Int v2)) ->
-    do_run_time_check_on_binop Plus (Int v1) (Int v2) (Normal (Int v)) ->
-    transl_value (Int v1) = OK (Values.Vint n) ->
-    transl_value (Int v2) = OK (Values.Vint n0) ->
-    Math.binary_operation Plus (Int v1) (Int v2) = Some (Int v) ->
-    Values.Val.add (Values.Vint n) (Values.Vint n0) = Values.Vint (Integers.Int.repr v).
+  forall v v1 v2 n1 n2,
+    check_overflow_value v1 -> 
+    check_overflow_value v2 -> 
+    do_run_time_check_on_binop Plus v1 v2 (Normal v) ->
+    transl_value v1 = OK n1 ->
+    transl_value v2 = OK n2 ->
+    Math.binary_operation Plus v1 v2 = Some v ->
+    transl_value v = OK (Values.Val.add n1 n2).
 Proof.
   !intros.
   simpl in *.
-  !invclear heq_transl_value.
-  !invclear heq_transl_value0.
-  !invclear heq.
+  !destruct v1;simpl in *;try discriminate.
+  destruct v2;simpl in *; try discriminate.
+  repeat progress (eq_same_clear;simpl in * ).
   apply f_equal.
-  !invclear h_do_rtc_binop;simpl in *; try match goal with H: Plus <> Plus |- _ => elim H;auto end.
-  clear H heq.
+  !invclear h_do_rtc_binop;simpl in *; eq_same_clear. 
+  clear H.
   inv_rtc.
   rewrite min_signed_ok, max_signed_ok in *.
   rewrite Integers.Int.add_signed.
@@ -582,23 +558,23 @@ Proof.
 Qed.
 
 Lemma sub_ok :
-  forall n n0 v v1 v2,
-    do_range_check v1 min_signed max_signed (Normal (Int v1)) ->
-    do_range_check v2 min_signed max_signed (Normal (Int v2)) ->
-    do_run_time_check_on_binop Minus (Int v1) (Int v2) (Normal (Int v)) ->
-    transl_value (Int v1) = OK (Values.Vint n) ->
-    transl_value (Int v2) = OK (Values.Vint n0) ->
-    Math.binary_operation Minus (Int v1) (Int v2) = Some (Int v) ->
-    Values.Val.sub (Values.Vint n) (Values.Vint n0) = Values.Vint (Integers.Int.repr v).
+  forall v v1 v2 n1 n2,
+    check_overflow_value v1 -> 
+    check_overflow_value v2 -> 
+    do_run_time_check_on_binop Minus v1 v2 (Normal v) ->
+    transl_value v1 = OK n1 ->
+    transl_value v2 = OK n2 ->
+    Math.binary_operation Minus v1 v2 = Some v ->
+    transl_value v = OK (Values.Val.sub n1 n2).
 Proof.
   !intros.
   simpl in *.
-  !invclear heq_transl_value.
-  !invclear heq_transl_value0.
-  !invclear heq.
+  !destruct v1;simpl in *;try discriminate.
+  destruct v2;simpl in *; try discriminate.
+  repeat progress (eq_same_clear;simpl in * ).
   apply f_equal.
-  !invclear h_do_rtc_binop;simpl in *; try match goal with H: ?A <> ?A |- _ => elim H;auto end.
-  clear H heq.
+  !invclear h_do_rtc_binop;simpl in *; eq_same_clear.
+  clear H.
   inv_rtc.
   rewrite min_signed_ok, max_signed_ok in *.
   rewrite Integers.Int.sub_signed.
@@ -606,30 +582,28 @@ Proof.
 Qed.
 
 Lemma mult_ok :
-  forall n n0 v v1 v2,
-    do_range_check v1 min_signed max_signed (Normal (Int v1)) ->
-    do_range_check v2 min_signed max_signed (Normal (Int v2)) ->
-    do_run_time_check_on_binop Multiply (Int v1) (Int v2) (Normal (Int v)) ->
-    transl_value (Int v1) = OK (Values.Vint n) ->
-    transl_value (Int v2) = OK (Values.Vint n0) ->
-    Math.binary_operation Multiply (Int v1) (Int v2) = Some (Int v) ->
-    Values.Val.mul (Values.Vint n) (Values.Vint n0) = Values.Vint (Integers.Int.repr v).
+  forall v v1 v2 n1 n2,
+    check_overflow_value v1 -> 
+    check_overflow_value v2 -> 
+    do_run_time_check_on_binop Multiply v1 v2 (Normal v) ->
+    transl_value v1 = OK n1 ->
+    transl_value v2 = OK n2 ->
+    Math.binary_operation Multiply v1 v2 = Some v ->
+    transl_value v = OK (Values.Val.mul n1 n2).
 Proof.
   !intros.
   simpl in *.
-  !invclear heq_transl_value.
-  !invclear heq_transl_value0.
-  !invclear heq.
+  !destruct v1;simpl in *;try discriminate.
+  destruct v2;simpl in *; try discriminate.
+  repeat progress (eq_same_clear;simpl in * ).
   apply f_equal.
-  !invclear h_do_rtc_binop;simpl in *; try match goal with H: ?A <> ?A |- _ => elim H;auto end.
-  clear H heq.
+  !invclear h_do_rtc_binop;simpl in *; eq_same_clear.
+  clear H.
   inv_rtc.
   rewrite min_signed_ok, max_signed_ok in *.
   rewrite Integers.Int.mul_signed.
   rewrite !Integers.Int.signed_repr;auto 2.
 Qed.
-
-Set Printing Width 80.
 
 (** Compcert division return None if dividend is min_int and divisor
     in -1, because the result would be max_int +1. In Spark's
@@ -637,21 +611,24 @@ Set Printing Width 80.
     checks. *)
 (*  How to compile this? probably by performing a check before. *)
 Lemma div_ok :
-  forall n n0 v v1 v2,
-    do_range_check v1 min_signed max_signed (Normal (Int v1)) ->
-    do_range_check v2 min_signed max_signed (Normal (Int v2)) ->
-    do_run_time_check_on_binop Divide (Int v1) (Int v2) (Normal (Int v)) ->
-    transl_value (Int v1) = OK (Values.Vint n) ->
-    transl_value (Int v2) = OK (Values.Vint n0) ->
-    Math.binary_operation Divide (Int v1) (Int v2) = Some (Int v) ->
-    Values.Val.divs (Values.Vint n) (Values.Vint n0) = Some (Values.Vint (Integers.Int.repr v)).
+  forall v v1 v2 n n1 n2,
+    check_overflow_value v1 -> 
+    check_overflow_value v2 -> 
+    do_run_time_check_on_binop Divide v1 v2 (Normal v) ->
+    transl_value v1 = OK n1 ->
+    transl_value v2 = OK n2 ->
+    transl_value v = OK n ->
+    Math.binary_operation Divide v1 v2 = Some v ->
+    Values.Val.divs n1 n2 = Some n.
 Proof.
   !intros.
   simpl in *.
-  !invclear heq_transl_value.
-  !invclear heq_transl_value0.
-  !invclear heq.
-  !invclear h_do_rtc_binop;simpl in *; try match goal with H: ?A <> ?A |- _ => elim H;auto end.
+  !destruct v1;simpl in *;try discriminate.
+  !destruct v2;simpl in *; try discriminate.
+  rename n0 into v1.
+  rename n3 into v2.
+  repeat progress (eq_same_clear;simpl in * ).
+  !invclear h_do_rtc_binop;simpl in *; eq_same_clear.
   { decompose [or] H;discriminate. }
   inv_rtc.
   rewrite min_signed_ok, max_signed_ok in *.
@@ -700,292 +677,52 @@ Qed.
 
 
 
-
-(* *** Hack to workaround a current limitation of Functional Scheme wrt to Function. *)
-(*
-This should work, but Funcitonal SCheme does not generate the
-inversion stuff currently. So we defined by hand the expanded versions
-binopexp and unopexp with Function.
-
-Definition binopexp :=
-  Eval unfold
-       Math.binary_operation
-  , Math.and
-  , Math.or
-  , Math.eq
-  , Math.ne
-  , Math.lt
-  , Math.le
-  , Math.gt
-  , Math.ge
-  , Math.add
-  , Math.sub
-  , Math.mul
-  , Math.div
-  in Math.binary_operation.
-
-Definition unopexp :=
-  Eval unfold
-       Math.unary_operation, Math.unary_plus, Math.unary_minus, Math.unary_not in Math.unary_operation.
-
-Functional Scheme binopnind := Induction for binopexp Sort Prop.
-Functional Scheme unopnind := Induction for unopexp Sort Prop.
-*)
-
-Function unopexp (op : unary_operator) (v : value) :=
-  match op with
-    | Unary_Plus =>
-      match v with
-        | Undefined => None
-        | Int _ => Some v
-        | Bool _ => None
-        | ArrayV _ => None
-        | RecordV _ => None
-      end
-    | Unary_Minus =>
-      match v with
-        | Undefined => None
-        | Int v' => Some (Int (- v'))
-        | Bool _ => None
-        | ArrayV _ => None
-        | RecordV _ => None
-      end
-    | Not =>
-      match v with
-        | Undefined => None
-        | Int _ => None
-        | Bool v' => Some (Bool (negb v'))
-        | ArrayV _ => None
-        | RecordV _ => None
-      end
-  end.
-
-Function binopexp (op : binary_operator) (v1 v2 : value) :=
-  match op with
-    | And =>
-      match v1 with
-        | Undefined => None
-        | Int _ => None
-        | Bool v1' =>
-          match v2 with
-            | Undefined => None
-            | Int _ => None
-            | Bool v2' => Some (Bool (v1' && v2'))
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
-        | ArrayV _ => None
-        | RecordV _ => None
-      end
-    | Or =>
-      match v1 with
-        | Undefined => None
-        | Int _ => None
-        | Bool v1' =>
-          match v2 with
-            | Undefined => None
-            | Int _ => None
-            | Bool v2' => Some (Bool (v1' || v2'))
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
-        | ArrayV _ => None
-        | RecordV _ => None
-      end
-    | Equal =>
-      match v1 with
-        | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Bool (Zeq_bool v1' v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
-        | Bool _ => None
-        | ArrayV _ => None
-        | RecordV _ => None
-      end
-    | Not_Equal =>
-      match v1 with
-        | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Bool (Zneq_bool v1' v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
-        | Bool _ => None
-        | ArrayV _ => None
-        | RecordV _ => None
-      end
-    | Less_Than =>
-      match v1 with
-        | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Bool (v1' <? v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
-        | Bool _ => None
-        | ArrayV _ => None
-        | RecordV _ => None
-      end
-    | Less_Than_Or_Equal =>
-      match v1 with
-        | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Bool (v1' <=? v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
-        | Bool _ => None
-        | ArrayV _ => None
-        | RecordV _ => None
-      end
-    | Greater_Than =>
-      match v1 with
-        | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Bool (v1' >? v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
-        | Bool _ => None
-        | ArrayV _ => None
-        | RecordV _ => None
-      end
-    | Greater_Than_Or_Equal =>
-      match v1 with
-        | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Bool (v1' >=? v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
-        | Bool _ => None
-        | ArrayV _ => None
-        | RecordV _ => None
-      end
-    | Plus =>
-      match v1 with
-        | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Int (v1' + v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
-        | Bool _ => None
-        | ArrayV _ => None
-        | RecordV _ => None
-      end
-    | Minus =>
-      match v1 with
-        | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Int (v1' - v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
-        | Bool _ => None
-        | ArrayV _ => None
-        | RecordV _ => None
-      end
-    | Multiply =>
-      match v1 with
-        | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Int (v1' * v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
-        | Bool _ => None
-        | ArrayV _ => None
-        | RecordV _ => None
-      end
-    | Divide =>
-      match v1 with
-        | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Int (v1' ÷ v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
-        | Bool _ => None
-        | ArrayV _ => None
-        | RecordV _ => None
-      end
-  end.
-
-Lemma binopexp_ok: forall x y z, Math.binary_operation x y z = binopexp x y z .
+Lemma binary_operator_ok:
+  forall op (n n1 n2 : Values.val) (v v1 v2 : value),
+    check_overflow_value v1 ->
+    check_overflow_value v2 ->
+    do_run_time_check_on_binop op v1 v2 (Normal v) ->
+    transl_value v1 = OK n1 ->
+    transl_value v2 = OK n2 ->
+    transl_value v = OK n ->
+    Math.binary_operation op v1 v2 = Some v ->
+    forall m, Cminor.eval_binop (transl_binop op) n1 n2 m = Some n.
 Proof.
-  reflexivity.
+  !intros.
+  destruct op.
+  - erewrite (and_ok v1 v2 v n1 n2) in heq_transl_value;eq_same_clear;eauto.
+  - erewrite (or_ok v1 v2 v n1 n2) in heq_transl_value;eq_same_clear;eauto.
+  - erewrite (eq_ok v1 v2 v n1 n2) in heq_transl_value;eq_same_clear;eauto.
+  - erewrite (neq_ok v1 v2 v n1 n2) in heq_transl_value;eq_same_clear;eauto.
+  - erewrite (lt_ok v1 v2 v n1 n2) in heq_transl_value;eq_same_clear;eauto.
+  - erewrite (le_ok v1 v2 v n1 n2) in heq_transl_value;eq_same_clear;eauto.
+  - erewrite (gt_ok v1 v2 v n1 n2) in heq_transl_value;eq_same_clear;eauto.
+  - erewrite (ge_ok v1 v2 v n1 n2) in heq_transl_value;eq_same_clear;eauto.
+  - erewrite (add_ok v v1 v2 n1 n2) in heq_transl_value;eq_same_clear;eauto.
+  - erewrite (sub_ok v v1 v2 n1 n2) in heq_transl_value;eq_same_clear;eauto.
+  - erewrite (mult_ok v v1 v2 n1 n2) in heq_transl_value;eq_same_clear;eauto.
+  - simpl in *.
+    erewrite (div_ok v v1 v2 n n1 n2);eauto.
 Qed.
 
-Lemma unopexp_ok: forall x y, Math.unary_operation x y = unopexp x y.
-Proof.
-  reflexivity.
-Qed.
 
-(* *** And of the hack *)
-
-(** [safe_stack s] means that every value in s correct wrt to
+(** [safe_stack s] means that every value in s is correct wrt to
     overflows.
-TODO: extend with other values than Int: floats, arrays, records. *)
+    TODO: extend with other values than Int: floats, arrays, records. *)
 Definition safe_stack s :=
   forall id n,
     STACK.fetchG id s = Some (Int n)
     -> do_overflow_check n (Normal (Int n)).
 
-(** Since unary_plus is a nop, it is an exception to the otherwise
-    general property that the spark semantics always returns a checked
-    value (or a runtime error). *)
-Definition is_not_unaryplus e :=
-  match e with
-    | E_Unary_Operation x x0 x1 =>
-      match x0 with
-        | Unary_Plus => False
-        | _ => True
-      end
-    | _ => True
-  end.
 
 (** Hypothesis renaming stuff *)
-Ltac rename_hyp2 th :=
+Ltac rename_hyp2' th :=
   match th with
-    | is_not_unaryplus _ => fresh "h_isnotunplus"
     | safe_stack _ => fresh "h_safe_stack"
-    | _ => rename_hyp1 th
+    | _ => rename_hyp2 th
   end.
 
-Ltac rename_hyp ::= rename_hyp2.
+Ltac rename_hyp ::= rename_hyp2'.
 
 Lemma eval_literal_overf :
   forall (l:literal) n, 
@@ -1018,12 +755,14 @@ Qed.
 Lemma eval_expr_overf :
   forall st s, safe_stack s ->
             forall (e:expression) n, 
-              is_not_unaryplus e -> 
               eval_expr st s e (Normal (Int n)) ->
               do_overflow_check n (Normal (Int n)).
 Proof.
   !intros.
-  !inversion h_eval_expr;subst.
+  revert h_safe_stack.
+  remember (Normal (Int n)) as hN.
+  revert HeqhN.
+  !induction h_eval_expr;!intros;subst;try discriminate.
   - eapply eval_literal_overf;eauto.
   - eapply eval_name_overf;eauto.
   - !invclear h_do_rtc_binop.
@@ -1035,94 +774,209 @@ Proof.
     + inversion h_overf_check;subst;auto.
     + rewrite unopexp_ok in *.
       !functional inversion heq;subst;try match goal with H: ?A <> ?A |- _ => elim H;auto end.
-      simpl in h_isnotunplus.
-      elim h_isnotunplus.
+      !invclear heq3.
+      apply IHh_eval_expr;auto.
 Qed.
+
+
+(* See CminorgenProof.v@205. *)
+(* We will need more than that probably. But for now let us use
+   a simple notion of matching: the value of a variable is equal to
+   the value of its translation. Its translation is currently (an
+   expression of the form ELoad((Eload(Eload ...(Eload(0)))) + n)). We
+   could define a specialization of eval_expr for this kind of
+   expression but at some point the form of the expression will
+   complexify (some variables may stay temporary instead of going in
+   the stack, etc).
+
+   We also put well-typing constraints on the stack wrt symbol
+   table. *)
+Record match_env (st:symboltable) (s: semantics.STACK.stack) (CE:compilenv) (sp:Values.val)
+       (locenv: Cminor.env): Prop :=
+  mk_match_env {
+      me_vars:
+        forall id astnum v typeofv,
+          STACK.fetchG id s = Some v ->
+          fetch_var_type id st = OK typeofv ->
+          exists e' v' rtypeofv typeofv' ld,
+            reduce_type st typeofv max_recursivity = OK rtypeofv /\
+            concrete_type_of_value v = OK rtypeofv /\ (* stack is well typed wrt st *)
+            transl_value v = OK v' /\
+            transl_type st typeofv = OK typeofv' /\
+            transl_variable st CE astnum id = OK e' /\
+            make_load e' typeofv' = OK ld /\
+            forall (g:genv)(m:Memory.Mem.mem),
+              Cminor.eval_expr g sp locenv m ld v';
+
+      me_transl:
+        forall (g:genv)(m:Memory.Mem.mem)
+               nme v addrof_nme load_addrof_nme typ_nme cm_typ_nme v',
+          eval_name st s nme (Normal v) ->
+          type_of_name st nme = OK typ_nme ->
+          transl_name st CE nme = OK addrof_nme ->
+          transl_type st typ_nme = OK cm_typ_nme ->
+          make_load addrof_nme cm_typ_nme = OK load_addrof_nme ->
+          transl_value v = OK v' ->
+          Cminor.eval_expr g sp locenv m load_addrof_nme v';
+
+      me_overflow: safe_stack s
+    }.
+
+
+
+
+(** Hypothesis renaming stuff *)
+Ltac rename_hyp3 th :=
+  match th with
+    | match_env _ _ _ _ _ => fresh "h_match_env"
+    | _ => rename_hyp2 th
+  end.
+
+Ltac rename_hyp ::= rename_hyp3.
+
+
 
 Lemma transl_name_ok :
   forall stbl CE locenv g m (s:STACK.stack) (nme:name) (v:value) (e' e'':Cminor.expr)
-         typeof_nme typeof_nme' (sp: Values.val),
+         typeof_nme typeof_nme' (sp: Values.val) v',
     eval_name stbl s nme (Normal v) ->
     type_of_name stbl nme = OK typeof_nme ->
     transl_type stbl typeof_nme = OK typeof_nme' ->
     transl_name stbl CE nme = OK e' ->
     match_env stbl s CE sp locenv ->
     make_load e' typeof_nme' = OK e'' ->
-    exists v',
-      transl_value v = OK v'
-      /\ Cminor.eval_expr g sp locenv m e'' v'
-      /\ match v with
-           | (Int n) => do_overflow_check n (Normal (Int n))
-           | _ => True
-         end.
+    transl_value v = OK v' ->
+    Cminor.eval_expr g sp locenv m e'' v'.
 Proof.
-  intros until sp.
+  intros until v'.
   intro h_eval_name.
   remember (Normal v) as Nv.
   revert HeqNv.
-  revert v e' sp.
+  revert v e' sp v'.
   !induction h_eval_name;simpl;!intros; subst;try discriminate.
   !invclear heq.
   !destruct h_match_env.
   rename x into i.
-  specialize (me_transl0 g m (E_Identifier ast_num i) v0 e' e'' typeof_nme typeof_nme').
+  specialize (me_transl0 g m (E_Identifier ast_num i) v0 e' e'' typeof_nme typeof_nme' v').
   (* TODO: automate this or make it disappear. *)
   !! (fun _ => assert (eval_name st s (E_Identifier ast_num i) (Normal v0))) g.
   { constructor.
     assumption. }
   simpl in me_transl0.
-  specialize (me_transl0 h_eval_name heq_fetch_var_type heq_transl_variable heq_transl_type heq_make_load).
-  decomp me_transl0. clear me_transl0.
-  exists x;repeat split;auto.
-  destruct v0;eauto.
+  specialize (me_transl0 h_eval_name heq_fetch_var_type heq_transl_variable heq_transl_type heq_make_load heq_transl_value).
+  repeat split;auto.
 Qed.
 
 
 Lemma transl_expr_ok :
   forall stbl CE locenv g m (s:STACK.stack) (e:expression) (v:value) (e':Cminor.expr)
-         (sp: Values.val),
+         (sp: Values.val) v',
     eval_expr stbl s e (Normal v) ->
     transl_expr stbl CE e = OK e' ->
     match_env stbl s CE sp locenv ->
-    exists v',
-      transl_value v = OK v'
-      /\ Cminor.eval_expr g sp locenv m e' v'
-      /\ match v with
-           | (Int n) => do_overflow_check n (Normal (Int n))
-           | _ => True
-         end.
+    transl_value v = OK v' ->
+    Cminor.eval_expr g sp locenv m e' v'.
 Proof.
-  intros until sp.
+  intros until v'.
   intro h_eval_expr.
   remember (Normal v) as Nv.
   revert HeqNv.
-  revert v e' sp.
-  !induction h_eval_expr;simpl;!intros; subst.
-  - !invclear heq.
-    !destruct h_match_env.
-    destruct (transl_literal_ok g l v0 h_eval_literal sp) as [v' h_and].
-    !destruct h_and.
-    exists v'.
-    repeat split.
-    + assumption.
-    + constructor.
-      assumption.
-    + destruct v0;auto.
-      eapply eval_literal_overf;eauto.
+  revert v e' sp v'.
+  !induction h_eval_expr;simpl;!intros; subst;eq_same_clear;try now discriminate.
+  - destruct (transl_literal_ok g l v0 h_eval_literal sp) as [vv h_and].
+    !destruct h_and;eq_same_clear.
+    constructor.
+    assumption.
   - !destruct n; try now inversion heq.
-    inversion h_eval_name;subst.
-    destruct (transl_variable st CE ast_num i) eqn:heq_trv;simpl in *
-    ; (try now inversion heq); rename e into trv_i.
-
-
-     destruct (fetch_var_type i st) eqn:heq_fetch_type; (try now inversion heq);simpl in heq.
+    !inversion h_eval_name;subst.
+    destruct (transl_variable st CE a i) eqn:heq_trv;try discriminate;simpl in *.
+    destruct (fetch_var_type i st) eqn:heq_fetch_type; (try now inversion heq).
+    simpl in heq.
     unfold value_at_addr in heq.
-    destruct (transl_type st t) eqn:heq_typ;simpl in *;try now inversion heq.
-    !invclear h_eval_name.
+    destruct (transl_type st t) eqn:heq_transl_type;simpl in *.
+    + eapply transl_name_ok in h_eval_name;simpl; eauto.
+    + discriminate.
+(*  *)
+  - destruct (transl_expr st CE e1) eqn:heq_transl_expr1;(try now inversion heq);simpl in heq.
+    destruct (transl_expr st CE e2) eqn:heq_transl_expr2;(try now inversion heq);simpl in heq.
+    eq_same_clear.
 
-    destruct h_match_env.
-    specialize (me_transl0 g m i ast_num v0 t heq_SfetchG heq_fetch_type).
+    destruct (transl_value v1) eqn:heq_transl_value_v1.
+    destruct (transl_value v2) eqn:heq_transl_value_v2.
+    + apply eval_Ebinop with v v3.
+      * eapply IHh_eval_expr1;eauto.
+      * eapply IHh_eval_expr2;eauto.
+      * { eapply binary_operator_ok;eauto.
+          - destruct v1;simpl;auto.
+            eapply eval_expr_overf;eauto.
+            eapply h_match_env.(me_overflow st s CE sp locenv).
+          - destruct v2;simpl;auto.
+            eapply eval_expr_overf;eauto.
+            eapply h_match_env.(me_overflow st s CE sp locenv).
+          - !inversion h_do_rtc_binop. rename H into h_or_op.
+            + !inversion h_overf_check;subst.
+              assumption.
+            + !inversion h_overf_check;subst.
+              !inversion h_do_division_check;subst.
+              simpl in *.
+              assumption.
+            + assumption. }
+          
+    + functional inversion heq_transl_value_v2;subst.
+      * admit. (* Arrays *)
+      * admit. (* Records *)
+      * admit. (* Undefined *)
+    + functional inversion heq_transl_value_v1;subst.
+      * admit. (* Arrays *)
+      * admit. (* Records *)
+      * admit. (* Undefined *)
+  -XXX
+    +
+        !inversion h_eval_expr.
+        clear IHh_eval_expr1 IHh_eval_expr2.
+        rename v into v1'. rename v3 into v2'.
+        { !inversion h_do_rtc_binop. rename H into h_or_op.
+          - decomp h_or_op; clear h_or_op;subst;simpl.
+            
+            rewrite binopexp_ok in heq.
+            functional inversion heq;subst.
+            rewrite <- binopexp_ok in heq.
+            simpl in heq_transl_value_v2, heq_transl_value_v1.
+            eq_same_clear.
+            simpl.
+            simpl in *.
+            inversion h_overf_check;subst;simpl in *;eq_same_clear.
+            
+            simpl in *.
+            
+            rewrite (add_ok   _ _ _ _ _ _ _ _ _ heq).
+            eapply add_ok in heq;eauto.
+            simpl in *.
+        
+    + 
+      specialize
+        (IHh_eval_expr1 v1 e sp v
+                        (refl_equal (Normal v1))
+                        (refl_equal (OK e))
+                        h_match_env
+                        heq_transl_value_v1).
+    
+    !inversion h_do_rtc_binop. rename H into h_or_op.
+    destruct op;try discriminate.
 
+    apply eval_expr_overf in h_eval_expr0.
+        
+    
+
+    simpl in *.
+    eq_same_clear.
+
+    
+    specialize (IHh_eval_expr1 v1 e sp v' (refl_equal (Normal v1)) (refl_equal (OK e)) h_match_env).
+    specialize (IHh_eval_expr2 v2 e0 sp v' (refl_equal (Normal v2)) (refl_equal (OK e0)) h_match_env).
+    decomp IHh_eval_expr1. clear IHh_eval_expr1. rename H2 into hmatch1.
+    decomp IHh_eval_expr2. clear IHh_eval_expr2. rename H2 into hmatch2.
+    !inversion h_do_rtc_binop; try !invclear h_overf_check. rename H into h_or_op.
 
 
 

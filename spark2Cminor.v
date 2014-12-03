@@ -326,7 +326,7 @@ Notation "'do' X <- A ; B" :=
 Fixpoint transl_expr (stbl:symboltable) (CE:compilenv) (e:expression): res Cminor.expr :=
   match e with
     | E_Literal _ lit => OK (Econst (transl_literal lit))
-    | E_Name astnum (E_Identifier _ id) =>
+    | E_Name _ (E_Identifier astnum id) =>
       do addrid <- transl_variable stbl CE astnum id ; (* get the address of the variable *)
         (* get type from stbl or from actual value? *)
         do typ <- fetch_var_type id stbl ;
