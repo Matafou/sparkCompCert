@@ -706,6 +706,7 @@ Proof.
 Qed.
 
 
+
 (** [safe_stack s] means that every value in s is correct wrt to
     overflows.
     TODO: extend with other values than Int: floats, arrays, records. *)
@@ -930,7 +931,84 @@ Proof.
       * admit. (* Arrays *)
       * admit. (* Records *)
       * admit. (* Undefined *)
-  -XXX
+  - destruct (transl_expr st CE e) eqn:heq_transl_expr1;(try now inversion heq);simpl in heq;destruct op;simpl in *; try discriminate;eq_same_clear.
+    + destruct (transl_value v) eqn:heq_transl_value_v; try discriminate;eq_same_clear.
+      * { apply eval_Eunop with (v1:=v1);auto.
+          - apply IHh_eval_expr with (v0:=v);eauto.
+          - simpl.
+            assert (h:=unaryneg_ok _ _ v0 heq_transl_value_v).
+            rewrite h in heq_transl_value.
+            Focus 2.
+            + !invclear h_do_rtc_unop;simpl in *;try eq_same_clear.
+              !invclear h_overf_check;subst;simpl in *; try eq_same_clear.
+              assumption.
+            + eq_same_clear.
+              reflexivity. }
+      * { functional inversion heq_transl_value_v;subst.
+          - inversion h_do_rtc_unop;subst; simpl in *;try discriminate.
+          - inversion h_do_rtc_unop;subst; simpl in *;try discriminate.
+          - inversion h_do_rtc_unop;subst; simpl in *;try discriminate. }
+    + destruct (transl_value v) eqn:heq_transl_value_v; try discriminate;eq_same_clear.
+      * { XXX apply eval_Ebinop with (v1:=v1) (v2:=v'0);auto.
+          - apply IHh_eval_expr with (v0:=v);eauto.
+          - !invclear h_do_rtc_unop;simpl in *;try eq_same_clear.
+            assert (h:=not_ok v v0 v1 heq_transl_value_v heq).
+            rewrite h in heq_transl_value.
+            eq_same_clear.
+            constructor.
+            simpl.
+            apply f_equal.
+            destruct v1;simpl in *;try discriminate; try now functional inversion h.
+            
+            Focus 2.
+            + !invclear h_do_rtc_unop;simpl in *;try eq_same_clear.
+              assumption.
+            + eq_same_clear.
+              constructor.
+              simpl.
+              reflexivity. }
+      * { functional inversion heq_transl_value_v;subst.
+          - inversion h_do_rtc_unop;subst; simpl in *;try discriminate.
+          - inversion h_do_rtc_unop;subst; simpl in *;try discriminate.
+          - inversion h_do_rtc_unop;subst; simpl in *;try discriminate. }
+
+      !invclear h_do_rtc_unop;simpl in *;try eq_same_clear.
+      specialize (IHh_eval_expr v e0 sp v'0 refl_equal refl_equal h_match_env).
+      
+      econstructor.
+
+        inversion do_overflow_check.
+        
+
+            rewrite (unaryneg_ok _ _ v0 heq_transl_value_v). in heq_transl_value_v;eauto.
+            simpl.
+      simpl in *. ; eq_same_clear.
+      apply eval_Eunop with (v1:=(Values.Vint (Integers.Int.repr v'))).
+      Focus 2.
+      
+      
+
+      eapply eval_Eunop.
+      Focus 2.
+      simpl.
+      !inversion h_do_rtc_unop;simpl in *.
+      inversion h_overf_check;subst.
+      erewrite (unaryneg_ok) in heq_transl_value.
+      Focus 2.
+      apply heq_transl_value.
+      Focus 2.
+      simpl.
+      eassumption.
+      eapply unaryneg_ok in h_do_rtc_unop.
+        apply eval_Eunop with (v1:=v'0).
+      * apply IHh_eval_expr with (v0:=v);eauto.
+        assert (heqvv0:v=v0).
+        { !inversion h_do_rtc_unop.
+          
+          - !inversion h_overf_check;simpl in *;eq_same_clear.
+
+
+    XXX
     +
         !inversion h_eval_expr.
         clear IHh_eval_expr1 IHh_eval_expr2.
