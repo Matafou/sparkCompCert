@@ -258,3 +258,157 @@ Lemma unopexp_ok: forall x y, Math.unary_operation x y = unopexp x y.
 Proof.
   reflexivity.
 Qed.
+
+
+Require Import Errors.
+Require Import Cminor.
+Require Import spark2Cminor.
+
+(* Definition foo := Eval cbv beta delta [bind transl_expr] in transl_expr. *)
+Function transl_expr (stbl : symboltable) (CE : compilenv) 
+                (e : expression) {struct e} : res expr :=
+  match e with
+  | E_Literal _ lit => OK (Econst (transl_literal lit))
+  | E_Name _ (E_Identifier astnum0 id) =>
+      match transl_variable stbl CE astnum0 id with
+      | OK x =>
+          match fetch_var_type id stbl with
+          | OK x0 => value_at_addr stbl x0 x
+          | Error msg => Error msg
+          end
+      | Error msg => Error msg
+      end
+  | E_Name _ (E_Indexed_Component _ _ _) =>
+      Error (msg "transl_expr: Array not yet implemented")
+  | E_Name _ (E_Selected_Component _ _ _) =>
+      Error (msg "transl_expr: record not yet implemented")
+  | E_Binary_Operation _ op e1 e2 =>
+      match transl_expr stbl CE e1 with
+      | OK x =>
+          match transl_expr stbl CE e2 with
+          | OK x0 => OK (Ebinop (transl_binop op) x x0)
+          | Error msg => Error msg
+          end
+      | Error msg => Error msg
+      end
+  | E_Unary_Operation _ (Unary_Plus as op) e0 =>
+      match transl_expr stbl CE e0 with
+      | OK x =>
+          match transl_unop op with
+          | OK x0 => OK (Eunop x0 x)
+          | Error msg => Error msg
+          end
+      | Error msg => Error msg
+      end
+  | E_Unary_Operation _ (Unary_Minus as op) e0 =>
+      match transl_expr stbl CE e0 with
+      | OK x =>
+          match transl_unop op with
+          | OK x0 => OK (Eunop x0 x)
+          | Error msg => Error msg
+          end
+      | Error msg => Error msg
+      end
+  | E_Unary_Operation _ Not e0 =>
+      match transl_expr stbl CE e0 with
+      | OK x =>
+          OK
+            (Ebinop (Ocmp Integers.Ceq) x
+               (Econst (Ointconst Integers.Int.zero)))
+      | Error msg => Error msg
+      end
+  end.
+
+
+Lemma transl_expr_ok : forall x y z, transl_expr x y z = spark2Cminor.transl_expr x y z.
+Proof.
+  reflexivity.
+Qed.
+
+
+
+
+(* Definition transl_stmt := Eval cbv beta delta [bind bind2 transl_stmt] in transl_stmt. *)
+
+
+Function transl_stmt (stbl : Symbol_Table_Module.symboltable) 
+                (CE : compilenv) (e : statement) {struct e} : 
+res stmt :=
+  match e with
+  | S_Null => OK Sskip
+  | S_Assignment _ nme e0 =>
+      match spark2Cminor.transl_expr stbl CE e0 with
+      | OK x =>
+          match transl_name stbl CE nme with
+          | OK x0 =>
+              match compute_chnk stbl nme with
+              | OK x1 => OK (Sstore x1 x0 x)
+              | Error msg => Error msg
+              end
+          | Error msg => Error msg
+          end
+      | Error msg => Error msg
+      end
+  | S_If _ e0 s1 s2 =>
+      match spark2Cminor.transl_expr stbl CE e0 with
+      | OK x =>
+          match
+            OK
+              (Ebinop (Ocmp Integers.Cne) x
+                 (Econst (Ointconst Integers.Int.zero)))
+          with
+          | OK x0 =>
+              match transl_stmt stbl CE s1 with
+              | OK x1 =>
+                  match transl_stmt stbl CE s2 with
+                  | OK x2 => OK (Sifthenelse x0 x1 x2)
+                  | Error msg => Error msg
+                  end
+              | Error msg => Error msg
+              end
+          | Error msg => Error msg
+          end
+      | Error msg => Error msg
+      end
+  | S_While_Loop _ _ _ => Error (msg "transl_stmt:Not yet implemented")
+  | S_Procedure_Call _ _ pnum lexp =>
+      match transl_params stbl pnum CE lexp with
+      | OK x =>
+          match transl_procsig stbl pnum with
+          | OK (x0, y) =>
+              let current_lvl := (Datatypes.length CE - 1)%nat in
+              match build_loads_ (current_lvl - y) with
+              | OK x1 =>
+                  match OK (x1 :: x) with
+                  | OK x2 =>
+                      OK
+                        (Scall None x0
+                           (Econst
+                              (Oaddrsymbol (transl_procid pnum)
+                                 (Integers.Int.repr 0))) x2)
+                  | Error msg => Error msg
+                  end
+              | Error msg => Error msg
+              end
+          | Error msg => Error msg
+          end
+      | Error msg => Error msg
+      end
+  | S_Sequence _ s1 s2 =>
+      match transl_stmt stbl CE s1 with
+      | OK x =>
+          match transl_stmt stbl CE s2 with
+          | OK x0 => OK (Sseq x x0)
+          | Error msg => Error msg
+          end
+      | Error msg => Error msg
+      end
+  end.
+
+
+
+
+Lemma transl_stmt_ok : forall x y z, transl_stmt x y z = spark2Cminor.transl_stmt x y z.
+Proof.
+  reflexivity.
+Qed.

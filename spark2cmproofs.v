@@ -1,4 +1,5 @@
 
+Require Import function_utils.
 Require Import LibHypsNaming.
 Require Import Errors.
 Require Import spark2Cminor.
@@ -6,7 +7,6 @@ Require Import Cminor.
 Require Ctypes.
 Require Import symboltable.
 Require Import semantics.
-Require Import function_utils.
 
 Lemma wordsize_ok : wordsize = Integers.Int.wordsize.
 Proof.
@@ -215,12 +215,23 @@ Ltac eq_same_clear :=
             end).
 
 
+Ltac inv_if_intop op h :=
+   match op with
+     | Plus => !invclear h
+     | Minus => !invclear h
+     | Multiply => !invclear h
+     | Divide => !invclear h
+   end.
 
 (* Transform hypothesis of the form do_range_check into disequalities. *)
 Ltac inv_rtc :=
   repeat
     progress
     (try match goal with
+           | H: do_run_time_check_on_binop ?op _ (Bool _) (Normal _) |- _ => inv_if_intop op H
+           | H: Math.binary_operation ?op _ (Bool _) = (Some _) |- _ => inv_if_intop op H
+           | H: do_run_time_check_on_binop ?op (Bool _) _ (Normal _) |- _ => inv_if_intop op H
+           | H: Math.binary_operation ?op (Bool _) _ = (Some _) |- _ => inv_if_intop op H
            | H: do_overflow_check _ (Normal (Int _)) |- _ => !invclear H
            | H: do_range_check _ _ _ (Normal (Int _)) |- _ => !invclear H
            | H: in_bound _ _ true |- _ => !invclear H
@@ -533,6 +544,30 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma do_run_time_check_on_binop_ok: forall v1 v2 v op,
+             do_run_time_check_on_binop op v1 v2 (Normal v) ->
+             Math.binary_operation op v1 v2 = Some v.
+Proof.
+  intros v1 v2 v op hdo_rtc.
+  !invclear hdo_rtc.
+  - !invclear h_overf_check.
+    assumption.
+  - !invclear h_do_division_check;simpl in *.
+    !invclear h_overf_check.
+    assumption.
+  - assumption.
+Qed.  
+
+Ltac int_simpl :=
+  progress
+    (try rewrite min_signed_ok;
+     try rewrite max_signed_ok;
+     try rewrite Integers.Int.add_signed;
+     try rewrite Integers.Int.sub_signed;
+     try rewrite Integers.Int.mul_signed;
+     try rewrite Integers.Int.add_signed;
+    rewrite !Integers.Int.signed_repr).
+
 Lemma add_ok :
   forall v v1 v2 n1 n2,
     check_overflow_value v1 -> 
@@ -540,21 +575,15 @@ Lemma add_ok :
     do_run_time_check_on_binop Plus v1 v2 (Normal v) ->
     transl_value v1 = OK n1 ->
     transl_value v2 = OK n2 ->
-    Math.binary_operation Plus v1 v2 = Some v ->
     transl_value v = OK (Values.Val.add n1 n2).
 Proof.
   !intros.
   simpl in *.
-  !destruct v1;simpl in *;try discriminate.
-  destruct v2;simpl in *; try discriminate.
-  repeat progress (eq_same_clear;simpl in * ).
-  apply f_equal.
-  !invclear h_do_rtc_binop;simpl in *; eq_same_clear. 
-  clear H.
-  inv_rtc.
-  rewrite min_signed_ok, max_signed_ok in *.
-  rewrite Integers.Int.add_signed.
-  rewrite !Integers.Int.signed_repr;auto 2.
+  !destruct v1;simpl in *;try discriminate;eq_same_clear; try now inv_rtc.
+  !destruct v2;simpl in *; try discriminate;eq_same_clear; try now inv_rtc.
+  - !invclear h_do_rtc_binop;simpl in *; eq_same_clear. 
+    !invclear h_overf_check.
+    int_simpl;auto;inv_rtc;auto 2.
 Qed.
 
 Lemma sub_ok :
@@ -564,21 +593,15 @@ Lemma sub_ok :
     do_run_time_check_on_binop Minus v1 v2 (Normal v) ->
     transl_value v1 = OK n1 ->
     transl_value v2 = OK n2 ->
-    Math.binary_operation Minus v1 v2 = Some v ->
     transl_value v = OK (Values.Val.sub n1 n2).
 Proof.
   !intros.
   simpl in *.
-  !destruct v1;simpl in *;try discriminate.
-  destruct v2;simpl in *; try discriminate.
-  repeat progress (eq_same_clear;simpl in * ).
-  apply f_equal.
-  !invclear h_do_rtc_binop;simpl in *; eq_same_clear.
-  clear H.
-  inv_rtc.
-  rewrite min_signed_ok, max_signed_ok in *.
-  rewrite Integers.Int.sub_signed.
-  rewrite !Integers.Int.signed_repr;auto 2.
+  !destruct v1;simpl in *;try discriminate;eq_same_clear; try now inv_rtc.
+  !destruct v2;simpl in *; try discriminate;eq_same_clear; try now inv_rtc.
+  - !invclear h_do_rtc_binop;simpl in *; eq_same_clear. 
+    !invclear h_overf_check.
+    int_simpl;auto;inv_rtc;auto 2.
 Qed.
 
 Lemma mult_ok :
@@ -588,21 +611,15 @@ Lemma mult_ok :
     do_run_time_check_on_binop Multiply v1 v2 (Normal v) ->
     transl_value v1 = OK n1 ->
     transl_value v2 = OK n2 ->
-    Math.binary_operation Multiply v1 v2 = Some v ->
     transl_value v = OK (Values.Val.mul n1 n2).
 Proof.
   !intros.
   simpl in *.
-  !destruct v1;simpl in *;try discriminate.
-  destruct v2;simpl in *; try discriminate.
-  repeat progress (eq_same_clear;simpl in * ).
-  apply f_equal.
-  !invclear h_do_rtc_binop;simpl in *; eq_same_clear.
-  clear H.
-  inv_rtc.
-  rewrite min_signed_ok, max_signed_ok in *.
-  rewrite Integers.Int.mul_signed.
-  rewrite !Integers.Int.signed_repr;auto 2.
+  !destruct v1;simpl in *;try discriminate;eq_same_clear; try now inv_rtc.
+  !destruct v2;simpl in *; try discriminate;eq_same_clear; try now inv_rtc.
+  - !invclear h_do_rtc_binop;simpl in *; eq_same_clear. 
+    !invclear h_overf_check.
+    int_simpl;auto;inv_rtc;auto 2.
 Qed.
 
 (** Compcert division return None if dividend is min_int and divisor
@@ -618,16 +635,15 @@ Lemma div_ok :
     transl_value v1 = OK n1 ->
     transl_value v2 = OK n2 ->
     transl_value v = OK n ->
-    Math.binary_operation Divide v1 v2 = Some v ->
     Values.Val.divs n1 n2 = Some n.
 Proof.
   !intros.
   simpl in *.
-  !destruct v1;simpl in *;try discriminate.
-  !destruct v2;simpl in *; try discriminate.
+  !destruct v1;simpl in *;try discriminate;try now inv_rtc.
+  !destruct v2;simpl in *; try discriminate;try now inv_rtc.
   rename n0 into v1.
   rename n3 into v2.
-  repeat progress (eq_same_clear;simpl in * ).
+  eq_same_clear;simpl in *.
   !invclear h_do_rtc_binop;simpl in *; eq_same_clear.
   { decompose [or] H;discriminate. }
   inv_rtc.
@@ -660,11 +676,19 @@ Proof.
         destruct (Z.eq_dec v2 (Integers.Int.signed Integers.Int.mone));try discriminate.
         assumption. }
       subst.
-      vm_compute in h_le0.
-      auto.
+      vm_compute in heq.
+      inversion heq.
+      subst.
+      inversion h_overf_check;subst.
+      inv_rtc.      
     + unfold Integers.Int.divs.
       rewrite !Integers.Int.signed_repr;auto 2.
-
+      simpl in *.
+      !invclear heq;subst.
+      inversion h_overf_check;subst.
+      simpl in *.
+      inversion heq_transl_value.
+      reflexivity.
   - unfold Integers.Int.zero.
     intro abs.
     apply heq_Z_false.
@@ -685,10 +709,10 @@ Lemma binary_operator_ok:
     transl_value v1 = OK n1 ->
     transl_value v2 = OK n2 ->
     transl_value v = OK n ->
-    Math.binary_operation op v1 v2 = Some v ->
     forall m, Cminor.eval_binop (transl_binop op) n1 n2 m = Some n.
 Proof.
   !intros.
+  assert (h_rtc:=do_run_time_check_on_binop_ok _ _ _ _ h_do_rtc_binop).
   destruct op.
   - erewrite (and_ok v1 v2 v n1 n2) in heq_transl_value;eq_same_clear;eauto.
   - erewrite (or_ok v1 v2 v n1 n2) in heq_transl_value;eq_same_clear;eauto.
@@ -701,9 +725,9 @@ Proof.
   - erewrite (add_ok v v1 v2 n1 n2) in heq_transl_value;eq_same_clear;eauto.
   - erewrite (sub_ok v v1 v2 n1 n2) in heq_transl_value;eq_same_clear;eauto.
   - erewrite (mult_ok v v1 v2 n1 n2) in heq_transl_value;eq_same_clear;eauto.
-  - simpl in *.
-    erewrite (div_ok v v1 v2 n n1 n2);eauto.
+  - simpl in *. erewrite (div_ok v v1 v2 n n1 n2);eauto.
 Qed.
+
 
 
 
@@ -779,6 +803,18 @@ Proof.
       apply IHh_eval_expr;auto.
 Qed.
 
+Lemma eval_expr_overf2 :
+  forall st s, safe_stack s ->
+               forall (e:expression) x,
+                 eval_expr st s e (Normal x) -> check_overflow_value x.
+Proof.
+  !intros.
+  destruct x;simpl in *;auto.
+  eapply eval_expr_overf;eauto.
+Qed.
+  
+
+
 
 (* See CminorgenProof.v@205. *)
 (* We will need more than that probably. But for now let us use
@@ -792,8 +828,8 @@ Qed.
 
    We also put well-typing constraints on the stack wrt symbol
    table. *)
-Record match_env (st:symboltable) (s: semantics.STACK.stack) (CE:compilenv) (sp:Values.val)
-       (locenv: Cminor.env): Prop :=
+Record match_env (st:symboltable) (s: semantics.STACK.stack)
+       (CE:compilenv) (sp:Values.val) (locenv: Cminor.env): Prop :=
   mk_match_env {
       me_vars:
         forall id astnum v typeofv,
@@ -820,8 +856,7 @@ Record match_env (st:symboltable) (s: semantics.STACK.stack) (CE:compilenv) (sp:
           transl_value v = OK v' ->
           Cminor.eval_expr g sp locenv m load_addrof_nme v';
 
-      me_overflow: safe_stack s
-    }.
+      me_overflow: safe_stack s }.
 
 
 
@@ -858,71 +893,54 @@ Proof.
   !invclear heq.
   !destruct h_match_env.
   rename x into i.
-  specialize (me_transl0 g m (E_Identifier ast_num i) v0 e' e'' typeof_nme typeof_nme' v').
+  specialize (me_transl0 g m (E_Identifier ast_num i) v0 e' e''
+                         typeof_nme typeof_nme' v').
   (* TODO: automate this or make it disappear. *)
   !! (fun _ => assert (eval_name st s (E_Identifier ast_num i) (Normal v0))) g.
   { constructor.
     assumption. }
   simpl in me_transl0.
-  specialize (me_transl0 h_eval_name heq_fetch_var_type heq_transl_variable heq_transl_type heq_make_load heq_transl_value).
+  specialize (me_transl0 h_eval_name heq_fetch_var_type heq_transl_variable
+                         heq_transl_type heq_make_load heq_transl_value).
   repeat split;auto.
 Qed.
 
 
+
 Lemma transl_expr_ok :
-  forall stbl CE locenv g m (s:STACK.stack) (e:expression) (v:value) (e':Cminor.expr)
-         (sp: Values.val) v',
-    eval_expr stbl s e (Normal v) ->
+  forall stbl CE (e:expression) (e':Cminor.expr),
     transl_expr stbl CE e = OK e' ->
+    forall locenv g m (s:STACK.stack)  (v:value)
+         (sp: Values.val),
+    eval_expr stbl s e (Normal v) ->
     match_env stbl s CE sp locenv ->
+    forall v',
     transl_value v = OK v' ->
     Cminor.eval_expr g sp locenv m e' v'.
 Proof.
-  intros until v'.
-  intro h_eval_expr.
-  remember (Normal v) as Nv.
-  revert HeqNv.
-  revert v e' sp v'.
-  !induction h_eval_expr;simpl;!intros; subst;eq_same_clear;try now discriminate.
-  - destruct (transl_literal_ok g l v0 h_eval_literal sp) as [vv h_and].
+  intros until e.
+  rewrite <- function_utils.transl_expr_ok.
+  !functional induction (function_utils.transl_expr stbl CE e);try discriminate;simpl;!intros;
+  !invclear h_eval_expr;eq_same_clear.
+  - destruct (transl_literal_ok g lit v h_eval_literal sp) as [vv h_and].
     !destruct h_and;eq_same_clear.
     constructor.
     assumption.
-  - !destruct n; try now inversion heq.
-    !inversion h_eval_name;subst.
-    destruct (transl_variable st CE a i) eqn:heq_trv;try discriminate;simpl in *.
-    destruct (fetch_var_type i st) eqn:heq_fetch_type; (try now inversion heq).
-    simpl in heq.
+  - rename x0 into t.
     unfold value_at_addr in heq.
-    destruct (transl_type st t) eqn:heq_transl_type;simpl in *.
-    + eapply transl_name_ok in h_eval_name;simpl; eauto.
+    destruct (transl_type stbl t) eqn:heq_transl_type;simpl in *.
+    + eapply transl_name_ok;simpl; eauto.
     + discriminate.
-(*  *)
-  - destruct (transl_expr st CE e1) eqn:heq_transl_expr1;(try now inversion heq);simpl in heq.
-    destruct (transl_expr st CE e2) eqn:heq_transl_expr2;(try now inversion heq);simpl in heq.
-    eq_same_clear.
-
-    destruct (transl_value v1) eqn:heq_transl_value_v1.
-    destruct (transl_value v2) eqn:heq_transl_value_v2.
-    + apply eval_Ebinop with v v3.
-      * eapply IHh_eval_expr1;eauto.
-      * eapply IHh_eval_expr2;eauto.
-      * { eapply binary_operator_ok;eauto.
-          - destruct v1;simpl;auto.
-            eapply eval_expr_overf;eauto.
-            eapply h_match_env.(me_overflow st s CE sp locenv).
-          - destruct v2;simpl;auto.
-            eapply eval_expr_overf;eauto.
-            eapply h_match_env.(me_overflow st s CE sp locenv).
-          - !inversion h_do_rtc_binop. rename H into h_or_op.
-            + !inversion h_overf_check;subst.
-              assumption.
-            + !inversion h_overf_check;subst.
-              !inversion h_do_division_check;subst.
-              simpl in *.
-              assumption.
-            + assumption. }
-          
+  - specialize (IHr x heq0 locenv g m s v1 sp).
+    specialize (IHr0 x0 heq locenv g m s v2 sp).
+    destruct (transl_value v1) as [v1' | errormsg] eqn:heq_transl_value_v1.
+    destruct (transl_value v2) as [v2' | errormsg] eqn:heq_transl_value_v2.
+    + apply eval_Ebinop with v1' v2';auto.
+      eapply binary_operator_ok;eauto.
+      * eapply eval_expr_overf2;eauto.
+        eapply h_match_env.(me_overflow stbl s CE sp locenv).
+      * eapply eval_expr_overf2;eauto.
+        eapply h_match_env.(me_overflow stbl s CE sp locenv).
     + functional inversion heq_transl_value_v2;subst.
       * admit. (* Arrays *)
       * admit. (* Records *)
@@ -931,440 +949,88 @@ Proof.
       * admit. (* Arrays *)
       * admit. (* Records *)
       * admit. (* Undefined *)
-  - destruct (transl_expr st CE e) eqn:heq_transl_expr1;(try now inversion heq);simpl in heq;destruct op;simpl in *; try discriminate;eq_same_clear.
-    + destruct (transl_value v) eqn:heq_transl_value_v; try discriminate;eq_same_clear.
-      * { apply eval_Eunop with (v1:=v1);auto.
-          - apply IHh_eval_expr with (v0:=v);eauto.
-          - simpl.
-            assert (h:=unaryneg_ok _ _ v0 heq_transl_value_v).
-            rewrite h in heq_transl_value.
-            Focus 2.
-            + !invclear h_do_rtc_unop;simpl in *;try eq_same_clear.
-              !invclear h_overf_check;subst;simpl in *; try eq_same_clear.
-              assumption.
-            + eq_same_clear.
-              reflexivity. }
-      * { functional inversion heq_transl_value_v;subst.
-          - inversion h_do_rtc_unop;subst; simpl in *;try discriminate.
-          - inversion h_do_rtc_unop;subst; simpl in *;try discriminate.
-          - inversion h_do_rtc_unop;subst; simpl in *;try discriminate. }
-    + destruct (transl_value v) eqn:heq_transl_value_v; try discriminate;eq_same_clear.
-      * { XXX apply eval_Ebinop with (v1:=v1) (v2:=v'0);auto.
-          - apply IHh_eval_expr with (v0:=v);eauto.
-          - !invclear h_do_rtc_unop;simpl in *;try eq_same_clear.
-            assert (h:=not_ok v v0 v1 heq_transl_value_v heq).
-            rewrite h in heq_transl_value.
-            eq_same_clear.
-            constructor.
-            simpl.
-            apply f_equal.
-            destruct v1;simpl in *;try discriminate; try now functional inversion h.
-            
-            Focus 2.
-            + !invclear h_do_rtc_unop;simpl in *;try eq_same_clear.
-              assumption.
-            + eq_same_clear.
-              constructor.
-              simpl.
-              reflexivity. }
-      * { functional inversion heq_transl_value_v;subst.
-          - inversion h_do_rtc_unop;subst; simpl in *;try discriminate.
-          - inversion h_do_rtc_unop;subst; simpl in *;try discriminate.
-          - inversion h_do_rtc_unop;subst; simpl in *;try discriminate. }
 
-      !invclear h_do_rtc_unop;simpl in *;try eq_same_clear.
-      specialize (IHh_eval_expr v e0 sp v'0 refl_equal refl_equal h_match_env).
-      
-      econstructor.
-
-        inversion do_overflow_check.
-        
-
-            rewrite (unaryneg_ok _ _ v0 heq_transl_value_v). in heq_transl_value_v;eauto.
-            simpl.
-      simpl in *. ; eq_same_clear.
-      apply eval_Eunop with (v1:=(Values.Vint (Integers.Int.repr v'))).
-      Focus 2.
-      
-      
-
-      eapply eval_Eunop.
-      Focus 2.
-      simpl.
-      !inversion h_do_rtc_unop;simpl in *.
-      inversion h_overf_check;subst.
-      erewrite (unaryneg_ok) in heq_transl_value.
-      Focus 2.
-      apply heq_transl_value.
-      Focus 2.
-      simpl.
-      eassumption.
-      eapply unaryneg_ok in h_do_rtc_unop.
-        apply eval_Eunop with (v1:=v'0).
-      * apply IHh_eval_expr with (v0:=v);eauto.
-        assert (heqvv0:v=v0).
-        { !inversion h_do_rtc_unop.
-          
-          - !inversion h_overf_check;simpl in *;eq_same_clear.
-
-
-    XXX
-    +
-        !inversion h_eval_expr.
-        clear IHh_eval_expr1 IHh_eval_expr2.
-        rename v into v1'. rename v3 into v2'.
-        { !inversion h_do_rtc_binop. rename H into h_or_op.
-          - decomp h_or_op; clear h_or_op;subst;simpl.
-            
-            rewrite binopexp_ok in heq.
-            functional inversion heq;subst.
-            rewrite <- binopexp_ok in heq.
-            simpl in heq_transl_value_v2, heq_transl_value_v1.
-            eq_same_clear.
-            simpl.
-            simpl in *.
-            inversion h_overf_check;subst;simpl in *;eq_same_clear.
-            
-            simpl in *.
-            
-            rewrite (add_ok   _ _ _ _ _ _ _ _ _ heq).
-            eapply add_ok in heq;eauto.
-            simpl in *.
-        
-    + 
-      specialize
-        (IHh_eval_expr1 v1 e sp v
-                        (refl_equal (Normal v1))
-                        (refl_equal (OK e))
-                        h_match_env
-                        heq_transl_value_v1).
-    
-    !inversion h_do_rtc_binop. rename H into h_or_op.
-    destruct op;try discriminate.
-
-    apply eval_expr_overf in h_eval_expr0.
-        
-    
-
-    simpl in *.
+  (* Unary minus *)
+  - simpl in heq.
     eq_same_clear.
-
-    
-    specialize (IHh_eval_expr1 v1 e sp v' (refl_equal (Normal v1)) (refl_equal (OK e)) h_match_env).
-    specialize (IHh_eval_expr2 v2 e0 sp v' (refl_equal (Normal v2)) (refl_equal (OK e0)) h_match_env).
-    decomp IHh_eval_expr1. clear IHh_eval_expr1. rename H2 into hmatch1.
-    decomp IHh_eval_expr2. clear IHh_eval_expr2. rename H2 into hmatch2.
-    !inversion h_do_rtc_binop; try !invclear h_overf_check. rename H into h_or_op.
-
-
-
-xxxx
-
-    destruct h_match_env.
-    specialize (me_vars0 i ast_num v0 t heq_SfetchG heq_fetch_type).
-    decomp me_vars0.
-    rename x into e''. rename x0 into v1'. rename x1 into bastyp.
-    rename x2 into t'. rename x3 into e'''. rename H6 into h_eval_expr. clear me_vars0.
-    unfold make_load in heq.
-    destruct (Ctypes.access_mode t0) eqn:heq_acctyp; !invclear heq.
-    + exists v1'.
-      repeat split.
-      * assumption.
-      * unfold make_load in heq_make_load.
-        eq_same (transl_type st t).
-        eq_same( transl_variable st CE ast_num i).
-        rewrite heq_acctyp in heq_make_load.
-        !invclear heq_make_load.
-        apply h_eval_expr.
-      * destruct v0;auto.
-        eapply me_overflow0.
-        eauto.
-    + exists v1'.
-      repeat split.
-      * assumption.
-      * unfold make_load in heq_make_load.
-        eq_same (transl_type st t).
-        eq_same( transl_variable st CE ast_num i).
-        rewrite heq_acctyp in heq_make_load.
-        !invclear heq_make_load.
-        apply h_eval_expr.
-      * destruct v0;auto.
-        eapply me_overflow0.
-        eauto.
-    + exists v1'.
-      repeat split.
-      * assumption.
-      * unfold make_load in heq_make_load.
-        eq_same (transl_type st t).
-        eq_same( transl_variable st CE ast_num i).
-        rewrite heq_acctyp in heq_make_load.
-        !invclear heq_make_load.
-        apply h_eval_expr.
-      * destruct v0;auto.
-        eapply me_overflow0.
-        eauto.
-  - discriminate heq0.
-  - discriminate heq0.
-  - destruct (transl_expr st CE e1) eqn:heq_transl_expr1;(try now inversion heq);simpl in heq.
-    destruct (transl_expr st CE e2) eqn:heq_transl_expr2;(try now inversion heq);simpl in heq.
-    !invclear heq.
-    specialize (IHh_eval_expr1 v1 e sp (refl_equal (Normal v1)) (refl_equal (OK e)) h_match_env).
-    specialize (IHh_eval_expr2 v2 e0 sp (refl_equal (Normal v2)) (refl_equal (OK e0)) h_match_env).
-    decomp IHh_eval_expr1. clear IHh_eval_expr1. rename H2 into hmatch1.
-    decomp IHh_eval_expr2. clear IHh_eval_expr2. rename H2 into hmatch2.
-    !inversion h_do_rtc_binop; try !invclear h_overf_check. rename H into h_or_op.
-    + destruct h_or_op as [ | h_or_op]; [subst|destruct h_or_op;subst].
-      * simpl in heq.
-        (* shoul dbe a functional inversion *)
-        !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in heq.
-        inversion heq;subst.
-        exists (Values.Vint (Integers.Int.repr (n+n0))).
-        { (repeat split);simpl;auto.
-          - econstructor.
-            { apply h_CM_eval_expr. }
-            { apply h_CM_eval_expr0. }
-            simpl.
-            !invclear heq_transl_value.
-            !invclear heq_transl_value0.
-            rewrite (add_ok _ _ (n + n0) n n0);auto.
-            + constructor.
-              inversion hmatch1.
-              assumption.
-            + constructor.
-              inversion hmatch2.
-              assumption.
-          - constructor.
-            assumption. }
-      * simpl in heq.
-        destruct v1;try discriminate; destruct v2;try discriminate;simpl in heq.
-        inversion heq. subst.
-        exists (Values.Vint (Integers.Int.repr (n-n0))).
-        { (repeat split);auto.
-          - econstructor.
-            { apply h_CM_eval_expr. }
-            { apply h_CM_eval_expr0. }
-            simpl.
-            !invclear heq_transl_value.
-            !invclear heq_transl_value0.
-            rewrite (sub_ok _ _ (n - n0) n n0);auto.
-            + constructor.
-              inversion hmatch1.
-              assumption.
-            + constructor.
-              inversion hmatch2.
-              assumption.
-          - constructor.
-            assumption. }
-      * simpl in heq.
-        destruct v1;try discriminate; destruct v2;try discriminate;simpl in heq.
-        inversion heq. subst.
-        exists (Values.Vint (Integers.Int.repr (n*n0))).
-        { (repeat split);auto.
-          - econstructor.
-            { apply h_CM_eval_expr. }
-            { apply h_CM_eval_expr0. }
-            simpl.
-            !invclear heq_transl_value.
-            !invclear heq_transl_value0.
-            rewrite (mult_ok _ _ (n * n0) n n0);auto.
-            + constructor.
-              inversion hmatch1.
-              assumption.
-            + constructor.
-              inversion hmatch2.
-              assumption.
-          - constructor.
-            assumption. }
-
-        
-    + !inversion h_do_division_check.
-      simpl in heq.
-      !invclear heq.
-      exists (Values.Vint (Integers.Int.repr (Z.quot v3 v4))).
-      { (repeat split);auto.
-        - econstructor.
-          { apply h_CM_eval_expr. }
-          { apply h_CM_eval_expr0. }
+    rename x into e'.
+    rename e0 into e.
+    destruct (transl_value v0) eqn:heq_transl_value_v
+    ; try discriminate;eq_same_clear;simpl in *.
+    specialize (IHr e' heq0 locenv g m s v0 sp
+                    h_eval_expr h_match_env v1 heq_transl_value_v).
+    + apply eval_Eunop with (v1:=v1);auto.
+      simpl.
+      assert (h:=unaryneg_ok v1 v0 v heq_transl_value_v).
+      rewrite h in heq_transl_value.
+      * eq_same_clear.
+        reflexivity.
+      * simpl in *.
+        { !invclear h_do_rtc_unop; simpl in *.
+          - !invclear h_overf_check;subst;simpl in *; try eq_same_clear.
+            assumption.
+          - assumption. }
+    + functional inversion heq_transl_value_v;subst.
+      * inversion h_do_rtc_unop;subst; simpl in *;try discriminate.
+      * inversion h_do_rtc_unop;subst; simpl in *;try discriminate.
+      * inversion h_do_rtc_unop;subst; simpl in *;try discriminate.
+  (* Not *)
+  - !invclear h_do_rtc_unop;simpl in *;try eq_same_clear.
+    clear hneq.
+    destruct v0;simpl in *;try discriminate;eq_same_clear;simpl in *.
+    destruct n;simpl in *; eq_same_clear.
+    * { econstructor;simpl in *;eauto.
+        * eapply IHr ;eauto.
           simpl.
-          !invclear heq_transl_value.
-          !invclear heq_transl_value0.
-          rewrite (div_ok _ _ (Z.quot v3 v4) v3 v4);auto.
-          + constructor.
-            inversion hmatch1.
-            assumption.
-          + constructor.
-            inversion hmatch2.
-            assumption.
-        - apply Do_Overflow_Check_OK.
-          assumption. }
-    + destruct op;simpl in *; try match goal with H: ?A <> ?A |- _ => elim H;auto end.
-      * clear hmatch1 hmatch2.
-        repeat match goal with | H:?X <> ?Y |-_ => clear H end.
-        exists (Values.Val.and x x0).
-        { repeat split;auto.
-          - eapply and_ok;eauto.
-          - econstructor;eauto.
-          - (* functional inversion *)
-            !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in heq.
-            inversion heq.
-            auto. }
-      * clear hmatch1 hmatch2.
-        repeat match goal with | H:?X <> ?Y |-_ => clear H end.
-        exists (Values.Val.or x x0).
-        { repeat split;auto.
-          - eapply or_ok;eauto.
-          - econstructor;eauto.
-          - (* functional inversion *)
-            !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in heq.
-            inversion heq.
-            auto. }
-
-      * repeat match goal with | H:?X <> ?Y |-_ => clear H end.
-        destruct v1;try discriminate; destruct v2;try discriminate;simpl in heq.
-        !invclear heq.
-        exists (Values.Val.cmp Integers.Ceq (Values.Vint (Integers.Int.repr n))
-                               (Values.Vint (Integers.Int.repr n0))).
-        { repeat split;auto.
-          - eapply eq_ok with n n0;auto.
-          - econstructor.
-            { apply h_CM_eval_expr. }
-            { apply h_CM_eval_expr0. }
-            simpl in *.
-            simpl in heq_transl_value0.
-            !invclear heq_transl_value.
-            !invclear heq_transl_value0.
-            reflexivity. }
-      * repeat match goal with | H:?X <> ?Y |-_ => clear H end.
-        destruct v1;try discriminate; destruct v2;try discriminate;simpl in heq.
-        !invclear heq.
-        exists (Values.Val.cmp Integers.Cne (Values.Vint (Integers.Int.repr n))
-                               (Values.Vint (Integers.Int.repr n0))).
-        { repeat split;auto.
-          - eapply neq_ok with n n0;auto.
-          - econstructor.
-            { apply h_CM_eval_expr. }
-            { apply h_CM_eval_expr0. }
-            simpl in *.
-            !invclear heq_transl_value.
-            !invclear heq_transl_value0.
-            reflexivity. }
-      * repeat match goal with | H:?X <> ?Y |-_ => clear H end.
-        destruct v1;try discriminate; destruct v2;try discriminate;simpl in heq.
-        !invclear heq.
-        exists (Values.Val.cmp Integers.Clt (Values.Vint (Integers.Int.repr n))
-                               (Values.Vint (Integers.Int.repr n0))).
-        { repeat split;auto.
-          - eapply lt_ok with n n0;auto.
-          - econstructor.
-            { apply h_CM_eval_expr. }
-            { apply h_CM_eval_expr0. }
-            simpl in *.
-            !invclear heq_transl_value.
-            !invclear heq_transl_value0.
-            reflexivity. }
-
-      * repeat match goal with | H:?X <> ?Y |-_ => clear H end.
-        destruct v1;try discriminate; destruct v2;try discriminate;simpl in heq.
-        !invclear heq.
-        exists (Values.Val.cmp Integers.Cle (Values.Vint (Integers.Int.repr n))
-                               (Values.Vint (Integers.Int.repr n0))).
-        { repeat split;auto.
-          - eapply le_ok with n n0;auto.
-          - econstructor.
-            { apply h_CM_eval_expr. }
-            { apply h_CM_eval_expr0. }
-            simpl in *.
-            !invclear heq_transl_value.
-            !invclear heq_transl_value0.
-            reflexivity. }
-
-      * repeat match goal with | H:?X <> ?Y |-_ => clear H end.
-        destruct v1;try discriminate; destruct v2;try discriminate;simpl in heq.
-        !invclear heq.
-        exists (Values.Val.cmp Integers.Cgt (Values.Vint (Integers.Int.repr n))
-                               (Values.Vint (Integers.Int.repr n0))).
-        { repeat split;auto.
-          - eapply gt_ok with n n0;auto.
-          - econstructor.
-            { apply h_CM_eval_expr. }
-            { apply h_CM_eval_expr0. }
-            simpl in *.
-            !invclear heq_transl_value.
-            !invclear heq_transl_value0.
-            reflexivity. }
-
-      * repeat match goal with | H:?X <> ?Y |-_ => clear H end.
-        destruct v1;try discriminate; destruct v2;try discriminate;simpl in heq.
-        !invclear heq.
-        exists (Values.Val.cmp Integers.Cge (Values.Vint (Integers.Int.repr n))
-                               (Values.Vint (Integers.Int.repr n0))).
-        { repeat split;auto.
-          - eapply ge_ok with n n0;auto.
-          - econstructor.
-            { apply h_CM_eval_expr. }
-            { apply h_CM_eval_expr0. }
-            simpl in *.
-            !invclear heq_transl_value.
-            !invclear heq_transl_value0.
-            reflexivity. }
-
-  - inversion heq0.
-  - destruct (transl_expr st CE e) eqn:heq_transl_expr1;simpl in heq;(try now inversion heq).
-    2: destruct op;discriminate.
-    specialize (IHh_eval_expr v e0 sp (refl_equal (Normal v)) (refl_equal (OK e0)) h_match_env).
-    decomp IHh_eval_expr. clear IHh_eval_expr. rename H2 into hmatch.
-    !invclear h_do_rtc_unop;simpl in *; !invclear heq.
-    + try !invclear h_overf_check.
-      exists (Values.Vint (Integers.Int.repr v')).
-      repeat (split;auto).
-      * apply eval_Eunop with x;auto.
-        simpl.
-        destruct v;try discriminate.
-        simpl in heq_transl_value.
-        apply f_equal.
-        !invclear heq_transl_value.
-        eapply unaryneg_ok with n;auto.
-      * constructor.
-        assumption.
-    + destruct op;try discriminate.
-      * elim hneq;reflexivity.
-      * clear hneq.
-        simpl in *.
-        !invclear heq.
-        exists (Values.Val.notbool x).
-        { repeat split.
-          - eapply not_ok;eauto.
-          - econstructor; eauto.
-            econstructor; eauto.
-            econstructor; eauto.
-            simpl.
-            destruct v;simpl in *;try discriminate.
-            clear heq0 hmatch.
-            destruct n;simpl in *.
-            + !invclear heq_transl_value.
-              vm_compute.
-              reflexivity.
-            + !invclear heq_transl_value.
-              vm_compute.
-              reflexivity.
-          - destruct v;simpl in *;try discriminate.
-            !invclear heq0.
-            trivial. }
-Qed.
+          eauto.
+        * constructor.
+          simpl.
+          eauto.
+        * vm_compute.
+          reflexivity. }
+    * { econstructor;simpl in *;eauto.
+        * eapply IHr ;eauto.
+          simpl.
+          eauto.
+        * constructor.
+          simpl.
+          eauto.
+        * vm_compute.
+          reflexivity. }
+Qed.  
+  
 
 
 
 
 Lemma transl_stmt_ok :
-  forall stbl CE locenv g m (s:STACK.stack) (stm:statement)
-         (stm':Cminor.stmt) (s':STACK.stack) sp f,
-    eval_stmt stbl s stm (Normal s') ->
-    match_env stbl s CE sp locenv ->
+  forall stbl CE  (stm:statement) (stm':Cminor.stmt),
     transl_stmt stbl CE stm = (OK stm') ->
-    exists tr g' m' o,
-    Cminor.exec_stmt g f sp locenv m stm' tr g' m' o.
+    forall locenv g m (s:STACK.stack)
+           (s':STACK.stack) sp f,
+      eval_stmt stbl s stm (Normal s') ->
+      match_env stbl s CE sp locenv ->
+      exists tr locenv' m' o,
+        (Cminor.exec_stmt g f sp locenv m stm' tr locenv' m' o
+         /\ match_env stbl s' CE sp locenv').
 Proof.
-  intros until f.
+  intros until stm.
+  rewrite <- transl_stmt_ok.
+  !functional induction (function_utils.transl_stmt stbl CE stm);simpl;!intros;eq_same_clear;subst;simpl in *.
+  - eexists. eexists. eexists. eexists. split.
+    + econstructor.
+    + !invclear h_eval_stmt.
+      assumption.
+  - xxx il faut faire des inversion ici avant les eexists. eexists. eexists. eexists. eexists. split.
+    + !invclear h_eval_stmt.
+      econstructor;eauto.
+      Focus 2.
+      assert (h:=transl_expr_ok _ _ _ _ heq1 locenv g m _ _ _ h_eval_expr h_match_env).
+      apply (h v0).
+      * econstructor;eauto.
+        assert (h:=transl_expr_ok _ _ _ _ heq1 locenv g m _ _ _ h_eval_expr h_match_env).
+        admit.
+
   intro h_eval_stmt.
   remember (Normal s') as hN.
   revert HeqhN.
@@ -1373,6 +1039,11 @@ Proof.
   - destruct (transl_expr st CE e) eqn:heq_tr_expr;simpl in heq.
     +
       { eapply transl_expr_ok in heq_tr_expr.
+        - destruct (transl_name st CE x) eqn:heq_tr_name;simpl in heq.
+
+
+
+        
         (* bug of renaming tactic *)
         - idall.
           (*actuall heq_tr_expr is not changed into (id ...) so unid heq_tr_expr fails *)
