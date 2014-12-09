@@ -829,9 +829,10 @@ Qed.
    We also put well-typing constraints on the stack wrt symbol
    table. *)
 Record match_env (st:symboltable) (s: semantics.STACK.stack)
-       (CE:compilenv) (sp:Values.val) (locenv: Cminor.env): Prop :=
+       (CE:compilenv) (sp:Values.val) (locenv: Cminor.env)
+       (g:genv)(m:Memory.Mem.mem): Prop :=
   mk_match_env {
-      me_vars:
+(*      me_vars:
         forall id astnum v typeofv,
           STACK.fetchG id s = Some v ->
           fetch_var_type id st = OK typeofv ->
@@ -843,11 +844,10 @@ Record match_env (st:symboltable) (s: semantics.STACK.stack)
             transl_variable st CE astnum id = OK e' /\
             make_load e' typeofv' = OK ld /\
             forall (g:genv)(m:Memory.Mem.mem),
-              Cminor.eval_expr g sp locenv m ld v';
+              Cminor.eval_expr g sp locenv m ld v';*)
 
       me_transl:
-        forall (g:genv)(m:Memory.Mem.mem)
-               nme v addrof_nme load_addrof_nme typ_nme cm_typ_nme v',
+        forall nme v addrof_nme load_addrof_nme typ_nme cm_typ_nme v',
           eval_name st s nme (Normal v) ->
           type_of_name st nme = OK typ_nme ->
           transl_name st CE nme = OK addrof_nme ->
@@ -864,7 +864,7 @@ Record match_env (st:symboltable) (s: semantics.STACK.stack)
 (** Hypothesis renaming stuff *)
 Ltac rename_hyp3 th :=
   match th with
-    | match_env _ _ _ _ _ => fresh "h_match_env"
+    | match_env _ _ _ _ _ _ _ => fresh "h_match_env"
     | _ => rename_hyp2 th
   end.
 
@@ -879,7 +879,7 @@ Lemma transl_name_ok :
     type_of_name stbl nme = OK typeof_nme ->
     transl_type stbl typeof_nme = OK typeof_nme' ->
     transl_name stbl CE nme = OK e' ->
-    match_env stbl s CE sp locenv ->
+    match_env stbl s CE sp locenv g m ->
     make_load e' typeof_nme' = OK e'' ->
     transl_value v = OK v' ->
     Cminor.eval_expr g sp locenv m e'' v'.
@@ -888,12 +888,12 @@ Proof.
   intro h_eval_name.
   remember (Normal v) as Nv.
   revert HeqNv.
-  revert v e' sp v'.
+  revert v e' sp v' g m.
   !induction h_eval_name;simpl;!intros; subst;try discriminate.
   !invclear heq.
   !destruct h_match_env.
   rename x into i.
-  specialize (me_transl0 g m (E_Identifier ast_num i) v0 e' e''
+  specialize (me_transl0 (E_Identifier ast_num i) v0 e' e''
                          typeof_nme typeof_nme' v').
   (* TODO: automate this or make it disappear. *)
   !! (fun _ => assert (eval_name st s (E_Identifier ast_num i) (Normal v0))) g.
@@ -913,7 +913,7 @@ Lemma transl_expr_ok :
     forall locenv g m (s:STACK.stack)  (v:value)
          (sp: Values.val),
     eval_expr stbl s e (Normal v) ->
-    match_env stbl s CE sp locenv ->
+    match_env stbl s CE sp locenv g m ->
     forall v',
     transl_value v = OK v' ->
     Cminor.eval_expr g sp locenv m e' v'.
@@ -938,9 +938,9 @@ Proof.
     + apply eval_Ebinop with v1' v2';auto.
       eapply binary_operator_ok;eauto.
       * eapply eval_expr_overf2;eauto.
-        eapply h_match_env.(me_overflow stbl s CE sp locenv).
+        eapply h_match_env.(me_overflow stbl s CE sp locenv g m).
       * eapply eval_expr_overf2;eauto.
-        eapply h_match_env.(me_overflow stbl s CE sp locenv).
+        eapply h_match_env.(me_overflow stbl s CE sp locenv g m).
     + functional inversion heq_transl_value_v2;subst.
       * admit. (* Arrays *)
       * admit. (* Records *)
@@ -997,31 +997,148 @@ Proof.
           eauto.
         * vm_compute.
           reflexivity. }
-Qed.  
-  
+Qed.
 
 
-
-
+Require Import Utf8.
 Lemma transl_stmt_ok :
   forall stbl CE  (stm:statement) (stm':Cminor.stmt),
     transl_stmt stbl CE stm = (OK stm') ->
     forall locenv g m (s:STACK.stack)
            (s':STACK.stack) sp f,
       eval_stmt stbl s stm (Normal s') ->
-      match_env stbl s CE sp locenv ->
-      exists tr locenv' m' o,
-        (Cminor.exec_stmt g f sp locenv m stm' tr locenv' m' o
-         /\ match_env stbl s' CE sp locenv').
+      match_env stbl s CE sp locenv g m ->
+      forall tr locenv' m' o,
+        Cminor.exec_stmt g f sp locenv m stm' tr locenv' m' o
+        ->  match_env stbl s' CE sp locenv' g m'.
 Proof.
   intros until stm.
   rewrite <- transl_stmt_ok.
   !functional induction (function_utils.transl_stmt stbl CE stm);simpl;!intros;eq_same_clear;subst;simpl in *.
+  - !invclear h_eval_stmt.
+    !invclear H2.
+    assumption.
+  - rename e0 into e_init.
+    rename x into e_init'.
+    rename x0 into nme'.
+    rename s' into new_s.
+    rename x1 into chnk_nme.
+    !inversion h_eval_stmt;rename h_eval_stmt into _____h_eval_stmt.
+    + !invclear H2.
+      constructor.
+      * !intros.
+        destruct h_match_env.
+        clear me_overflow0.
+        assert (Cminor.eval_expr g sp locenv' m load_addrof_nme v').
+        eapply me_transl0;eauto.
+        
+        specialize (me_transl0 nme0 v1 ).
+        
+        eapply transl_expr_ok with (stbl := stbl)
+                                     (CE:=CE)
+                                     (e:=(E_Name 0%nat nme)).
+        Focus 4.
+        apply heq_transl_value.
+        eapply 
+        apply heq_make_load.
+        assert (h := transl_expr_ok _ _ _ _ heq1 locenv' g m _ _ _
+                                    h_eval_expr h_match_env).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   - eexists. eexists. eexists. eexists. split.
     + econstructor.
     + !invclear h_eval_stmt.
       assumption.
-  - xxx il faut faire des inversion ici avant les eexists. eexists. eexists. eexists. eexists. split.
+  - rename e0 into e_init.
+    rename x into e_init'.
+    rename x0 into nme'.
+    rename s' into new_s.
+    rename x1 into chnk_nme.
+    assert (h_nme: exists v_nme, eval_name stbl s nme (Normal v_nme)).
+    { admit. } (* well formedness/typedness *)
+    !destruct h_nme. rename x into v_nme.
+    !inversion h_eval_stmt.
+    rename v into v_e_init.
+    rename t into typeof_nme.
+    + assert (h := transl_expr_ok _ _ _ _ heq1 locenv g m _ _ _
+                                  h_eval_expr h_match_env).
+      destruct h_match_env.
+      specialize (me_transl0 nme v_nme nme').
+      destruct (transl_type stbl typeof_nme) eqn:heq_trsl_t.
+      * { destruct (make_load nme' t) eqn:heq_mkeld.
+          - specialize (me_transl0 e typeof_nme t).
+            destruct (transl_value v_e_init) as [v_e_init'|errmsg] eqn:heq_trv.
+            + specialize (h v_e_init' eq_refl).
+              specialize (me_transl0 v_e_init' h_eval_name).
+              assert (type_of_name stbl nme = OK typeof_nme).
+              { unfold type_of_name.
+                unfold symboltable.fetch_exp_type in heq_fetch_exp_type.
+                unfold fetch_exp_type in heq_fetch_exp_type.
+                destruct nme;try now (simpl in *;discriminate).
+                unfold fetch_var_type.
+                simpl in heq_fetch_exp_type.
+                unfold fetch_var.
+                admit. (* correction of type information in the ast *)
+              }
+              specialize (me_transl0 H heq0 heq_trsl_t heq_mkeld).
+            
+    + 
+      exists Events.E0.
+      exists locenv.
+      destruct (transl_value v_e_init) as [v_e_init'|errmsg] eqn:heq_trv.
+      * specialize (h v_e_init' eq_refl).
+
+        destruct h_match_env.
+        clear me_overflow0.
+        specialize (me_transl0 nme).
+        assert 
+
+        destruct (eval_expr stbl s nm' ).
+
+
+      Check (Memory.Mem.storev chnk_nme m  v).
+
+        specialize (me_transl0 g m nme).
+
+        destruct (Cminor.eval_expr g sp locenv m x0 ) eqn:heq_trv.
+
+
+      destruct (transl_value v) eqn:heq_trv.
+      assert (h':=transl_name_ok _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ heq0).
+      destruct (transl_value v) eqn:heq_trv.
+      
+      
+      destruct (Memory.Mem.storev x1 m v v).
+      assert (h':=transl_name_ok _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ heq0).
+      destruct (transl_value v).
+      * specialize (h v0 eq_refl).
+        eexists. eexists. eexists. eexists.
+        { split.
+          - econstructor.
+            2: apply h.
+            apply h.
+      admit.
+    + assert (h:=transl_expr_ok _ _ _ _ heq1 locenv g m _ _ _ h_eval_expr h_match_env).
+     
+      econstructor;eauto.
+    Focus 2.
+    assert (h:=transl_expr_ok _ _ _ _ heq1 locenv g m _ _ _ h_eval_expr h_match_env).
+      
+
+      eexists. eexists. eexists. eexists. eexists. split.
     + !invclear h_eval_stmt.
       econstructor;eauto.
       Focus 2.
