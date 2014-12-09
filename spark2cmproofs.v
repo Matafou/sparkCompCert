@@ -123,6 +123,8 @@ Ltac rename_hyp1 th :=
     | do_range_check _ _ _ _ => fresh "h_do_range_check"
     | do_run_time_check_on_binop _ _ _ (Run_Time_Error _) => fresh "h_do_rtc_binop_RTE"
     | do_run_time_check_on_binop _ _ _ _ => fresh "h_do_rtc_binop"
+    | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ None  => fresh "h_exec_stmt_None"
+    | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ _  => fresh "h_exec_stmt"
     | Cminor.eval_constant _ _ _ = (Some _)  => fresh "h_eval_constant"
     | Cminor.eval_constant _ _ _ = None  => fresh "h_eval_constant_None"
     | eval_literal _ (Run_Time_Error _)  => fresh "h_eval_literal_RE"
@@ -131,6 +133,8 @@ Ltac rename_hyp1 th :=
     | eval_stmt _ _ _ _ => fresh "h_eval_stmt"
     | transl_stmt _ _ _ = Error _ => fresh "heq_transl_stmt_ERR"
     | transl_stmt _ _ _ = _ => fresh "heq_transl_stmt"
+    | transl_name _ _ _ = Error _ => fresh "heq_transl_name_ERR"
+    | transl_name _ _ _ = _ => fresh "heq_transl_name"
     | Cminor.eval_expr _ _ _ _ _ _ => fresh "h_CM_eval_expr"
     | transl_value _ = Error _ => fresh "heq_transl_value_RE"
     | transl_value _ = _ => fresh "heq_transl_value"
@@ -832,20 +836,7 @@ Record match_env (st:symboltable) (s: semantics.STACK.stack)
        (CE:compilenv) (sp:Values.val) (locenv: Cminor.env)
        (g:genv)(m:Memory.Mem.mem): Prop :=
   mk_match_env {
-(*      me_vars:
-        forall id astnum v typeofv,
-          STACK.fetchG id s = Some v ->
-          fetch_var_type id st = OK typeofv ->
-          exists e' v' rtypeofv typeofv' ld,
-            reduce_type st typeofv max_recursivity = OK rtypeofv /\
-            concrete_type_of_value v = OK rtypeofv /\ (* stack is well typed wrt st *)
-            transl_value v = OK v' /\
-            transl_type st typeofv = OK typeofv' /\
-            transl_variable st CE astnum id = OK e' /\
-            make_load e' typeofv' = OK ld /\
-            forall (g:genv)(m:Memory.Mem.mem),
-              Cminor.eval_expr g sp locenv m ld v';*)
-
+      
       me_transl:
         forall nme v addrof_nme load_addrof_nme typ_nme cm_typ_nme v',
           eval_name st s nme (Normal v) ->
@@ -857,7 +848,17 @@ Record match_env (st:symboltable) (s: semantics.STACK.stack)
           Cminor.eval_expr g sp locenv m load_addrof_nme v';
 
       me_overflow: safe_stack s }.
-
+(* 
+      me_transl:
+        forall astnum id e_id vaddr_id chunk,
+          compute_chnk st (E_Identifier astnum id) = OK chunk
+          -> transl_variable st CE astnum id  = OK e_id
+          -> Cminor.eval_expr g sp locenv m e_id vaddr_id
+          -> forall v v',
+               STACK.fetchG id s = Some v
+               -> transl_value v = OK v'
+               -> Memory.Mem.loadv chunk m vaddr_id = Some v' ;
+ *)
 
 
 
@@ -998,9 +999,18 @@ Proof.
         * vm_compute.
           reflexivity. }
 Qed.
+(** Hypothesis renaming stuff *)
+Ltac rename_hyp4 th :=
+  match th with
+    | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ None  => fresh "h_exec_stmt_None"
+    | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ _  => fresh "h_exec_stmt"
+    | _ => rename_hyp3 th
+  end.
 
+Ltac rename_hyp ::= rename_hyp4.
 
 Require Import Utf8.
+Set Printing Width 90.
 Lemma transl_stmt_ok :
   forall stbl CE  (stm:statement) (stm':Cminor.stmt),
     transl_stmt stbl CE stm = (OK stm') ->
@@ -1014,17 +1024,82 @@ Lemma transl_stmt_ok :
 Proof.
   intros until stm.
   rewrite <- transl_stmt_ok.
-  !functional induction (function_utils.transl_stmt stbl CE stm);simpl;!intros;eq_same_clear;subst;simpl in *.
+  !functional induction (function_utils.transl_stmt stbl CE stm)
+  ;simpl;!intros;eq_same_clear;subst;simpl in *;try discriminate.
   - !invclear h_eval_stmt.
-    !invclear H2.
+    !invclear h_exec_stmt.
     assumption.
-  - rename e0 into e_init.
+  - admit.
+  - !invclear h_exec_stmt.
+    destruct b.
+    + !inversion H11.
+      Focus 2.
+      rewrite <- function_utils.transl_expr_ok in heq2.
+      eapply IHr;eauto.
+      rewrite <- function_utils.transl_expr_ok in heq2.
+      functional inversion heq2;subst;simpl in *.
+      inversion h_eval_stmt;subst.
+      * assumption.
+      * !inversion h_CM_eval_expr;simpl in *;eq_same_clear.
+    
+
+
+
+xxxx
+
+    rename e0 into e_init.
     rename x into e_init'.
     rename x0 into nme'.
     rename s' into new_s.
     rename x1 into chnk_nme.
     !inversion h_eval_stmt;rename h_eval_stmt into _____h_eval_stmt.
-    + !invclear H2.
+    + !inversion h_exec_stmt;rename h_exec_stmt into _____h_exec_stmt.
+      rename v into v_e_init.
+      rename v0 into v_e_init'.
+
+
+      Lemma env_update_ok :
+        forall stbl s CE sp locenv g m new_s nme nme' locenv' m' vaddr v v' chnk_nme,
+          match_env stbl s CE sp locenv g m
+          -> compute_chnk stbl nme = OK chnk_nme
+          -> transl_name stbl CE nme = OK nme'
+          -> Cminor.eval_expr g sp locenv m nme' vaddr 
+          -> storeUpdate stbl s nme v (Normal new_s)
+          -> Memory.Mem.storev chnk_nme m vaddr v' = Some m'
+          -> match_env stbl new_s CE sp locenv' g m'.
+      Proof.
+        !intros.
+        constructor.
+        - !intros.
+          destruct (name_eq_dec nme nme0).
+          
+          unfold make_load in heq_make_load.
+          destruct (Ctypes.access_mode cm_typ_nme) eqn:heq_accesstype.
+          + eq_same_clear.
+            destruct (eq_dec )
+            econstructor.
+            
+            * 
+          
+      Qed.
+
+      
+      !inversion h_storeupdate. rename h_storeupdate into ______h_storeupdate; simpl in *.
+      rename x into id_num.
+      { constructor.
+        - !intros.
+          eapply transl_name_ok;eauto.
+          destruct nme.
+          + destruct (NPeano.Nat.eq_dec i id_num);subst.
+            * eapply transl_expr_ok.
+          
+          
+
+      }
+      
+      destruct nme;simpl in *.
+
+      !invclear H2.
       constructor.
       * !intros.
         destruct h_match_env.
