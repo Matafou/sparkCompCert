@@ -263,7 +263,7 @@ Definition error_msg_with_loc stbl astnum (nme:nat) :=
     environment [CE] allows to 1) know the nesting level of the
     current procedure, 2) the nesting level of the procedure defining
     [nme]. From these two numbers we generate the right number of
-    Loads to access the frame of [nme]. [astnum] is there for error
+    Loads to access the frame of [nme]. [stbl] and [astnum] is there for error
     message only.*)
 Definition transl_variable (stbl:symboltable) (CE:compilenv) astnum (nme:idnum) : res Cminor.expr :=
   match (CompilEnv.fetchG nme CE) with
