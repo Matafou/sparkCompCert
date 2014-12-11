@@ -223,9 +223,6 @@ match Ctypes.access_mode ty_res with
 | Ctypes.By_nothing => Error (msg "spark2compcert.make_load")
 end.
 
-Definition default_attr: Ctypes.attr := {| Ctypes.attr_volatile := false;
-                                           Ctypes.attr_alignas := None |}.
-Definition void_star := (Ctypes.Tpointer Ctypes.Tvoid default_attr).
 
 
 (** [build_loads_ m] returns the expression denoting the mth
@@ -237,7 +234,7 @@ Fixpoint build_loads_ (m:nat) {struct m} : res Cminor.expr :=
     | O => OK (Econst (Oaddrstack (Integers.Int.zero)))
     | S m' =>
       do subloads <- build_loads_ m' ;
-        make_load subloads void_star
+        OK (Eload AST.Mint32 subloads)
   end.
 
 (** [build_loads m n] is the expression denoting the address

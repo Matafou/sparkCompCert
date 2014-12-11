@@ -818,6 +818,46 @@ Proof.
 Qed.
   
 
+(* TRYING A NEW VERSION *)
+
+(*
+Inductive follow_chaining: Values.val -> Memory.Mem.mem -> nat -> Values.val -> Prop :=
+  FC1: forall sp m, follow_chaining sp m 0 sp
+| FC2: forall vsp m lvl vsp' v,
+        Memory.Mem.loadv AST.Mint32 m vsp = Some vsp'
+        -> follow_chaining vsp' m lvl v
+        -> follow_chaining vsp m (S lvl) v.
+
+(** [match_frame sto b ofs m] means that the memory m contains a block
+    at address b, and this block from offset [ofs] matches the spark
+    frame [sto]. *)
+(* FIXME: are we looking at the stack in the wrong direction? *)
+Inductive match_frame:
+  STACK.store -> Values.block -> Integers.Int.int -> Memory.Mem.mem -> Prop :=
+  MF1: forall b ofs m, match_frame nil b ofs m
+| MF2: forall fr b ofs m id vid vid',
+         transl_value vid = OK vid'
+         -> Memory.Mem.load AST.Mint32 m b ofs = Some vid'
+         -> match_frame fr b (Integers.Int.add (Integers.Int.repr ofs)
+                                               (Integers.Int.repr 4)) m
+         -> match_frame ((id,vid)::fr) b (Integers.Int.repr ofs) m.
+
+(** [match_env sta b m] means that the chained Cminor stack at address
+    [b] in memory m ([b] is the adress of the bottom of the top stack)
+    matches spark stack [s]. *)
+Inductive match_env: STACK.stack -> Values.block -> Memory.Mem.mem -> Prop :=
+  ME1: forall b m, match_env nil b m
+| ME2: forall s sto (lvl:STACK.scope_level) fr b b' m,
+         match_frame fr b (Integers.Int.repr 4) m
+         -> match_env s b' m
+         -> match_env ((lvl,sto)::s) b m.
+*)
+
+
+
+
+
+
 
 
 (* See CminorgenProof.v@205. *)
