@@ -319,8 +319,13 @@ Notation "'do' X <- A ; B" :=
 
 
 (** [transl_expr stbl CE e] returns the code that evaluates to the
-    value of expression [e]. *)
-Fixpoint transl_expr (stbl:symboltable) (CE:compilenv) (e:expression): res Cminor.expr :=
+    value of expression [e]. HACK: I don't want to use Function there
+    because I want to build the scheme for a version of this function
+    where bind and bind2 are unfolded. I use Functional Scheme later,
+    BUT to allow Functional Scheme to work correctly I need to tweak
+    the name of this definition. Hence the fix here instead of
+    Fixpoint. *)
+Definition transl_expr_aux := fix transl_expr (stbl:symboltable) (CE:compilenv) (e:expression): res Cminor.expr :=
   match e with
     | E_Literal _ lit => OK (Econst (transl_literal lit))
     | E_Name _ (E_Identifier astnum id) =>
@@ -367,6 +372,9 @@ Fixpoint transl_expr (stbl:symboltable) (CE:compilenv) (e:expression): res Cmino
           | _ => Error (msg "transl_expr: ")
         end*)
   end.
+
+Definition transl_expr := Eval lazy beta delta [transl_expr_aux bind bind2] in transl_expr_aux.
+Functional Scheme transl_expr_ind := Induction for transl_expr Sort Prop.
 
 (** [transl_name stbl CE nme] returns the code that evaluates to the
     *address* where the value of name [nme] is stored. *)
