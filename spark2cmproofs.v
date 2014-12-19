@@ -105,7 +105,7 @@ Definition type_of_name (stbl:symboltable) (nme:name): res type :=
 
 
 (** Hypothesis renaming stuff *)
-Ltac rename_hyp1 th :=
+Ltac rename_hyp1 h th :=
   match th with
     | fetch_var_type _ _ = Error _ => fresh "heq_fetch_var_type_ERR"
     | fetch_var_type _ _ = _ => fresh "heq_fetch_var_type"
@@ -198,15 +198,6 @@ Ltac remove_refl :=
     match goal with
       | H: ?e = ?e |- _ => clear H
     end.
-
-Ltac eq_same e :=
-  match goal with
-    | H: e = OK ?t1 , H': e = OK ?t2 |- _ => rewrite H in H'; !inversion H'
-  end;
-  match goal with
-      | H: ?e = ?e |- _ => clear H
-  end.
-
 
 Ltac eq_same_clear :=
   repeat progress
@@ -322,10 +313,10 @@ Definition check_overflow_value (v:value) :=
     | RecordV r => True (* FIXME *)
   end.
 
-Ltac rename_hyp2 th :=
+Ltac rename_hyp2 h th :=
   match th with
     | check_overflow_value _ => fresh "h_check_overf"
-    | _ => rename_hyp1 th
+    | _ => rename_hyp1 h th
   end.
 
 Ltac rename_hyp ::= rename_hyp2.
@@ -745,10 +736,10 @@ Definition safe_stack s :=
 
 
 (** Hypothesis renaming stuff *)
-Ltac rename_hyp2' th :=
+Ltac rename_hyp2' h th :=
   match th with
     | safe_stack _ => fresh "h_safe_stack"
-    | _ => rename_hyp2 th
+    | _ => rename_hyp2 h th
   end.
 
 Ltac rename_hyp ::= rename_hyp2'.
@@ -820,7 +811,7 @@ Qed.
 
 (* TRYING A NEW VERSION *)
 
-(*
+
 Inductive follow_chaining: Values.val -> Memory.Mem.mem -> nat -> Values.val -> Prop :=
   FC1: forall sp m, follow_chaining sp m 0 sp
 | FC2: forall vsp m lvl vsp' v,
@@ -828,30 +819,30 @@ Inductive follow_chaining: Values.val -> Memory.Mem.mem -> nat -> Values.val -> 
         -> follow_chaining vsp' m lvl v
         -> follow_chaining vsp m (S lvl) v.
 
-(** [match_frame sto b ofs m] means that the memory m contains a block
+(** [eq_frame sto b ofs m] means that the memory m contains a block
     at address b, and this block from offset [ofs] matches the spark
     frame [sto]. *)
 (* FIXME: are we looking at the stack in the wrong direction? *)
-Inductive match_frame:
+Inductive eq_frame:
   STACK.store -> Values.block -> Integers.Int.int -> Memory.Mem.mem -> Prop :=
-  MF1: forall b ofs m, match_frame nil b ofs m
-| MF2: forall fr b ofs m id vid vid',
+  MF1: forall spb ofs m, eq_frame nil spb ofs m
+| MF2: forall fr spb ofs m id vid vid',
          transl_value vid = OK vid'
-         -> Memory.Mem.load AST.Mint32 m b ofs = Some vid'
-         -> match_frame fr b (Integers.Int.add (Integers.Int.repr ofs)
+         -> Memory.Mem.load AST.Mint32 m spb ofs = Some vid'
+         -> eq_frame fr spb (Integers.Int.add (Integers.Int.repr ofs)
                                                (Integers.Int.repr 4)) m
-         -> match_frame ((id,vid)::fr) b (Integers.Int.repr ofs) m.
+         -> eq_frame ((id,vid)::fr) spb (Integers.Int.repr ofs) m.
 
 (** [match_env sta b m] means that the chained Cminor stack at address
     [b] in memory m ([b] is the adress of the bottom of the top stack)
     matches spark stack [s]. *)
-Inductive match_env: STACK.stack -> Values.block -> Memory.Mem.mem -> Prop :=
-  ME1: forall b m, match_env nil b m
-| ME2: forall s sto (lvl:STACK.scope_level) fr b b' m,
-         match_frame fr b (Integers.Int.repr 4) m
-         -> match_env s b' m
-         -> match_env ((lvl,sto)::s) b m.
-*)
+Inductive eq_env: STACK.stack -> Values.block -> Memory.Mem.mem -> Prop :=
+  ME1: forall spb m, eq_env nil spb m
+| ME2: forall s sto (lvl:STACK.scope_level) fr spb spb' m,
+         eq_frame fr spb (Integers.Int.repr 4) m
+         -> eq_env s spb' m
+         -> eq_env ((lvl,sto)::s) spb m.
+
 
 
 
@@ -872,12 +863,19 @@ Inductive match_env: STACK.stack -> Values.block -> Memory.Mem.mem -> Prop :=
 
    We also put well-typing constraints on the stack wrt symbol
    table. *)
-Record match_env (st:symboltable) (s: semantics.STACK.stack)
-       (CE:compilenv) (sp:Values.val) (locenv: Cminor.env)
-       (g:genv)(m:Memory.Mem.mem): Prop :=
+Record match_env (*st:symboltable*) (s: semantics.STACK.stack)
+       (*CE:compilenv*) (spb:Values.block) (ofs:Integers.Int.int)
+       (*locenv: Cminor.env*) (*g:genv*)(m:Memory.Mem.mem): Prop :=
   mk_match_env {
-      
+      me_eq_stack: eq_env s spb m;
+(*       me_eq_locenv: local variable never change in our semantic anyway; *)
+      me_overflow: safe_stack s }.
+
+
+
+Axiom
       me_transl:
+        forall st s CE spb ofs locenv g m,
         forall nme v addrof_nme load_addrof_nme typ_nme cm_typ_nme v',
           eval_name st s nme (Normal v) ->
           type_of_name st nme = OK typ_nme ->
@@ -885,28 +883,15 @@ Record match_env (st:symboltable) (s: semantics.STACK.stack)
           transl_type st typ_nme = OK cm_typ_nme ->
           make_load addrof_nme cm_typ_nme = OK load_addrof_nme ->
           transl_value v = OK v' ->
-          Cminor.eval_expr g sp locenv m load_addrof_nme v';
-
-      me_overflow: safe_stack s }.
-(* 
-      me_transl:
-        forall astnum id e_id vaddr_id chunk,
-          compute_chnk st (E_Identifier astnum id) = OK chunk
-          -> transl_variable st CE astnum id  = OK e_id
-          -> Cminor.eval_expr g sp locenv m e_id vaddr_id
-          -> forall v v',
-               STACK.fetchG id s = Some v
-               -> transl_value v = OK v'
-               -> Memory.Mem.loadv chunk m vaddr_id = Some v' ;
- *)
+          Cminor.eval_expr g (Values.Vptr spb ofs) locenv m load_addrof_nme v'.
 
 
 
 (** Hypothesis renaming stuff *)
-Ltac rename_hyp3 th :=
+Ltac rename_hyp3 h th :=
   match th with
-    | match_env _ _ _ _ _ _ _ => fresh "h_match_env"
-    | _ => rename_hyp2 th
+    | match_env _ _ _ _ => fresh "h_match_env"
+    | _ => rename_hyp2 h th
   end.
 
 Ltac rename_hyp ::= rename_hyp3.
@@ -914,74 +899,85 @@ Ltac rename_hyp ::= rename_hyp3.
 
 
 Lemma transl_name_ok :
-  forall stbl CE locenv g m (s:STACK.stack) (nme:name) (v:value) (e' e'':Cminor.expr)
-         typeof_nme typeof_nme' (sp: Values.val) v',
+  forall stbl (s:STACK.stack) (nme:name) (v:value),
     eval_name stbl s nme (Normal v) ->
-    type_of_name stbl nme = OK typeof_nme ->
-    transl_type stbl typeof_nme = OK typeof_nme' ->
-    transl_name stbl CE nme = OK e' ->
-    match_env stbl s CE sp locenv g m ->
-    make_load e' typeof_nme' = OK e'' ->
-    transl_value v = OK v' ->
-    Cminor.eval_expr g sp locenv m e'' v'.
+    forall CE locenv g m  (e' e'':Cminor.expr)
+           typeof_nme typeof_nme' spb ofs v',
+      type_of_name stbl nme = OK typeof_nme ->
+      transl_type stbl typeof_nme = OK typeof_nme' ->
+      transl_name stbl CE nme = OK e' ->
+      match_env s spb ofs m ->
+      make_load e' typeof_nme' = OK e'' ->
+      transl_value v = OK v' ->
+      Cminor.eval_expr g (Values.Vptr spb ofs) locenv m e'' v'.
 Proof.
-  intros until v'.
+  intros until v.
   intro h_eval_name.
   remember (Normal v) as Nv.
   revert HeqNv.
-  revert v e' sp v' g m.
   !induction h_eval_name;simpl;!intros; subst;try discriminate.
   !invclear heq.
   !destruct h_match_env.
   rename x into i.
-  specialize (me_transl0 (E_Identifier ast_num i) v0 e' e''
-                         typeof_nme typeof_nme' v').
-  (* TODO: automate this or make it disappear. *)
-  !! (fun _ => assert (eval_name st s (E_Identifier ast_num i) (Normal v0))) g.
+  rename v into val_i.
+  specialize (me_transl st s CE spb ofs locenv g m (E_Identifier ast_num i) val_i e' e''
+                        typeof_nme typeof_nme' v').
+  intro h_me_transl.
+  !! (fun _ => assert (eval_name st s (E_Identifier ast_num i) (Normal val_i))) g.
   { constructor.
     assumption. }
-  simpl in me_transl0.
-  specialize (me_transl0 h_eval_name heq_fetch_var_type heq_transl_variable
+  specialize (h_me_transl h_eval_name heq_fetch_var_type heq_transl_variable
                          heq_transl_type heq_make_load heq_transl_value).
   repeat split;auto.
 Qed.
 
-
+Ltac rename_hyp4 h th :=
+  match reverse goal with
+    | H: fetch_var_type ?X _ = OK h |- _  => (fresh "type_" X)
+    | H: id (fetch_var_type ?X _ = OK h) |- _ => (fresh "type_" X)
+    | H: (value_at_addr _ _ ?X = OK h) |- _ => fresh "val_at_" X
+    | H: id (value_at_addr _ _ ?X = OK h) |- _ => fresh "val_at_" X
+    | H: transl_variable _ _ _ ?X = OK h |- _ => fresh X "'"
+    | H: id (transl_variable _ _ _ ?X = OK h) |- _ => fresh X "'"
+    | H: transl_value ?X = OK h |- _ => fresh X "'"
+    | H: id (transl_value ?X = OK h) |- _ => fresh X "'"
+    | _ => rename_hyp3 h th
+  end.
+Ltac rename_hyp ::= rename_hyp4.
 
 Lemma transl_expr_ok :
   forall stbl CE (e:expression) (e':Cminor.expr),
     transl_expr stbl CE e = OK e' ->
     forall locenv g m (s:STACK.stack)  (v:value)
-         (sp: Values.val),
+         (spb: Values.block) (ofs:Integers.Int.int),
     eval_expr stbl s e (Normal v) ->
-    match_env stbl s CE sp locenv g m ->
+    match_env s spb ofs m ->
     forall v',
     transl_value v = OK v' ->
-    Cminor.eval_expr g sp locenv m e' v'.
+    Cminor.eval_expr g (Values.Vptr spb ofs) locenv m e' v'.
 Proof.
   intros until e.
-  rewrite <- function_utils.transl_expr_ok.
-  !functional induction (function_utils.transl_expr stbl CE e);try discriminate;simpl;!intros;
+  !functional induction (transl_expr stbl CE e);try discriminate;simpl; !intros;
   !invclear h_eval_expr;eq_same_clear.
-  - destruct (transl_literal_ok g lit v h_eval_literal sp) as [vv h_and].
+  - destruct (transl_literal_ok g lit v h_eval_literal (Values.Vptr spb ofs)) as [vv h_and].
     !destruct h_and;eq_same_clear.
     constructor.
     assumption.
-  - rename x0 into t.
+  - rename v'0 into v'.
     unfold value_at_addr in heq.
-    destruct (transl_type stbl t) eqn:heq_transl_type;simpl in *.
+    destruct (transl_type stbl type_id) eqn:heq_transl_type;simpl in *.
     + eapply transl_name_ok;simpl; eauto.
     + discriminate.
-  - specialize (IHr x heq0 locenv g m s v1 sp).
-    specialize (IHr0 x0 heq locenv g m s v2 sp).
+  - specialize (IHr x heq0 locenv g m s v1 spb ofs).
+    specialize (IHr0 x0 heq locenv g m s v2 spb ofs).
     destruct (transl_value v1) as [v1' | errormsg] eqn:heq_transl_value_v1.
     destruct (transl_value v2) as [v2' | errormsg] eqn:heq_transl_value_v2.
     + apply eval_Ebinop with v1' v2';auto.
       eapply binary_operator_ok;eauto.
       * eapply eval_expr_overf2;eauto.
-        eapply h_match_env.(me_overflow stbl s CE sp locenv g m).
+        eapply h_match_env.(me_overflow s spb ofs m).
       * eapply eval_expr_overf2;eauto.
-        eapply h_match_env.(me_overflow stbl s CE sp locenv g m).
+        eapply h_match_env.(me_overflow s spb ofs m).
     + functional inversion heq_transl_value_v2;subst.
       * admit. (* Arrays *)
       * admit. (* Records *)
@@ -998,7 +994,7 @@ Proof.
     rename e0 into e.
     destruct (transl_value v0) eqn:heq_transl_value_v
     ; try discriminate;eq_same_clear;simpl in *.
-    specialize (IHr e' heq0 locenv g m s v0 sp
+    specialize (IHr e' heq0 locenv g m s v0 spb ofs
                     h_eval_expr h_match_env v1 heq_transl_value_v).
     + apply eval_Eunop with (v1:=v1);auto.
       simpl.
@@ -1040,44 +1036,85 @@ Proof.
           reflexivity. }
 Qed.
 (** Hypothesis renaming stuff *)
-Ltac rename_hyp4 th :=
+Ltac rename_hyp5 th :=
   match th with
     | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ None  => fresh "h_exec_stmt_None"
     | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ _  => fresh "h_exec_stmt"
-    | _ => rename_hyp3 th
+    | _ => rename_hyp4 th
   end.
 
-Ltac rename_hyp ::= rename_hyp4.
+Ltac rename_hyp ::= rename_hyp5.
 
+      
 Require Import Utf8.
-Set Printing Width 90.
+Set Printing Width 140.
+
+Axiom det_eval_expr: forall g spb ofs locenv m e v v',
+                       Cminor.eval_expr g (Values.Vptr spb ofs) locenv m e v
+                       -> Cminor.eval_expr g (Values.Vptr spb ofs) locenv m e v'
+                       -> v = v'.
 Lemma transl_stmt_ok :
   forall stbl CE  (stm:statement) (stm':Cminor.stmt),
     transl_stmt stbl CE stm = (OK stm') ->
     forall locenv g m (s:STACK.stack)
-           (s':STACK.stack) sp f,
+           (s':STACK.stack) spb ofs f,
+      match_env s spb ofs m ->
       eval_stmt stbl s stm (Normal s') ->
-      match_env stbl s CE sp locenv g m ->
       forall tr locenv' m' o,
-        Cminor.exec_stmt g f sp locenv m stm' tr locenv' m' o
-        ->  match_env stbl s' CE sp locenv' g m'.
+        Cminor.exec_stmt g f (Values.Vptr spb ofs) locenv m stm' tr locenv' m' o
+        ->  match_env s' spb ofs m'.
 Proof.
   intros until stm.
-  rewrite <- transl_stmt_ok.
-  !functional induction (function_utils.transl_stmt stbl CE stm)
+  !functional induction (transl_stmt stbl CE stm)
   ;simpl;!intros;eq_same_clear;subst;simpl in *;try discriminate.
   - !invclear h_eval_stmt.
     !invclear h_exec_stmt.
     assumption.
   - admit.
-  - !invclear h_exec_stmt.
-    destruct b.
-    + !inversion H11.
-      Focus 2.
-      rewrite <- function_utils.transl_expr_ok in heq2.
-      eapply IHr;eauto.
-      rewrite <- function_utils.transl_expr_ok in heq2.
-      functional inversion heq2;subst;simpl in *.
+  - specialize (IHr _ heq_transl_stmt0 locenv g m s s' spb ofs f h_match_env).
+    specialize (IHr0 _ heq_transl_stmt locenv g m s s' spb ofs f h_match_env).
+    !invclear h_eval_stmt;subst;simpl.
+    + generalize h_eval_expr.
+      intro h_cm_eval_expr.
+      eapply transl_expr_ok
+      with (locenv:=locenv) (g:=g) (v' := (Values.Vint (Integers.Int.repr 1)))
+        in h_cm_eval_expr;eauto.
+      apply IHr with (locenv':=locenv') (o:=o) (tr:=tr);auto.
+      !invclear h_exec_stmt.
+      !inversion h_CM_eval_expr.
+      rewrite (det_eval_expr _ _ _ _ _ _ _ _ h_CM_eval_expr1 h_cm_eval_expr) in *.
+      !invclear h_CM_eval_expr0.
+      simpl in h_eval_constant.
+      eq_same_clear.
+      simpl in heq0.
+      eq_same_clear;simpl in *.
+      inversion H11;simpl in *.
+      vm_compute in H0, H1.
+      subst.
+      assumption.
+    +
+
+
+xxx
+      
+      !invclear h_exec_stmt.
+      !invclear H11;simpl in *.
+      * eapply IHr;eauto.
+
+
+
+      eapply transl_expr_ok in heq;eauto.
+
+    
+    !invclear h_exec_stmt.
+    destruct b;!invclear H11;simpl in *.
+    + eapply IHr;eauto.
+      rewrite negb_true_iff in heq_bool_true.
+      specialize (Integers.Int.eq_spec n Integers.Int.zero).
+      intros heq_n0.
+      rewrite heq_bool_true in heq_n0.
+      
+      functional inversion heq. ;subst;simpl in *.
       inversion h_eval_stmt;subst.
       * assumption.
       * !inversion h_CM_eval_expr;simpl in *;eq_same_clear.

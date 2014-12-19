@@ -5,7 +5,7 @@ Require Import ZArith.
 (** ** The default fallback renaming strategy 
   This is used if the user-defined renaing scheme fails to give a name
   to a hypothesis. [th] is the type of the hypothesis. *)
-Ltac fallback_rename_hyp th :=
+Ltac fallback_rename_hyp h th :=
   match th with
     | true = beq_nat _ _ => fresh "hbeqnat_true"
     | beq_nat _ _ = true => fresh "hbeqnat_true"
@@ -55,7 +55,7 @@ Ltac my_rename_hyp th :=
 And then overwrite the definition of rename_hyp with this:
 
 <<Ltac rename_hyp ::= my_rename_hyp.>> *)
-Ltac rename_hyp ht := fail.
+Ltac rename_hyp h ht := fail.
 
 (** "marks" hypothesis h of the current goal by putting id(..) on top
    of there types. *)
@@ -81,11 +81,11 @@ Ltac rename_norm :=
            | H:_ |- _ =>
              match type of H with
                | id _ => fail 1 (** This hyp is marked, chose another one *)
-               | ?th => let newname := rename_hyp th in
+               | ?th => let newname := rename_hyp H th in
                         rename H into newname;
                         change (id th) in newname
                (* If the custom renaming tactic failed, then try the fallback one *)
-               | ?th => let newname := fallback_rename_hyp th in
+               | ?th => let newname := fallback_rename_hyp H th in
                         rename H into newname;
                         change (id th) in newname
              end

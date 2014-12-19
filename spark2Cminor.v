@@ -373,7 +373,7 @@ Definition transl_expr_aux := fix transl_expr (stbl:symboltable) (CE:compilenv) 
         end*)
   end.
 
-Definition transl_expr := Eval lazy beta delta [transl_expr_aux bind bind2] in transl_expr_aux.
+Definition transl_expr := Eval cbv zeta beta delta [transl_expr_aux bind bind2] in transl_expr_aux.
 Functional Scheme transl_expr_ind := Induction for transl_expr Sort Prop.
 
 (** [transl_name stbl CE nme] returns the code that evaluates to the
@@ -543,7 +543,8 @@ Definition transl_procsig (stbl:symboltable) (pnum:procnum)
 Definition transl_procid := transl_num.
 
 (** Compilation of statements *)
-Fixpoint transl_stmt (stbl:symboltable) (CE:compilenv) (e:statement) {struct e}: res stmt :=
+Definition transl_stmt_aux :=
+  fix transl_stmt (stbl:symboltable) (CE:compilenv) (e:statement) {struct e}: res stmt :=
   match e with
     | S_Null => OK Sskip
     | S_Sequence _ s1 s2 =>
@@ -598,6 +599,10 @@ Fixpoint transl_stmt (stbl:symboltable) (CE:compilenv) (e:statement) {struct e}:
     | S_While_Loop x x0 x1 => Error (msg "transl_stmt:Not yet implemented")
   end.
 
+(* iota neede because of trivial compute_chnk *)
+Definition transl_stmt := Eval cbv iota beta delta [transl_stmt_aux bind bind2] in transl_stmt_aux.
+
+Functional Scheme transl_stmt_ind := Induction for transl_stmt Sort Prop.
 (** * Functions for manipulating the [compilenv]
 
 [compilenv] is the type of the static frame stack we maintain during
