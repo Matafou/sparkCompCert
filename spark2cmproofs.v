@@ -1072,7 +1072,7 @@ Proof.
     !invclear h_exec_stmt.
     assumption.
     (* assignment *)
-  -
+  - xxx
     (* Env is only modified at one place (non aliasing?), therefore
        match_env is true if the new value is added at corresponding
        places. And that should be true. *)
