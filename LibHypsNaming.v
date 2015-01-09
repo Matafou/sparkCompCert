@@ -1,6 +1,20 @@
-Require Import ZArith.
+(**************************************************************************
+* A user-customizable auto-naming scheme for hypothesis in Coq            *
+* Author: Pierre Courtieu                                                 *
+* Distributed under the terms of the LGPL-v3 license                      *
+***************************************************************************)
 
-(** * A general renaming scheme for hypothesis *)
+(** This file is a set of tactical (mainly "!! t" where t is a tactic)
+    and tactics (!intros, !destruct etc), that automatically rename
+    new hypothesis after applying a tactic. The names chosen for
+    hypothesis is programmable using Ltac. See examples in comment
+    below.
+
+    Comments welcome. *)
+
+(* Comment this and the Z-dependent lines below if you don't want
+   ZArith to be loaded *)
+Require Import ZArith.
 
 (** ** The default fallback renaming strategy 
   This is used if the user-defined renaing scheme fails to give a name
@@ -33,28 +47,42 @@ Ltac fallback_rename_hyp h th :=
   end.
 
 (** ** The custom renaming tactic
-  This tactic should be redefined in each module, it should return a
-  fresh name build from the type of (hypothesis) h. It should fail if
-  no name is found, so that the fallback scheme is called.
+  This tactic should be redefined along a coq development, it should
+  return a fresh name build from an hypothesis h and its type th. It
+  should fail if no name is found, so that the fallback scheme is
+  called.
 
-  Typical use:
+  Typical use, in increasing order of complexity, approximatively
+  equivalent to the decreasing order of interest.
 
 <<
-Ltac my_rename_hyp th :=
+Ltac my_rename_hyp h th :=
   match th with
     | (ind1 _ _ _ _) => fresh "h_ind1"
     | (ind2 _ _) => fresh "h_ind2"
     | f1 _ _ = true => fresh "hf_eq_true"
     | f1 _ _ = false => fresh "hf_eq_false"
     | f1 _ _ = _ => fresh "hf_eq"
-    | _ => previously_defined_renaming_tac1 th
+    | ind3 ?h ?x => fresh "h_ind3_" h
+    | ind3 _ ?x => fresh "h_ind3" (* if fresh h failed above *)
+
+    (* Sometime we want to look for the name of another hypothesis to
+       name h. For example here we want to rename hypothesis h into
+       "type_of_foo" if there is some H of type [type_of foo = Some
+       h]. *)
+    | type => (* See if we find something of which h is the type: *)
+              match reverse goal with
+              | H: type_of ?x = Some h => fresh "type_of_" x
+              end
+
+    | _ => previously_defined_renaming_tac1 th (* cumulative with previously defined renaming tactics *)
     | _ => previously_defined_renaming_tac2 th
   end.
->>
 
-And then overwrite the definition of rename_hyp with this:
+(* Overwrite the definition of rename_hyp using the ::= operator. :*)
 
-<<Ltac rename_hyp ::= my_rename_hyp.>> *)
+Ltac rename_hyp ::= my_rename_hyp.>> *)
+
 Ltac rename_hyp h ht := fail.
 
 (** "marks" hypothesis h of the current goal by putting id(..) on top
@@ -114,11 +142,12 @@ Ltac idall :=
 
 (** ** Renaming Tacticals *)
 
-(** <<!! tactic >> (resp. << !! tactic h>>) performs <<tactic>> (resp.
-    <<tactic h>>) and renames all new hypothesis. During the process
-    all previously known hypothesis (but <<h>>) are marked. It may
-    happen that this mark get in the way during the execution of
-    <<tactic>>. We might try to find a better way to mark hypothesis. *)
+(** [!! tactic] (resp. [!! tactic h] and []:: tactic h1 h2) performs
+  [tactic] (resp. [tactic h] and [tactic h1 h2]) and renames all new
+  hypothesis. During the process all previously known hypothesis (but
+  [h], [h1] and [h2]) are marked. It may happen that this mark get in
+  the way during the execution of <<tactic>>. We might try to find a
+  better way to mark hypothesis. *)
 Tactic Notation "!!" tactic3(T) := idall; T ; rename_norm ; unidall.
 Tactic Notation "!!" tactic3(T) constr(h) :=
   idall; unid h; (T h) ; try id_ify h; rename_norm ; unidall.
@@ -128,7 +157,12 @@ Tactic Notation "!!" tactic3(T) constr(h) constr(h2) :=
   try id_ify h;try id_ify h2; rename_norm ; unidall.
 (* end hide *)
 
-(** ** Specific redefinition of usual tactics *)
+(** ** Specific redefinition of usual tactics. *)
+
+(** Note that for example !!induction h doesn not work because
+ "destruct" is not a ltac function by itself, it is already a
+ notation. Hence the special definitions below for this kind of
+ tactics: induction ddestruct inversion etc. *)
 
 (* decompose and ex and or at once. TODO: generalize. *)
 Tactic Notation "decomp" hyp(h) := !! (fun x => decompose [and ex or] x) h.
@@ -139,6 +173,7 @@ Tactic Notation "!functional" "inversion" constr(h) :=
   !! (fun x => functional inversion x) h.
 Tactic Notation "!destruct" constr(h) := !! (destruct h).
 Tactic Notation "!intros" := idall;intros;rename_norm;unidall.
+Tactic Notation "!intro" := idall;intro;rename_norm;unidall.
 Tactic Notation "!inversion" hyp(h) := !! (inversion h;subst).
 Tactic Notation "!invclear" hyp(h) := !! (inversion h;clear h;subst).
 
