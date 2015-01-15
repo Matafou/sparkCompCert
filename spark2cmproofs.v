@@ -7,6 +7,7 @@ Require Import Cminor.
 Require Ctypes.
 Require Import symboltable.
 Require Import semantics.
+Require Import semantics_properties.
 
 Lemma wordsize_ok : wordsize = Integers.Int.wordsize.
 Proof.
@@ -1047,7 +1048,7 @@ Ltac rename_hyp ::= rename_hyp5.
 
       
 Require Import Utf8.
-Set Printing Width 100.
+Set Printing Width 90.
 
 Axiom det_eval_expr: forall g spb ofs locenv m e v v',
                        Cminor.eval_expr g (Values.Vptr spb ofs) locenv m e v
@@ -1072,7 +1073,13 @@ Proof.
     !invclear h_exec_stmt.
     assumption.
     (* assignment *)
-  - xxx
+  - !invclear h_eval_stmt.
+    specialize (storeUpdate_ok_others ).
+
+
+     !invclear h_exec_stmt.
+   
+
     (* Env is only modified at one place (non aliasing?), therefore
        match_env is true if the new value is added at corresponding
        places. And that should be true. *)
