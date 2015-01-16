@@ -32,6 +32,8 @@ Ltac rename_hyp1 h th :=
     | fetches ?x ?sto = _ => fresh "heq_fetches_" sto
     | fetches ?x ?sto = _ => fresh "heq_fetches_" x
     | fetches ?x ?sto = _ => fresh "heq_fetches"
+    | storeUpdate ?stbl ?s ?nme ?x (Normal ?rs) => fresh "h_storeUpd"
+    | storeUpdate ?stbl ?s ?nme ?x ?rs => fresh "h_storeUpd"
   end.
 
 Ltac rename_hyp ::= rename_hyp1.
@@ -220,9 +222,10 @@ Lemma storeUpdate_id_ok_others: forall ast_num stbl stk id v stk',
     forall id', id<>id' -> fetchG id' stk = fetchG id' stk'.
 Proof.
   !intros.
-  !invclear H.
+  !invclear h_storeUpd.
   eapply updateG_ok_others;eauto.
 Qed.
+
 
 (* Should be somewhere in stdlib, but not in ZArith. *)
 Lemma Zeq_bool_neq_iff : forall x y : Z, Zeq_bool x y = false <-> x <> y.
@@ -283,23 +286,15 @@ Proof.
   eapply updateIndexedComp_id_ok_others;eauto.
 Qed.
 
-
-(* xxx
-Lemma storeUpdate_ok_others:
-  forall stbl s nme arrObj (arr:list (arrindex * value)) id v stk',
-    eval_name stbl s nme (Normal arrObj) ->
-    arrayUpdate arrObj i v = Some (ArrayV a1) ->
-    storeUpdate stbl s nme (ArrayV a1) s1 ->
-
-    eval_name stbl s1 nme (Normal arrObj') ->
-    
-    
-    storeUpdate stbl stk (E_Indexed_Component ast_num nme id) v (Normal stk') ->
-    forall id', id<>id' -> fetchG id' stk = fetchG id' stk'.
+(* not true since the storing may change the value of nme itself:
+    { t[2] == 2, thus: t[t[2]] = t[2] = 2 }
+    t[t[2]] := 5;
+    { now t[2] = 5 and thus t[t[2]] = t[5] which is different from 5. }
+ if [t[i]] is initally equal to i, then t[t[i]]
+ *)
+(*Lemma storeUpdate_ok_same:
+  forall stbl s nme x s',
+    storeUpdate stbl s nme x (Normal s') ->
+    eval_name stbl s' nme (Normal x).
 Proof.
-  !intros.
-  !invclear H.
-  eapply updateG_ok_others;eauto.
-Qed.
 *)
-
