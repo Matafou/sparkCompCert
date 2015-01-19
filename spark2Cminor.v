@@ -426,14 +426,16 @@ Definition concrete_type_of_value (v:value): res base_type :=
     | Undefined => Error (msg "concrete_type_of_value: Undefined type not yet implemented!!.")
   end.
 
-Function transl_value (v:value): res Values.val :=
+Variable ERROR_value: Values.val.
+
+Function transl_value (v:value): Values.val :=
   match v with
-    | Int v => OK (Values.Vint (Integers.Int.repr v))
-    | Bool true => OK (Values.Vint (Integers.Int.repr 1))
-    | Bool false => OK (Values.Vint (Integers.Int.repr 0))
-    | ArrayV v =>  Error (msg "transl_value: Arrays types not yet implemented!!.")
-    | RecordV v =>  Error (msg "transl_value: Records types not yet implemented!!.")
-    | Undefined => Error (msg "transl_value: Undefined type not yet implemented!!.")
+    | Int v => Values.Vint (Integers.Int.repr v)
+    | Bool true => Values.Vint (Integers.Int.repr 1)
+    | Bool false => Values.Vint (Integers.Int.repr 0)
+    | ArrayV v => ERROR_value
+    | RecordV v => ERROR_value
+    | Undefined => ERROR_value
   end.
 
 
