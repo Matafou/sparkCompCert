@@ -229,12 +229,12 @@ end.
     indirection of the variable of offset Zero (i.e. the pointer to
     enclosing procedure). This is the way we access to enclosing
     procedure frame. The type of all Load is ( void * ). *)
-Fixpoint build_loads_ (m:nat) {struct m} : res Cminor.expr :=
+Fixpoint build_loads_ (m:nat) {struct m} : Cminor.expr :=
   match m with
-    | O => OK (Econst (Oaddrstack (Integers.Int.zero)))
+    | O => Econst (Oaddrstack (Integers.Int.zero))
     | S m' =>
-      do subloads <- build_loads_ m' ;
-        OK (Eload AST.Mint32 subloads)
+      let subloads := build_loads_ m' in
+      Eload AST.Mint32 subloads
   end.
 
 (** [build_loads m n] is the expression denoting the address
@@ -242,9 +242,8 @@ Fixpoint build_loads_ (m:nat) {struct m} : res Cminor.expr :=
     above the current frame. This is done by following pointers from
     frames to frames. (Load (Load ...)). *)
 Definition build_loads (m:nat) (n:Z) :=
-  do indirections <- build_loads_ m ;
-  OK (Ebinop Oadd indirections (Econst (Ointconst (Integers.Int.repr n)))).
-
+  let indirections := build_loads_ m in
+  Ebinop Oadd indirections (Econst (Ointconst (Integers.Int.repr n))).
 
 
 Definition error_msg_with_loc stbl astnum (nme:nat) :=
@@ -272,7 +271,7 @@ Definition transl_variable (stbl:symboltable) (CE:compilenv) astnum (nme:idnum) 
           match CompilEnv.level_of_top CE with
             | None =>  Error (msg "no frame on compile env. assert false.")
             | Some m' =>
-              build_loads (m' - m) n (* get the adress of the variable *)
+              OK (build_loads (m' - m) n) (* get the adress of the variable *)
           end
       end
   end.
@@ -439,11 +438,32 @@ Function transl_value (v:value): Values.val :=
   end.
 
 
+(* FIXME *)
+Definition compute_chnk_of_type (stbl:symboltable) (typ:type): res AST.memory_chunk :=
+  do cmtype <- transl_type stbl typ ;
+  match Ctypes.opttyp_of_type cmtype with
+  | None => Error (msg "Unknown type")
+  | Some  asttyp => OK (AST.chunk_of_type asttyp)
+  end.
 
+(* [compute_size stbl typ] return the size needed to store values of
+   typpe subtyp_mrk *)
+Definition compute_size (stbl:symboltable) (typ:type) :=
+  do chk <- compute_chnk_of_type stbl typ ;
+  OK (Memdata.size_chunk chk).
+
+(* FIXME *)
+Definition compute_chnk_id (stbl:symboltable) (id:idnum): res AST.memory_chunk :=
+  do typ <- fetch_var_type id stbl ;
+  compute_chnk_of_type stbl typ.
 
 (* FIXME *)
 Definition compute_chnk (stbl:symboltable) (nme:name): res AST.memory_chunk :=
-  OK AST.Mint32.
+  match nme with
+  | E_Identifier _ id => compute_chnk_id stbl id
+  | E_Indexed_Component _ nme' e => Error (msg "compute_chnk: arrays not implemented yet")
+  | E_Selected_Component _ nme' id => Error (msg "compute_chnk: records not implemented yet")
+  end.
 
 
 Fixpoint transl_lparameter_specification_to_ltype
@@ -585,7 +605,7 @@ Definition transl_stmt_aux :=
            the enclosing procedure. Note that it is not the current
            procedure. We have to get down to the depth of the called
            procedure. *)
-        do addr_enclosing_frame <- build_loads_ (current_lvl - lvl) ;
+        let addr_enclosing_frame := build_loads_ (current_lvl - lvl) in
         (* Add it as one more argument to the procedure called. *)
         do tle' <- OK (addr_enclosing_frame :: tle) ;
         (* Call the procedure; procedure name does not change (except it is a positive) ? *)
@@ -617,27 +637,24 @@ consists in using the information of this stack to maintain a pseudo
 stack in memory, that is isomorphic to this environment (chaining
 frames thanks to an implicit argument added to each procedure). *)
 
-(* [compute_size stbl typ] return the size needed to store values of
-   typpe subtyp_mrk *)
-Definition compute_size (stbl:symboltable) (typ:type) := 4%Z.
 
 (** Add an element to a frame. *)
-Definition add_to_frame stbl (cenv_sz:localframe*Z) nme subtyp_mrk: localframe*Z  :=
+Definition add_to_frame stbl (cenv_sz:localframe*Z) nme subtyp_mrk: res (localframe*Z) :=
   let (cenv,sz) := cenv_sz in
-  let size := compute_size stbl subtyp_mrk in
+  do size <- compute_size stbl subtyp_mrk ;
   let new_size := (sz+size)%Z in
   let new_cenv := (nme,sz) :: cenv in
-  (new_cenv,new_size).
+  OK (new_cenv,new_size).
 
 (* [build_frame_lparams stbl (fram,sz) lparam] uses fram as an
    accumulator to build a frame env for lparam. It also compute
    the overall size of the store. *)
 Fixpoint build_frame_lparams (stbl:symboltable) (fram_sz:localframe * Z)
-         (lparam:list parameter_specification): localframe*Z :=
+         (lparam:list parameter_specification): res (localframe*Z) :=
   match lparam with
-    | nil => fram_sz
+    | nil => OK fram_sz
     | mkparameter_specification _ nme subtyp_mrk mde :: lparam' =>
-      let new_fram_sz := add_to_frame stbl fram_sz nme subtyp_mrk in
+      do new_fram_sz <- add_to_frame stbl fram_sz nme subtyp_mrk ;
       build_frame_lparams stbl new_fram_sz lparam'
   end.
 
@@ -645,18 +662,21 @@ Fixpoint build_frame_lparams (stbl:symboltable) (fram_sz:localframe * Z)
    accumulator to build a frame for decl. It also compute
    the overall size of the store. *)
 Fixpoint build_frame_decl (stbl:symboltable) (fram_sz:localframe * Z)
-         (decl:declaration): localframe*Z :=
+         (decl:declaration): res (localframe*Z) :=
   let (fram,sz) := fram_sz in
   match decl with
-    | D_Null_Declaration => fram_sz
+    | D_Null_Declaration => OK fram_sz
     | D_Seq_Declaration _ decl1 decl2 =>
-      let fram2_sz1 := build_frame_decl stbl fram_sz decl1 in
+      do fram2_sz1 <- build_frame_decl stbl fram_sz decl1 ;
       build_frame_decl stbl fram2_sz1 decl2
     | D_Object_Declaration _ objdecl =>
-      let size := compute_size stbl (objdecl.(object_nominal_subtype)) in
+      do size <- compute_size stbl (objdecl.(object_nominal_subtype)) ;
       let new_size := (sz+size)%Z in
-      (((objdecl.(object_name),sz)::fram) ,new_size)
-    | _ => fram_sz
+      OK (((objdecl.(object_name),sz)::fram) ,new_size)
+    | D_Type_Declaration _ typdcl =>
+      Error (msg "build_frame_decl: type decl no implemented yet")
+    | D_Procedure_Body _ pbdy =>
+      Error (msg "build_frame_decl: proc decl no implemented yet")
   end.
 
 
@@ -674,8 +694,8 @@ Fixpoint build_compilenv (stbl:symboltable) (enclosingCE:compilenv) (lvl:Symbol_
                 | O => (nil,0%Z) (* no chaining for global procedures *)
                 | _ => (((0%nat,0%Z) :: nil),4%Z)
               end in
-  let stosz := build_frame_lparams stbl (init, sz) lparams in
-  let (sto2,sz2) := build_frame_decl stbl stosz decl in
+  do stosz <- build_frame_lparams stbl (init, sz) lparams ;
+  do (sto2,sz2) <- build_frame_decl stbl stosz decl ;
   let scope_lvl := List.length enclosingCE in
   OK (((scope_lvl,sto2)::enclosingCE),sz2).
 

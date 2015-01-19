@@ -377,8 +377,7 @@ res stmt :=
           match transl_procsig stbl pnum with
           | OK (x0, y) =>
               let current_lvl := (Datatypes.length CE - 1)%nat in
-              match build_loads_ (current_lvl - y) with
-              | OK x1 =>
+              let x1 := build_loads_ (current_lvl - y) in
                   match OK (x1 :: x) with
                   | OK x2 =>
                       OK
@@ -388,8 +387,6 @@ res stmt :=
                                  (Integers.Int.repr 0))) x2)
                   | Error msg => Error msg
                   end
-              | Error msg => Error msg
-              end
           | Error msg => Error msg
           end
       | Error msg => Error msg

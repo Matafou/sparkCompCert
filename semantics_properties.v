@@ -1,5 +1,7 @@
 Require Import LibHypsNaming.
 Require Import semantics.
+Require Import Errors.
+Require Import spark2Cminor.
 Import STACK.
 
 Functional Scheme update_ind := Induction for update Sort Prop.
@@ -226,6 +228,15 @@ Proof.
   eapply updateG_ok_others;eauto.
 Qed.
 
+Lemma storeUpdate_id_ok_same: forall ast_num stbl stk id v stk',
+    storeUpdate stbl stk (E_Identifier ast_num id) v (Normal stk') ->
+    fetchG id stk' = Some v.
+Proof.
+  !intros.
+  !invclear h_storeUpd.
+  eapply updateG_ok_same;eauto.
+Qed.
+
 
 (* Should be somewhere in stdlib, but not in ZArith. *)
 Lemma Zeq_bool_neq_iff : forall x y : Z, Zeq_bool x y = false <-> x <> y.
@@ -275,8 +286,9 @@ Proof.
     reflexivity.
 Qed.
 
+Set Printing Width 120.
 
-Lemma storeUpdatearrayUpdate_id_ok_others: forall arr k v arr',
+Lemma arrayUpdate_id_ok_others: forall arr k v arr',
     arrayUpdate (ArrayV arr) k v = Some (ArrayV arr')
     -> forall k', k<>k' -> array_select arr' k' = array_select arr k'.
 Proof.
@@ -286,15 +298,135 @@ Proof.
   eapply updateIndexedComp_id_ok_others;eauto.
 Qed.
 
+
+(* 
+Inductive follow_chaining: Values.val -> Memory.Mem.mem -> nat -> Values.val -> Prop :=
+  FC1: forall sp m, follow_chaining sp m 0 sp
+| FC2: forall vsp m lvl vsp' v,
+        Memory.Mem.loadv AST.Mint32 m vsp = Some vsp'
+        -> follow_chaining vsp' m lvl v
+        -> follow_chaining vsp m (S lvl) v.
+ *)
+
+(** [eq_frame sto b ofs m] means that the memory m contains a block
+    at address b, and this block from offset [ofs] matches the spark
+    frame [sto]. *)
+(* FIXME: are we looking at the stack in the wrong direction? *)
+Inductive eq_frame:
+  STACK.store -> Values.block -> Integers.Int.int -> Memory.Mem.mem -> Prop :=
+  MF1: forall spb ofs m, eq_frame nil spb ofs m
+| MF2: forall fr spb ofs m id vid,
+    Memory.Mem.load AST.Mint32 m spb ofs = Some (transl_value vid) ->
+    eq_frame fr spb (Integers.Int.add (Integers.Int.repr ofs)
+                                      (Integers.Int.repr 4)) m ->
+    eq_frame ((id,vid)::fr) spb (Integers.Int.repr ofs) m.
+
+(** [match_env sta b m] means that the chained Cminor stack at address
+    [b] in memory m ([b] is the adress of the bottom of the top stack)
+    matches spark stack [s]. *)
+Inductive eq_env: STACK.stack -> Values.block -> Memory.Mem.mem -> Prop :=
+  ME1: forall spb m, eq_env nil spb m
+| ME2: forall s sto (lvl:STACK.scope_level) fr spb spb' m,
+         eq_frame fr spb (Integers.Int.repr 4) m
+         -> eq_env s spb' m
+         -> eq_env ((lvl,sto)::s) spb m.
+
+
+
+(*
+Lemma spec_transl_name : forall stbl CE astnum id e,
+    transl_variable stbl CE astnum id = OK e ->
+
+.
+Proof.
+  #
+Qed.
+
+
+
+(** ** Normalized names
+
+Normalized names are like names, except that any expression in it has
+been evaluated into a cell number. *)
+Inductive Nname: Type :=
+  NE_Identifier : idnum -> Nname
+| NE_Indexed_Component : Nname -> Z -> Nname
+| NE_Selected_Component : Nname -> idnum -> Nname. (* what if (f(x,y,z).foo?? *)
+
+
+
+
+Inductive solve_name (stbl:symboltable) (stck:stack): name -> Nname -> Prop :=
+  Solve_E_Identifier: forall _x id,
+    solve_name stbl stck (E_Identifier _x id) (NE_Identifier id)
+| Solve_E_Indexed_Component : forall _x (id:name) e nid n,
+    eval_expr stbl stck e (Normal (Int n)) ->
+    solve_name stbl stck id nid->
+    solve_name stbl stck (E_Indexed_Component _x id e) (NE_Indexed_Component nid n)
+| Solve_E_Selected_Component : forall _x id nme nnme,
+    solve_name stbl stck nme nnme ->
+    solve_name stbl stck (E_Selected_Component _x nme id) (NE_Selected_Component nnme id).
+
+Lemma foramm: forall stbl stck e v,
+    eval_expr stbl stck e (Normal v) ->
+    eval_expr
+.
+Proof.
+  #
+Qed.
+
+*)
+
+
+
+
+(*
+Lemma storeUpdate_arr_ok_others:
+  forall astnum (idarr:idnum) stk varr i v  varr' stbl stk',
+  fetchG idarr stk = Some (ArrayV varr) ->
+  arrayUpdate (ArrayV varr) i v = Some (ArrayV varr') ->
+  storeUpdate stbl stk (E_Identifier astnum idarr) (ArrayV varr') (Normal stk') ->
+  fetchG idarr stk' = Some (ArrayV varr') ->
+  
+.
+Proof.
+  !intros.
+  eapply storeUpdate_id_ok_same;eauto.
+Qed.
+
+
+
+
+
+Lemma storeUpdate_arr_ok_others:
+  forall astnum (idarr:idnum) stk varr i v  varr' stbl stk',
+  fetchG idarr stk = Some (ArrayV varr) ->
+  arrayUpdate (ArrayV varr) i v = Some (ArrayV varr') ->
+  storeUpdate stbl stk (E_Identifier astnum idarr) (ArrayV varr') (Normal stk') ->
+  fetchG idarr stk' = Some (ArrayV varr').
+
+  
+  
+  storeUpdate stbl stk (E_Indexed_Component ast_num nmearr i) (ArrayV varr) (Normal stk') ->
+  forall id', id<>id' -> fetchG id' stk = fetchG id' stk'.
+Proof.
+  !intros.
+  !invclear h_storeUpd.
+  eapply updateG_ok_others;eauto.
+Qed.
+*)
+
+
 (* not true since the storing may change the value of nme itself:
     { t[2] == 2, thus: t[t[2]] = t[2] = 2 }
     t[t[2]] := 5;
     { now t[2] = 5 and thus t[t[2]] = t[5] which is different from 5. }
  if [t[i]] is initally equal to i, then t[t[i]]
  *)
-(*Lemma storeUpdate_ok_same:
-  forall stbl s nme x s',
-    storeUpdate stbl s nme x (Normal s') ->
+(*
+Lemma storeUpdate_ok_same:
+  forall stbl s nme (v:value) s',
+    storeUpdate stbl s nme v (Normal s') ->
     eval_name stbl s' nme (Normal x).
 Proof.
 *)
