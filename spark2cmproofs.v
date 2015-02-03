@@ -1,4 +1,3 @@
-
 Require Import function_utils.
 Require Import LibHypsNaming.
 Require Import Errors.
@@ -10,7 +9,7 @@ Require Import semantics.
 Require Import semantics_properties.
 Require Import Sorted.
 Require Import Relations.
-
+Require Import Integers.
 Lemma wordsize_ok : wordsize = Integers.Int.wordsize.
 Proof.
   reflexivity.
@@ -212,7 +211,16 @@ Ltac rename_hyp1 h th :=
     | CompilEnv.level_of_top ?ce = _ => fresh "heq_lvloftop_" ce
     | CompilEnv.level_of_top _ = Some ?s => fresh "heq_lvloftop_" s
     | CompilEnv.level_of_top _ = _ => fresh "heq_lvloftop"
-                                       
+
+    | Memory.Mem.storev ?chk ?m ?vaddr ?v = None => fresh "heq_storev_none"
+    | Memory.Mem.storev ?chk ?m ?vaddr ?v = ?m2 => fresh "heq_storev_" v
+    | Memory.Mem.storev ?chk ?m ?vaddr ?v = ?m2 => fresh "heq_storev"
+
+    | transl_expr ?stbl ?CE ?e = Error => fresh "heq_tr_expr_none"
+    | transl_expr ?stbl ?CE ?e = OK ?r => fresh "heq_tr_expr_" e
+    | transl_expr ?stbl ?CE ?e = ?r => fresh "heq_tr_expr"
+
+
     (* TODO: remove when we remove type_of_name by the real one. *)
     | type_of_name _ _ = Error _ => fresh "heq_type_of_name_ERR"
     | type_of_name _ _ = _ => fresh "heq_type_of_name"
@@ -900,7 +908,7 @@ Record match_env (st:symboltable) (s: semantics.STACK.stack)
        (CE:compilenv) (sp:Values.val) (locenv: Cminor.env)
        (g:genv)(m:Memory.Mem.mem): Prop :=
   mk_match_env {
-      me_transl: stack_match st s CE sp locenv g m;
+      me_stack_match: stack_match st s CE sp locenv g m;
       me_overflow: safe_stack s
     }.
 
@@ -924,9 +932,18 @@ Ltac rename_hyp4 h th :=
     | H: id (transl_variable _ _ _ ?X = OK h) |- _ => fresh X "_t"
     | H: transl_value ?X = OK h |- _ => fresh X "_t"
     | H: id (transl_value ?X = OK h) |- _ => fresh X "_t"
+    | H: id (CompilEnv.frameG ?X _ = Some (h, _)) |- _ => fresh "lvl_" X
+    | H: CompilEnv.frameG ?X _ = Some (h, _) |- _ => fresh "lvl_" X
+    | H: id (CompilEnv.frameG ?X _ = Some (_, h)) |- _ => fresh "fr_" X
+    | H: CompilEnv.frameG ?X _ = Some (_, h) |- _ => fresh "fr_" X
+    | H: id (CompilEnv.fetchG ?X _ = Some h) |- _ => fresh "δ_" X
+    | H: CompilEnv.fetchG ?X _ = Some h |- _ => fresh "δ_" X
+    | H: id (CompilEnv.fetchG ?X _ = h) |- _ => fresh "δ_" X
+    | H: CompilEnv.fetchG ?X _ = h |- _ => fresh "δ_" X
     | _ => rename_hyp3 h th
   end.
 Ltac rename_hyp ::= rename_hyp4.
+
 
 (* Is this true? *)
 (*Axiom CM_eval_bigstep_det: forall g sp locenv m e v v',
@@ -938,39 +955,38 @@ Ltac rename_hyp ::= rename_hyp4.
 Lemma transl_expr_ok :
   forall stbl CE (e:expression) (e':Cminor.expr),
     transl_expr stbl CE e = OK e' ->
-    forall locenv g m (s:STACK.stack)  (v:value)
-         (spb: Values.block) (ofs:Integers.Int.int),
+    forall locenv g m (s:STACK.stack)  (v:value) stkptr,
     eval_expr stbl s e (Normal v) ->
-    match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
-    Cminor.eval_expr g (Values.Vptr spb ofs) locenv m e' (transl_value v).
+    match_env stbl s CE stkptr locenv g m ->
+    Cminor.eval_expr g stkptr locenv m e' (transl_value v).
 Proof.
   intros until e.
   !functional induction (transl_expr stbl CE e);try discriminate;simpl; !intros;
   !invclear h_eval_expr;eq_same_clear.
-  - generalize (transl_literal_ok g lit v h_eval_literal (Values.Vptr spb ofs)).
+  - generalize (transl_literal_ok g lit v h_eval_literal stkptr).
     !intro.
     constructor.
     assumption.
   - unfold value_at_addr in heq.
     destruct (transl_type stbl type_id) eqn:heq_transl_type;simpl in *.
     + !destruct h_match_env.
-      eapply me_transl0;eauto.
+      eapply me_stack_match0;eauto.
     + discriminate.
-  - specialize (IHr x heq0 locenv g m s v1 spb ofs h_eval_expr0 h_match_env).
-    specialize (IHr0 x0 heq locenv g m s v2 spb ofs h_eval_expr h_match_env).
+  - specialize (IHr x heq_tr_expr_e1 locenv g m s v1 stkptr h_eval_expr0 h_match_env).
+    specialize (IHr0 x0 heq_tr_expr_e2 locenv g m s v2 stkptr h_eval_expr h_match_env).
 
     eapply eval_Ebinop;eauto. 
     eapply binary_operator_ok;eauto.
     * eapply eval_expr_overf2;eauto.
-      eapply h_match_env.(me_overflow stbl s CE (Values.Vptr spb ofs) locenv g m).
+      eapply h_match_env.(me_overflow stbl s CE stkptr locenv g m).
     * eapply eval_expr_overf2;eauto.
-      eapply h_match_env.(me_overflow stbl s CE (Values.Vptr spb ofs) locenv g m).
+      eapply h_match_env.(me_overflow stbl s CE stkptr locenv g m).
   (* Unary minus *)
   - simpl in heq.
     eq_same_clear.
     rename x into e'.
     rename e0 into e.
-    specialize (IHr e' heq0 locenv g m s v0 spb ofs
+    specialize (IHr e' heq_tr_expr_e0 locenv g m s v0 stkptr
                     h_eval_expr h_match_env).
     eapply eval_Eunop;auto.
     + apply IHr.
@@ -1022,9 +1038,9 @@ Axiom name_dec: forall e1 e2:name, {e1=e2} + {e1<>e2}.
 
 Import STACK.
 
-Axiom det_eval_expr: forall g spb ofs locenv m e v v',
-                       Cminor.eval_expr g (Values.Vptr spb ofs) locenv m e v
-                       -> Cminor.eval_expr g (Values.Vptr spb ofs) locenv m e v'
+Axiom det_eval_expr: forall g stkptr locenv m e v v',
+                       Cminor.eval_expr g stkptr locenv m e v
+                       -> Cminor.eval_expr g stkptr locenv m e v'
                        -> v = v'.
 
 Inductive le_loads (lds: Cminor.expr): Cminor.expr -> Prop :=
@@ -1378,9 +1394,8 @@ Ltac rename_hyp ::= rename_hyp_incro.
 
 Section mapping.
   
-  Variable (stbl: symboltable) (CE:compilenv) (ofs : Integers.Int.int)
-           (spb : Values.block) (locenv : env) (g : genv).
-
+  Variable (stbl: symboltable) (CE:compilenv) (locenv : env) (g : genv) (stkptr:Values.val).
+  
   Lemma increase_order_level_of_top_ge:
     forall id s s0 s3,
       increasing_orderG CE ->
@@ -1504,7 +1519,7 @@ Section mapping.
       apply CEfetch_reside_true in heq_fetch_id₁.
       rewrite heq_fetch_id₂,heq_fetch_id₁ in *;simpl in *.
       !invclear heq_CEframeG_id₁;simpl in *.
-      specialize (h_forall_l (k₂, frm₂)).
+      specialize (h_forall_l (lvl_id₂, fr_id₂)).
       simpl in *.
       apply h_forall_l.
       eapply frameG_In;eauto.
@@ -1514,7 +1529,7 @@ Section mapping.
       apply CEfetch_reside_false in heq_fetch_id₁.
       rewrite heq_fetch_id₂,heq_fetch_id₁ in *;simpl in *.
       !invclear heq_CEframeG_id₂;simpl in *.
-      specialize (h_forall_l (k₁, frm₁)).
+      specialize (h_forall_l (lvl_id₁, fr_id₁)).
       simpl in *.
       apply h_forall_l.
       eapply frameG_In;eauto.
@@ -1638,16 +1653,43 @@ Section mapping.
       compute_chnk_id stbl id₂ = OK chnk₂ ->
       id₁ <> id₂ ->
       (k₁ <> k₂
-       \/ δ₁ < δ₂ + Memdata.size_chunk chnk₂
-       \/ δ₂ < δ₁ + Memdata.size_chunk chnk₁).
+       \/ δ₂ + Memdata.size_chunk chnk₂ < δ₁
+       \/ δ₁ + Memdata.size_chunk chnk₁ < δ₂).
   Proof.
   Admitted.
 
-  xxx
-  
+
+    (* We need something more precise, probably this: *)
+  Lemma foo2' :
+    forall stbl chnk₁ a₁  id₁ k₁ δ₁,
+      (* Frame are numbered with different (increasing) numers *)
+      increasing_orderG CE ->
+      (* In each frame, stacks are also numbered with (increasing) numbers *)
+      List.Forall (fun otherfrm => increasing_order_fr otherfrm) CE ->
+      (forall id δ, CompilEnv.fetchG id CE = Some δ
+                    -> 0 <= δ ∧ δ < Integers.Int.modulus) ->
+      (* translating the variabe to a Cminor load address *)
+      transl_variable stbl CE a₁ id₁ = OK (build_loads k₁ δ₁) ->
+      compute_chnk_id stbl id₁ = OK chnk₁ ->
+      forall chnk₂ a₂ id₂ k₂ δ₂,
+        (* translating the variabe to a Cminor load address *)
+        transl_variable stbl CE a₂ id₂ = OK (build_loads k₂ δ₂) ->
+        compute_chnk_id stbl id₂ = OK chnk₂ ->
+        id₁ <> id₂ ->
+        (k₁ <> k₂
+         \/ δ₂ + Memdata.size_chunk chnk₂ < δ₁
+         \/ δ₁ + Memdata.size_chunk chnk₁ < δ₂).
+  Proof.
+  Admitted.
+
+
 (* storeUpdate stbl s (E_Identifier a i) e0_v (@Normal stack s') *)
-Lemma foo :
-  forall s m a x1 id id_t e e_t e_v e_t_v idaddr s' m',
+Lemma foos :
+  forall s m a chk id id_t e e_t e_v e_t_v idaddr s' m' ,
+    increasing_orderG CE ->
+    Forall (λ otherfrm : CompilEnv.frame, increasing_order_fr otherfrm) CE ->
+    (∀ (id : idnum) (δ : CompilEnv.V),
+        CompilEnv.fetchG id CE = Some δ → 0 <= δ ∧ δ < Integers.Int.modulus) ->
     (* translating the variabe to a Cminor load address *)
     transl_variable stbl CE a id = OK id_t ->
     (* translating the expression to Cminor *)
@@ -1655,32 +1697,156 @@ Lemma foo :
     (* Evaluating in spark *)
     eval_expr stbl s e (Normal e_v) ->
     (* Evaluating expression in Cminor *)
-    Cminor.eval_expr g (Values.Vptr spb ofs) locenv m e_t e_t_v ->
+    Cminor.eval_expr g stkptr locenv m e_t e_t_v ->
     (* Evaluating var address in Cminor *)
-    Cminor.eval_expr g (Values.Vptr spb ofs) locenv m id_t idaddr ->
+    Cminor.eval_expr g stkptr locenv m id_t idaddr ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (E_Identifier a id) = OK x1 ->
-
+    compute_chnk stbl (E_Identifier a id) = OK chk ->
     (* the two storing operation maintain match_env *)
     storeUpdate stbl s (E_Identifier a id) e_v (Normal s') ->
-    Memory.Mem.storev x1 m idaddr e_t_v = Some m' ->
-    match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
-    match_env stbl s' CE (Values.Vptr spb ofs) locenv g m'.
-
+    Memory.Mem.storev chk m idaddr e_t_v = Some m' ->
+    match_env stbl s CE stkptr locenv g m ->
+    match_env stbl s' CE stkptr locenv g m'.
 Proof.
-  intros s m a x1 id id_t e e_t e_v e_t_v idaddr s' m'.
+  intros until m'. (* if !intros. then id-t get renamed int id_t0? *)
   !intros.
-  generalize (transl_expr_ok _ _ _ _ heq1).
-  intro h.
-  specialize (h _ _ _ _ _ _ _ h_eval_expr h_match_env).
+  (* use eval_expr determinsim to replace e_t_v by (transl_value v) *)
+  assert (e_t_v = transl_value e_v). {
+    generalize (transl_expr_ok _ _ _ _ heq_tr_expr_e).
+    intro h_e_t.
+    specialize (h_e_t _ _ _ _ _ _ h_eval_expr h_match_env).
+    specialize (det_eval_expr _ _ _ _ _ _ _ h_CM_eval_expr0 h_e_t).
+    intro; assumption. }
+  subst.
+  (* Getting rid of erronous cases *)
+  generalize heq_transl_variable.
+  intro heq_transl_variable_remember.
+  !functional inversion heq_transl_variable.
+  rename m'0 into lvl_max.
+  (* done *)
+  (* getting rid of erroneous storev parameter *)
+  rewrite <- cm_storev_ok in heq_storev_e_t_v.
+  !functional inversion heq_storev_e_t_v;subst.
+  (* done *)
+  Set Printing Width 110.
+  split.
+  -
+    unfold stack_match.
+    !intros.
+    !functional inversion heq_make_load;subst.
 
-  unfold transl_variable in heq_transl_variable.
-  destruct (CompilEnv.fetchG id CE) eqn:heqG;try discriminate.
-  destruct (CompilEnv.frameG id CE) eqn:heqfG;try discriminate.
-  destruct f.
-  destruct (CompilEnv.level_of_top CE) eqn:heqlT;simpl in *;try discriminate.
-  
-  
+
+
+
+
+  specialize (storeUpdate_id_ok_same _ _ _ _ _ _ h_storeupdate). !intro.
+  specialize (storeUpdate_id_ok_others _ _ _ _ _ _ h_storeupdate). intro h_diff_id.
+  (* injection of transl_variable *)
+  specialize (foo2' stbl chk _ _ _ _ h_incr_orderG_CE h_forall_CE
+                    H1 heq_transl_variable_remember heq). intros h_inj_tr_var_id.
+  (* done *)
+  specialize (Memory.Mem.load_store_other chk m blck_idaddr (Integers.Int.unsigned ofs_idaddr)).
+  intros h_inj.
+  split.
+  - destruct h_match_env.
+    unfold stack_match in *.
+    !intros.
+    (* getting rid of arrays and records here again *)
+    destruct nme;simpl in *; try discriminate.
+    (* For now, transl_type always put an Eload: this may change when
+       arrays and records are treated. *)
+    !functional inversion heq_make_load.
+    subst.
+    !destruct (NPeano.Nat.eq_dec id i).
+    + subst.
+      rewrite heq_SfetchG in heq_SfetchG0.
+      symmetry in heq_SfetchG0. (* just to keep e_v instead of v. *)
+      !invclear heq_SfetchG0.
+      (* Getting rid of erronous cases *)
+      generalize heq_transl_name.
+      intro heq_transl_name_remember.
+      unfold transl_variable in heq_transl_name.
+      destruct (CompilEnv.fetchG i CE) eqn:heqGi;try discriminate.
+      destruct (CompilEnv.frameG i CE) eqn:heqfGi;try discriminate.
+      destruct f as (lvl, lf).
+      destruct (CompilEnv.level_of_top CE) eqn:heqlTi;simpl in *;try discriminate.
+      !invclear heqlT.
+      (* done *)
+      !invclear heq_transl_name.
+      specialize (h_inj _ _ heq_storev_e_t_v).
+      
+      
+      admit.
+    + specialize (h_diff_id i hneq);auto.
+      unfold Memory.Mem.storev in heq_storev_e_t_v.
+      destruct idaddr;try discriminate.
+      (* Getting rid of erronous cases *)
+      generalize heq_transl_name.
+      intro heq_transl_name_remember.
+      unfold transl_variable in heq_transl_name.
+      destruct (CompilEnv.fetchG i CE) eqn:heqGi;try discriminate.
+      destruct (CompilEnv.frameG i CE) eqn:heqfGi;try discriminate.
+      destruct f as (lvl, lf).
+      destruct (CompilEnv.level_of_top CE) eqn:heqlTi;simpl in *;try discriminate.
+      !invclear heqlT.
+      (* done *)
+      !invclear heq_transl_name.
+      destruct (compute_chnk_id stbl i) eqn:h_chk_i.
+      rename m0 into chk'.
+      *
+        specialize (foo2 _ _ _ _ _ _ _ _ _ _ _ h_incr_orderG_CE h_forall_CE H1 heq_transl_variable_remember heq_transl_name_remember heq h_chk_i hneq).
+        intro h.
+        specialize (Memory.Mem.load_store_other chk m b (Integers.Int.unsigned i0) (transl_value e_v)  m' heq_storev_e_t_v chk' (Pos.of_nat (s2 - s0)%nat) t0).
+        intro h'.
+        assert (h'_premiss: Pos.of_nat (s2 - s0) ≠ b
+       ∨ t0 + Memdata.size_chunk chk' <= Integers.Int.unsigned i0
+       ∨ Integers.Int.unsigned i0 + Memdata.size_chunk chk <= t0).
+        { admit. }
+
+        specialize h' h'_premiss.
+        
+        unfold make_load in heq_make_load.
+        { destruct (Ctypes.access_mode cm_typ_nme) eqn:acces_mde;try discriminate.
+          - !invclear heq_make_load.
+            eapply eval_Eload.
+            econstructor;eauto.
+            Focus 2.
+            unfold Memory.Mem.loadv.
+            
+        
+
+        
+        specialize (Memory.Mem.load_store_other _ _ _ _ _ _ ).
+      
+
+
+    Lemma foooo:
+      forall stbl locenv g m m' s s' CE stkptr id e_v x1 idaddr e_t_v,
+        stack_match stbl s CE stkptr locenv g m ->
+        fetchG id s' = Some e_v ->
+        (∀ id' : idnum, id ≠ id' → fetchG id' s = fetchG id' s') ->
+        compute_chnk_id stbl id = OK x1 ->
+        Memory.Mem.storev x1 m idaddr e_t_v = Some m' ->
+        stack_match stbl s' CE stkptr locenv g m'.
+    Proof.
+      !intros.
+      red.
+      !intros.
+      unfold stack_match in H.
+      specialize (H nme _ _ _ _ _ h_eval_name).
+      destruct nme.
+      - 
+      
+      
+      destruct nme.
+      
+    Qed.
+
+
+    red.
+    !intros.
+œ
+
   admit.
 Qed.
 

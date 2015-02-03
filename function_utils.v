@@ -409,3 +409,45 @@ Lemma transl_stmt_ok : forall x y z, transl_stmt x y z = spark2Cminor.transl_stm
 Proof.
   reflexivity.
 Qed.
+
+
+(* Definition transl_typenum := Eval lazy beta delta [transl_typenum bind] in spark2Cminor.transl_typenum. *)
+Function transl_typenum (stbl : Symbol_Table_Module.symboltable) 
+                   (id : typenum) {struct stbl} : res Ctypes.type :=
+  match Symbol_Table_Module.fetch_type id stbl with
+  | Some t =>
+      match type_of_decl t with
+      | OK x =>
+          match reduce_type stbl x max_recursivity with
+          | OK x0 => transl_basetype stbl x0
+          | Error msg => Error msg
+          end
+      | Error msg => Error msg
+      end
+  | None => Error (msg "transl_typenum: no such type")
+  end.
+
+Lemma transl_typenum_ok : forall x y, transl_typenum x y = spark2Cminor.transl_typenum x y.
+Proof.
+  reflexivity.
+Qed.
+
+
+(* Definition foo:= Eval lazy beta delta [Memory.Mem.storev] in Memory.Mem.storev. *)
+Function cm_storev (chunk : AST.memory_chunk) (m : Memory.Mem.mem) (addr v : Values.val):=
+match addr with
+| Values.Vundef => None
+| Values.Vint _ => None
+| Values.Vlong _ => None
+| Values.Vfloat _ => None
+| Values.Vsingle _ => None
+| Values.Vptr b ofs =>
+    Memory.Mem.store chunk m b (Integers.Int.unsigned ofs) v
+end.
+
+Lemma cm_storev_ok : forall x y, cm_storev x y = Memory.Mem.storev x y.
+Proof.
+  reflexivity.
+Qed.
+
+

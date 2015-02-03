@@ -160,7 +160,7 @@ Definition frame := CompilEnv.frame.
 (** ** translating types *)
 
 (* Translating basic types, i.e. concrete types *)
-Fixpoint transl_basetype (stbl:symboltable) (ty:base_type): res Ctypes.type :=
+Function transl_basetype (stbl:symboltable) (ty:base_type): res Ctypes.type :=
   match ty with
     (* currently our formalization only defines one scalar type:
        INTEGER, that we match to compcert 32 bits ints. *)
@@ -187,7 +187,7 @@ Definition transl_typenum (stbl:symboltable) (id:typenum): res Ctypes.type :=
   end.
 
 (** Translating spark types into Compcert types *)
-Definition transl_type (stbl:symboltable) (t:type): res Ctypes.type :=
+Function transl_type (stbl:symboltable) (t:type): res Ctypes.type :=
   match t with
     | Boolean => transl_basetype stbl BBoolean
     | Integer => transl_basetype stbl (BInteger (Range min_signed max_signed))
@@ -206,7 +206,7 @@ Definition transl_type (stbl:symboltable) (t:type): res Ctypes.type :=
 Definition chaining_param := 80%positive.
 
 
-Definition transl_literal (l:literal): Cminor.constant :=
+Function transl_literal (l:literal): Cminor.constant :=
   match l with
     | Integer_Literal x => Ointconst (Integers.Int.repr x)
     (** In spark, boolean are a real type, we translate it to int (0
@@ -215,12 +215,12 @@ Definition transl_literal (l:literal): Cminor.constant :=
     | Boolean_Literal false => Ointconst Integers.Int.zero
   end.
 
-Definition make_load (addr : Cminor.expr) (ty_res : Ctypes.type) :=
+Function make_load (addr : Cminor.expr) (ty_res : Ctypes.type) :=
 match Ctypes.access_mode ty_res with
 | Ctypes.By_value chunk => OK (Eload chunk addr)
-| Ctypes.By_reference => OK addr
-| Ctypes.By_copy => OK addr
-| Ctypes.By_nothing => Error (msg "spark2compcert.make_load")
+| Ctypes.By_reference => Error (msg "spark2compcert.make_load arrays")
+| Ctypes.By_copy => Error (msg "spark2compcert.make_load copy")
+| Ctypes.By_nothing => Error (msg "spark2compcert.make_load nothing")
 end.
 
 
@@ -229,7 +229,7 @@ end.
     indirection of the variable of offset Zero (i.e. the pointer to
     enclosing procedure). This is the way we access to enclosing
     procedure frame. The type of all Load is ( void * ). *)
-Fixpoint build_loads_ (m:nat) {struct m} : Cminor.expr :=
+Function build_loads_ (m:nat) {struct m} : Cminor.expr :=
   match m with
     | O => Econst (Oaddrstack (Integers.Int.zero))
     | S m' =>
@@ -261,7 +261,7 @@ Definition error_msg_with_loc stbl astnum (nme:nat) :=
     [nme]. From these two numbers we generate the right number of
     Loads to access the frame of [nme]. [stbl] and [astnum] is there for error
     message only.*)
-Definition transl_variable (stbl:symboltable) (CE:compilenv) astnum (nme:idnum) : res Cminor.expr :=
+Function transl_variable (stbl:symboltable) (CE:compilenv) astnum (nme:idnum) : res Cminor.expr :=
   match (CompilEnv.fetchG nme CE) with
     | None =>  Error (MSG "transl_variable: no such idnum." :: error_msg_with_loc stbl astnum nme)
     | Some n =>
@@ -295,7 +295,7 @@ Definition transl_binop (op:binary_operator): binary_operation :=
 
 (* boolean negation does not have a counterpart in compcert, so it
    must be treated outside of this function (not b is translated into <b>!=0) *)
-Definition transl_unop (op:unary_operator) : res Cminor.unary_operation :=
+Function transl_unop (op:unary_operator) : res Cminor.unary_operation :=
   match op with
     | Unary_Plus => Error (msg "unary plus should be removed")
     | Unary_Minus => OK Cminor.Onegint
@@ -377,7 +377,7 @@ Functional Scheme transl_expr_ind := Induction for transl_expr Sort Prop.
 
 (** [transl_name stbl CE nme] returns the code that evaluates to the
     *address* where the value of name [nme] is stored. *)
-Fixpoint transl_name (stbl:symboltable) (CE:compilenv) (nme:name) {struct nme}: res Cminor.expr :=
+Function transl_name (stbl:symboltable) (CE:compilenv) (nme:name) {struct nme}: res Cminor.expr :=
   match nme with
     | E_Identifier astnum id => (transl_variable stbl CE astnum id) (* address of the variable *)
     | E_Indexed_Component astnum id e =>
