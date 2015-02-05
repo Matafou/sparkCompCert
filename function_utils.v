@@ -432,6 +432,76 @@ Proof.
   reflexivity.
 Qed.
 
+(* Definition transl_type := Eval lazy iota beta delta [transl_type transl_basetype bind] in spark2Cminor.transl_type. *)
+(* Definition transl_type2 := Eval lazy beta delta [transl_type  spark2Cminor.transl_typenum bind] in transl_type. *)
+
+
+Function transl_type (stbl : Symbol_Table_Module.symboltable) (t : type) :=
+match t with
+| Boolean => OK (Ctypes.Tint Ctypes.I32 Ctypes.Signed Ctypes.noattr)
+| Integer => OK (Ctypes.Tint Ctypes.I32 Ctypes.Signed Ctypes.noattr)
+| Subtype t' =>
+    match Symbol_Table_Module.fetch_type t' stbl with
+    | Some t0 =>
+        match type_of_decl t0 with
+        | OK x =>
+            match reduce_type stbl x max_recursivity with
+            | OK x0 => transl_basetype stbl x0
+            | Error msg => Error msg
+            end
+        | Error msg => Error msg
+        end
+    | None => Error (msg "transl_typenum: no such type")
+    end
+| Derived_Type t' =>
+    match Symbol_Table_Module.fetch_type t' stbl with
+    | Some t0 =>
+        match type_of_decl t0 with
+        | OK x =>
+            match reduce_type stbl x max_recursivity with
+            | OK x0 => transl_basetype stbl x0
+            | Error msg => Error msg
+            end
+        | Error msg => Error msg
+        end
+    | None => Error (msg "transl_typenum: no such type")
+    end
+| Integer_Type t' =>
+    match Symbol_Table_Module.fetch_type t' stbl with
+    | Some t0 =>
+        match type_of_decl t0 with
+        | OK x =>
+            match reduce_type stbl x max_recursivity with
+            | OK x0 => transl_basetype stbl x0
+            | Error msg => Error msg
+            end
+        | Error msg => Error msg
+        end
+    | None => Error (msg "transl_typenum: no such type")
+    end
+| Array_Type t' =>
+    match Symbol_Table_Module.fetch_type t' stbl with
+    | Some t0 =>
+        match type_of_decl t0 with
+        | OK x =>
+            match reduce_type stbl x max_recursivity with
+            | OK x0 => transl_basetype stbl x0
+            | Error msg => Error msg
+            end
+        | Error msg => Error msg
+        end
+    | None => Error (msg "transl_typenum: no such type")
+    end
+| Record_Type _ => Error (msg "transl_type: no such type")
+end.
+
+
+  Lemma transl_type_ok : forall x y, transl_type x y = spark2Cminor.transl_type x y.
+Proof.
+  reflexivity.
+Qed.
+
+
 
 (* Definition foo:= Eval lazy beta delta [Memory.Mem.storev] in Memory.Mem.storev. *)
 Function cm_storev (chunk : AST.memory_chunk) (m : Memory.Mem.mem) (addr v : Values.val):=

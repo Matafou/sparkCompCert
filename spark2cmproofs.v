@@ -1,3 +1,4 @@
+Require Import Utf8.
 Require Import function_utils.
 Require Import LibHypsNaming.
 Require Import Errors.
@@ -160,6 +161,7 @@ Ltac rename_hyp1 h th :=
     | transl_stmt _ _ _ = _ => fresh "heq_transl_stmt"
     | transl_name _ _ _ = Error _ => fresh "heq_transl_name_ERR"
     | transl_name _ _ _ = _ => fresh "heq_transl_name"
+    | Cminor.eval_expr _ _ _ _ ?x _ => fresh "h_CM_eval_expr_" x
     | Cminor.eval_expr _ _ _ _ _ _ => fresh "h_CM_eval_expr"
     | transl_value _ = Error _ => fresh "heq_transl_value_RE"
     | transl_value _ = _ => fresh "heq_transl_value"
@@ -1029,8 +1031,6 @@ Ltac rename_hyp5 th :=
 Ltac rename_hyp ::= rename_hyp5.
 
       
-Require Import Utf8.
-Set Printing Width 90.
 
 
 Axiom expression_dec: forall e1 e2:expression, ({e1=e2} + {e1<>e2}).
@@ -1715,32 +1715,105 @@ Proof.
     generalize (transl_expr_ok _ _ _ _ heq_tr_expr_e).
     intro h_e_t.
     specialize (h_e_t _ _ _ _ _ _ h_eval_expr h_match_env).
-    specialize (det_eval_expr _ _ _ _ _ _ _ h_CM_eval_expr0 h_e_t).
+    specialize (det_eval_expr _ _ _ _ _ _ _ h_CM_eval_expr_e_t h_e_t).
     intro; assumption. }
   subst.
   (* Getting rid of erronous cases *)
-  generalize heq_transl_variable.
-  intro heq_transl_variable_remember.
   !functional inversion heq_transl_variable.
   rename m'0 into lvl_max.
   (* done *)
   (* getting rid of erroneous storev parameter *)
   rewrite <- cm_storev_ok in heq_storev_e_t_v.
   !functional inversion heq_storev_e_t_v;subst.
+  rewrite cm_storev_ok in *.
   (* done *)
-  Set Printing Width 110.
   split.
   -
+    Set Hyps Limit 40.
     unfold stack_match.
+    intros nme' v'.
     !intros.
     !functional inversion heq_make_load;subst.
+    !functional inversion heq_transl_name;subst.
+    rename id0 into id'.
+    !inversion h_eval_name.
+    !destruct (NPeano.Nat.eq_dec id id').
+    + subst.
+      assert (transl_variable stbl CE astnum id' = OK addrof_nme
+              -> forall a,transl_variable stbl CE a id' = transl_variable stbl CE astnum id'). {
+        intros H a0.
+        unfold transl_variable.
+        functional inversion H.
+        rewrite  H2, H3, H4.
+        reflexivity. }
+      specialize (H heq_transl_variable0 a).
+      rewrite H in *.
+      rewrite heq_transl_variable0 in heq_transl_variable.
+      !invclear heq_transl_variable.
+      eapply eval_Eload with (Values.Vptr b ofs).
+      * admit.
+      * simpl.
+        specialize (Memory.Mem.load_store_same _ _ _ _ _ _ heq1).
+        !intro .
+        simpl in *.
+
+        Lemma cmtype_chk : forall tpnme t tt chk,
+            transl_type stbl tpnme = OK t -> 
+            Ctypes.opttyp_of_type t = Some tt ->
+            Ctypes.access_mode t = Ctypes.By_value chk ->
+            chk = AST.chunk_of_type tt.
+        Proof.
+          intros.
+          functional inversion H;subst;simpl in *;eq_same_clear;simpl in *.
+          - inversion H1;auto.
+          - inversion H1;auto.
+          - destruct t;simpl in *;try discriminate;eq_same_clear.
+            destruct i;simpl in *;
+            destruct s;simpl in *.
+            rewrite <- transl_typenum_ok in H2.
+            functional inversion H2;eq_same_clear;subst.
+            
+            inversion H1;auto.
+          - inversion H1;auto.
+          - 
+          induction t;simpl;!intros;try discriminate.
+          - !invclear heq0.
+            destruct i;simpl;try destruct s;!inversion heq.
+            destruct s.
+        Qed.
+
+        
+        rewrite heq0.
+        eapply Memory.Mem.load_store_same.
+      
+
+      
+      specialize (storeUpdate_id_ok_same _ _ _ _ _ _ h_storeupdate).
+      !intro.
+      rewrite heq_SfetchG in heq_SfetchG0.
+      !invclear heq_SfetchG0.
+      assert (transl_variable stbl CE astnum id' = OK addrof_nme
+              -> forall a,transl_variable stbl CE a id' = transl_variable stbl CE astnum id'). {
+        intros H a0.
+        unfold transl_variable.
+        functional inversion H.
+        rewrite  H2, H3, H4.
+        reflexivity. }
+      specialize (H heq_transl_variable0 a).
+      rewrite H in heq_transl_variable.
+      eapply eval_Eload with (transl_value e_v).
 
 
+      specialize (storeUpdate_id_ok_same _ _ _ _ _ _ h_storeupdate). 
+      specialize (storeUpdate_id_ok_others _ _ _ _ _ _ h_storeupdate).
+      !intros.
+      
+      with (vaddr:=).
+    Focus 2.
+    unfold Memory.Mem.loadv.
+    eapply Memory.Mem.load_store_same.
 
 
-
-  specialize (storeUpdate_id_ok_same _ _ _ _ _ _ h_storeupdate). !intro.
-  specialize (storeUpdate_id_ok_others _ _ _ _ _ _ h_storeupdate). intro h_diff_id.
   (* injection of transl_variable *)
   specialize (foo2' stbl chk _ _ _ _ h_incr_orderG_CE h_forall_CE
                     H1 heq_transl_variable_remember heq). intros h_inj_tr_var_id.
