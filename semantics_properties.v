@@ -315,8 +315,9 @@ Inductive follow_chaining: Values.val -> Memory.Mem.mem -> nat -> Values.val -> 
 Inductive eq_frame:
   STACK.store -> Values.block -> Integers.Int.int -> Memory.Mem.mem -> Prop :=
   MF1: forall spb ofs m, eq_frame nil spb ofs m
-| MF2: forall fr spb ofs m id vid,
-    Memory.Mem.load AST.Mint32 m spb ofs = Some (transl_value vid) ->
+| MF2: forall fr spb ofs m id vid t_vid,
+    Memory.Mem.load AST.Mint32 m spb ofs = Some t_vid ->
+    transl_value vid t_vid ->
     eq_frame fr spb (Integers.Int.add (Integers.Int.repr ofs)
                                       (Integers.Int.repr 4)) m ->
     eq_frame ((id,vid)::fr) spb (Integers.Int.repr ofs) m.

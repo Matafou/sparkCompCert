@@ -410,6 +410,27 @@ Proof.
   reflexivity.
 Qed.
 
+(* Definition transl_basetype := Eval lazy beta delta [transl_basetype bind] in spark2Cminor.transl_basetype. *)
+Function transl_basetype (stbl : Symbol_Table_Module.symboltable) 
+         (ty : base_type) {struct ty} :
+  res Ctypes.type :=
+  match ty with
+  | BBoolean => OK (Ctypes.Tint Ctypes.I32 Ctypes.Signed Ctypes.noattr)
+  | BInteger _ => OK (Ctypes.Tint Ctypes.I32 Ctypes.Signed Ctypes.noattr)
+  | BArray_Type tpcell (Range min max) =>
+      match transl_basetype stbl tpcell with
+      | OK x => OK (Ctypes.Tarray x (max - min) Ctypes.noattr)
+      | Error msg => Error msg
+      end
+  | BRecord_Type _ => Error (msg "transl_basetype: Not yet implemented!!.")
+  end.
+
+Lemma transl_basetype_ok : forall x y, transl_basetype x y = spark2Cminor.transl_basetype x y.
+Proof.
+  reflexivity.
+Qed.
+
+
 
 (* Definition transl_typenum := Eval lazy beta delta [transl_typenum bind] in spark2Cminor.transl_typenum. *)
 Function transl_typenum (stbl : Symbol_Table_Module.symboltable) 

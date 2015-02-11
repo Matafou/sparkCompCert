@@ -5,7 +5,7 @@ Require Import LibHypsNaming.
 Require Import Errors.
 (* Require Import language. *)
 Require Import Cminor.
-Require Ctypes.
+Require Ctypes AST.
 (* Require Cshmgen. *)
 (* Require Cminorgen. *)
 Require Import BinPosDef.
@@ -97,7 +97,7 @@ Definition transl_num x := (Pos.of_nat (x+80)).
  it. That way we have a decreasing argument. *)
 Fixpoint reduce_type (stbl:symboltable.symboltable) (ty:type) (n:nat): res base_type :=
   match n with
-    | O => Error (msg "transl_basetype: exhausted recursivity")
+    | O => Error (msg "reduce_type: exhausted recursivity")
     | S n' =>
       match ty with
         (* currently our formalization only defines one scalar type:
@@ -109,18 +109,18 @@ Fixpoint reduce_type (stbl:symboltable.symboltable) (ty:type) (n:nat): res base_
 
         | Array_Type typnum =>
           match symboltable.fetch_type typnum stbl with
-            | None => Error [ MSG "transl_basetype: no such type num :" ; CTX (transl_num typnum)]
+            | None => Error [ MSG "reduce_type: no such type num :" ; CTX (transl_num typnum)]
             | Some (Array_Type_Declaration _ _ tpidx tpcell) =>
               do typofcells <- reduce_type stbl tpcell n' ;
                 do rge <- range_of tpidx ;
                 OK (BArray_Type typofcells rge)
-            | _ => Error [ MSG "transl_basetype: not an array type :" ; CTX (transl_num typnum)]
+            | _ => Error [ MSG "reduce_type: not an array type :" ; CTX (transl_num typnum)]
           end
         (* TODO: array and record types *)
-        | Integer_Type _ => Error (msg "transl_basetype: Integer_Type Not yet implemented!!.")
-        | Subtype _ => Error (msg "transl_basetype: Subtype Not yet implemented!!.")
-        | Derived_Type _ => Error (msg "transl_basetype: Derived Not yet implemented!!.")
-        | Record_Type _ => Error (msg "transl_basetype: Record Not yet implemented!!.")
+        | Integer_Type _ => Error (msg "reduce_type: Integer_Type Not yet implemented!!.")
+        | Subtype _ => Error (msg "reduce_type: Subtype Not yet implemented!!.")
+        | Derived_Type _ => Error (msg "reduce_type: Derived Not yet implemented!!.")
+        | Record_Type _ => Error (msg "reduce_type: Record Not yet implemented!!.")
       end
   end.
 
@@ -159,7 +159,9 @@ Definition frame := CompilEnv.frame.
 
 (** ** translating types *)
 
-(* Translating basic types, i.e. concrete types *)
+(* Translating basic types, i.e. concrete types. NB: we translte to
+   real C type and make use of Compcert translation to AST.typ, is it
+   a good idea? *)
 Function transl_basetype (stbl:symboltable) (ty:base_type): res Ctypes.type :=
   match ty with
     (* currently our formalization only defines one scalar type:
@@ -171,7 +173,7 @@ Function transl_basetype (stbl:symboltable) (ty:base_type): res Ctypes.type :=
 
     | BArray_Type tpcell (Range min max) =>
       do typofcells <- transl_basetype stbl tpcell ;
-        OK (Ctypes.Tarray typofcells (max - min)%Z Ctypes.noattr) (* replace 0 by size of the array *)
+        OK (Ctypes.Tarray typofcells (max - min)%Z Ctypes.noattr)
 
     | _ => Error (msg "transl_basetype: Not yet implemented!!.")
   end.
@@ -216,12 +218,12 @@ Function transl_literal (l:literal): Cminor.constant :=
   end.
 
 Function make_load (addr : Cminor.expr) (ty_res : Ctypes.type) :=
-match Ctypes.access_mode ty_res with
-| Ctypes.By_value chunk => OK (Eload chunk addr)
-| Ctypes.By_reference => Error (msg "spark2compcert.make_load arrays")
-| Ctypes.By_copy => Error (msg "spark2compcert.make_load copy")
-| Ctypes.By_nothing => Error (msg "spark2compcert.make_load nothing")
-end.
+  match Ctypes.access_mode ty_res with
+  | Ctypes.By_value chunk => OK (Eload chunk addr)
+  | Ctypes.By_reference => Error (msg "spark2compcert.make_load reference")
+  | Ctypes.By_copy => Error (msg "spark2compcert.make_load copy")
+  | Ctypes.By_nothing => Error (msg "spark2compcert.make_load nothing")
+  end.
 
 
 
@@ -427,6 +429,12 @@ Definition concrete_type_of_value (v:value): res base_type :=
 
 Variable ERROR_value: Values.val.
 
+Inductive transl_value : value -> Values.val -> Prop :=
+  | tr_Int: forall v:Z, transl_value (Int v) (Values.Vint (Integers.Int.repr v))
+  | tr_true : transl_value (Bool true) (Values.Vint (Integers.Int.repr 1))
+  | tr_false : transl_value (Bool false) (Values.Vint (Integers.Int.repr 0)).
+
+(*  
 Function transl_value (v:value): Values.val :=
   match v with
     | Int v => Values.Vint (Integers.Int.repr v)
@@ -436,6 +444,7 @@ Function transl_value (v:value): Values.val :=
     | RecordV v => ERROR_value
     | Undefined => ERROR_value
   end.
+ *)
 
 
 (* FIXME *)

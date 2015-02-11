@@ -163,8 +163,8 @@ Ltac rename_hyp1 h th :=
     | transl_name _ _ _ = _ => fresh "heq_transl_name"
     | Cminor.eval_expr _ _ _ _ ?x _ => fresh "h_CM_eval_expr_" x
     | Cminor.eval_expr _ _ _ _ _ _ => fresh "h_CM_eval_expr"
-    | transl_value _ = Error _ => fresh "heq_transl_value_RE"
-    | transl_value _ = _ => fresh "heq_transl_value"
+    | transl_value _ Error _ => fresh "heq_transl_value_RE"
+    | transl_value _ _ => fresh "heq_transl_value"
     | transl_variable _ _ _ _ = Error _ => fresh "heq_transl_variable_RE"
     | transl_variable _ _ _ _ = _ => fresh "heq_transl_variable"
     | fetch_exp_type _ _ = Some _ => fresh "heq_fetch_exp_type"
@@ -228,28 +228,6 @@ Ltac rename_hyp1 h th :=
     | type_of_name _ _ = _ => fresh "heq_type_of_name"
   end.
 
-Ltac rename_hyp ::= rename_hyp1.
-
-Lemma transl_literal_ok :
-  forall g (l:literal) v,
-    eval_literal l (Normal v) ->
-    forall sp,
-      eval_constant g sp (transl_literal l) = Some (transl_value v).
-Proof.
-  !intros.
-  !destruct l;simpl in *.
-  - !inversion h_eval_literal.
-    !inversion h_overf_check.
-    simpl.
-    eauto.
-  - destruct b.
-    + !inversion h_eval_literal.
-      simpl.
-      eauto.
-    + !inversion h_eval_literal.
-      simpl.
-      eauto.
-Qed.
 
 Ltac remove_refl :=
   repeat
@@ -266,6 +244,25 @@ Ltac eq_same_clear :=
               | H: Some ?A = Some ?B |- _ => !inversion H
               | H: ?A <> ?A |- _ => elim H;reflexivity
             end).
+
+Ltac rename_hyp ::= rename_hyp1.
+
+Lemma transl_literal_ok :
+  forall g (l:literal) v,
+    eval_literal l (Normal v) ->
+    forall sp t_v,
+      eval_constant g sp (transl_literal l) = Some t_v ->
+      transl_value v t_v.
+Proof.
+  !intros.
+  !destruct l;simpl in *;eq_same_clear.
+  - !inversion h_eval_literal.
+    !inversion h_overf_check.
+    constructor.
+  - destruct b;simpl in *;eq_same_clear.
+    + !inversion h_eval_literal;constructor.
+    + !inversion h_eval_literal;constructor.
+Qed.
 
 
 Ltac inv_if_intop op h :=
@@ -315,56 +312,45 @@ Ltac inv_rtc :=
     when they don't raise a runtime error, like Compcert ones. *)
 
 Lemma not_ok: forall v1 v0 x,
-                     transl_value v1 = x ->
+                     transl_value v1 x ->
                      Math.unary_not v1 = Some v0 ->
-                     transl_value v0 = (Values.Val.notbool x).
+                     transl_value v0 (Values.Val.notbool x).
 Proof.
   !intros.
-  !destruct v1;try discriminate;simpl in *.
-  !invclear heq.
-  destruct n;simpl
-  ;inversion heq_transl_value
-  ; subst.
-  simpl.
-  fold Integers.Int.mone.
-  repeat apply f_equal.
-  - rewrite Integers.Int.eq_false.
-    + reflexivity.
-    + apply Integers.Int.one_not_zero.
-  - simpl.
-    rewrite Integers.Int.eq_true.
-    reflexivity.
+  !destruct v1;try discriminate;simpl in *;eq_same_clear.
+  !destruct n;simpl in *
+  ; inversion heq_transl_value
+  ; constructor.
 Qed.
 
 
 Lemma and_ok: forall v1 v2 v0 x x0,
-                     transl_value v1 = x ->
-                     transl_value v2 = x0 ->
+                     transl_value v1 x ->
+                     transl_value v2 x0 ->
                      Math.and v1 v2 = Some v0 ->
-                     transl_value v0 = (Values.Val.and x x0).
+                     transl_value v0 (Values.Val.and x x0).
 Proof.
   !intros.
-  !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
-  !invclear heq.
+  !destruct v1;simpl in *;try discriminate; !destruct v2;simpl in *;try discriminate
+  ;eq_same_clear.
   destruct n;destruct n0;simpl
   ;inversion heq_transl_value
   ;inversion heq_transl_value0
-  ; reflexivity.
+  ; constructor.
 Qed.
 
 Lemma or_ok: forall v1 v2 v0 x x0,
-                     transl_value v1 = x ->
-                     transl_value v2 = x0 ->
+                     transl_value v1 x ->
+                     transl_value v2 x0 ->
                      Math.or v1 v2 = Some v0 ->
-                     transl_value v0 = (Values.Val.or x x0).
+                     transl_value v0 (Values.Val.or x x0).
 Proof.
   !intros.
-  !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
-  !invclear heq.
+  !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *;eq_same_clear.
   destruct n;destruct n0;simpl
   ;inversion heq_transl_value
   ;inversion heq_transl_value0
-  ; reflexivity.
+  ; constructor.
 Qed.
 
 
@@ -389,28 +375,28 @@ Ltac rename_hyp ::= rename_hyp2.
 Lemma eq_ok: forall v1 v2 v0 x x0,
                check_overflow_value v1 -> 
                check_overflow_value v2 -> 
-               transl_value v1 = x ->
-               transl_value v2 = x0 ->
+               transl_value v1 x ->
+               transl_value v2 x0 ->
                Math.eq v1 v2 = Some v0 ->
-               transl_value v0 = (Values.Val.cmp Integers.Ceq x x0).
+               transl_value v0 (Values.Val.cmp Integers.Ceq x x0).
 Proof.
   !intros.
-  !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
-  !invclear heq.
-  eq_same_clear.
+  !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *;eq_same_clear.
   !destruct (Z.eq_dec n n0).
-  - subst.
+  - subst n0.
+    inversion heq_transl_value0;subst;simpl.
+    inversion heq_transl_value;subst;simpl.
     rewrite Fcore_Zaux.Zeq_bool_true;auto.
     unfold Values.Val.cmp.
     simpl.
     rewrite Integers.Int.eq_true.
-    reflexivity.
+    constructor.
   - rewrite Fcore_Zaux.Zeq_bool_false;auto.
     unfold Values.Val.cmp.
-    subst.
-    simpl.
+    inversion heq_transl_value0;subst;simpl.
+    inversion heq_transl_value;subst;simpl.
     rewrite Integers.Int.eq_false.
-    + reflexivity.
+    + constructor.
     + apply repr_inj_neq.
       * inv_rtc.
       * inv_rtc.
@@ -421,28 +407,29 @@ Qed.
 Lemma neq_ok: forall v1 v2 v0 x x0,
                check_overflow_value v1 -> 
                check_overflow_value v2 -> 
-               transl_value v1 = x ->
-               transl_value v2 = x0 ->
+               transl_value v1 x ->
+               transl_value v2 x0 ->
                Math.ne v1 v2 = Some v0 ->
-               transl_value v0 = (Values.Val.cmp Integers.Cne x x0).
+               transl_value v0 (Values.Val.cmp Integers.Cne x x0).
 Proof.
   !intros.
-  !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
-  !invclear heq.
-  eq_same_clear.
+  !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *;eq_same_clear.
   !destruct (Z.eq_dec n n0).
   - subst.
     rewrite Zneq_bool_false;auto.
     unfold Values.Val.cmp.
-    simpl.
+    inversion heq_transl_value0;subst;simpl.
+    inversion heq_transl_value;subst;simpl.
     rewrite Integers.Int.eq_true.
-    reflexivity.
+    simpl.
+    constructor.
   - rewrite Zneq_bool_true;auto.
     unfold Values.Val.cmp.
-    subst.
-    simpl.
+    inversion heq_transl_value0;subst;simpl.
+    inversion heq_transl_value;subst;simpl.
     rewrite Integers.Int.eq_false.
-    + reflexivity.
+    simpl.
+    + constructor.
     + apply repr_inj_neq.
       * inv_rtc.
       * inv_rtc.
@@ -452,33 +439,31 @@ Qed.
 Lemma le_ok: forall v1 v2 v0 x x0,
                check_overflow_value v1 -> 
                check_overflow_value v2 -> 
-               transl_value v1 = x ->
-               transl_value v2 = x0 ->
+               transl_value v1 x ->
+               transl_value v2 x0 ->
                Math.le v1 v2 = Some v0 ->
-               transl_value v0 = (Values.Val.cmp Integers.Cle x x0).
+               transl_value v0 (Values.Val.cmp Integers.Cle x x0).
 Proof.
   !intros.
-  !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
-  !invclear heq.
-  eq_same_clear.
+  !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *;eq_same_clear.
+  inversion heq_transl_value0;subst;simpl.
+  inversion heq_transl_value;subst;simpl.
   !destruct (Z.le_decidable n n0).
   - rewrite Fcore_Zaux.Zle_bool_true;auto.
     unfold Values.Val.cmp.
-    subst.
     simpl.
     unfold Integers.Int.lt.
     rewrite Coqlib.zlt_false.
-    + reflexivity.
+    + constructor.
     + rewrite Integers.Int.signed_repr;inv_rtc.
       rewrite Integers.Int.signed_repr;inv_rtc.
       auto with zarith.
   - { rewrite Fcore_Zaux.Zle_bool_false.
       - unfold Values.Val.cmp.
-        subst.
         simpl.
         unfold Integers.Int.lt.
         rewrite Coqlib.zlt_true.
-        + reflexivity.
+        + constructor.
         + rewrite Integers.Int.signed_repr;inv_rtc.
           rewrite Integers.Int.signed_repr;inv_rtc.
           auto with zarith.
@@ -490,34 +475,33 @@ Qed.
 Lemma ge_ok: forall v1 v2 v0 x x0,
                check_overflow_value v1 -> 
                check_overflow_value v2 -> 
-               transl_value v1 = x ->
-               transl_value v2 = x0 ->
+               transl_value v1 x ->
+               transl_value v2 x0 ->
                Math.ge v1 v2 = Some v0 ->
-               transl_value v0 = (Values.Val.cmp Integers.Cge x x0).
+               transl_value v0 (Values.Val.cmp Integers.Cge x x0).
 Proof.
   !intros.
   !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
-  !invclear heq.
   eq_same_clear.
+  inversion heq_transl_value0;subst;simpl.
+  inversion heq_transl_value;subst;simpl.
   rewrite Z.geb_leb.
   !destruct (Z.le_decidable n0 n).
   - rewrite Fcore_Zaux.Zle_bool_true;auto.
     unfold Values.Val.cmp.
-    subst.
     simpl.
     unfold Integers.Int.lt.
     rewrite Coqlib.zlt_false.
-    + reflexivity.
+    + constructor.
     + rewrite Integers.Int.signed_repr;inv_rtc.
       rewrite Integers.Int.signed_repr;inv_rtc.
       auto with zarith.
   - { rewrite Fcore_Zaux.Zle_bool_false.
       - unfold Values.Val.cmp.
-        subst.
         simpl.
         unfold Integers.Int.lt.
         rewrite Coqlib.zlt_true.
-        + reflexivity.
+        + constructor.
         + rewrite Integers.Int.signed_repr;inv_rtc.
           rewrite Integers.Int.signed_repr;inv_rtc.
           auto with zarith.
@@ -528,15 +512,16 @@ Qed.
 Lemma lt_ok: forall v1 v2 v0 x x0,
                check_overflow_value v1 -> 
                check_overflow_value v2 -> 
-               transl_value v1 = x ->
-               transl_value v2 = x0 ->
+               transl_value v1 x ->
+               transl_value v2 x0 ->
                Math.lt v1 v2 = Some v0 ->
-               transl_value v0 = (Values.Val.cmp Integers.Clt x x0).
+               transl_value v0 (Values.Val.cmp Integers.Clt x x0).
 Proof.
   !intros.
   !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
-  !invclear heq.
   eq_same_clear.
+  inversion heq_transl_value0;subst;simpl.
+  inversion heq_transl_value;subst;simpl.
   simpl.
   !destruct (Z.lt_decidable n n0).
   - rewrite Fcore_Zaux.Zlt_bool_true;auto.
@@ -545,7 +530,7 @@ Proof.
     simpl.
     unfold Integers.Int.lt.
     rewrite Coqlib.zlt_true.
-    + reflexivity.
+    + constructor.
     + rewrite Integers.Int.signed_repr;inv_rtc.
       rewrite Integers.Int.signed_repr;inv_rtc.
   - { rewrite Fcore_Zaux.Zlt_bool_false.
@@ -554,7 +539,7 @@ Proof.
         simpl.
         unfold Integers.Int.lt.
         rewrite Coqlib.zlt_false.
-        + reflexivity.
+        + constructor.
         + rewrite Integers.Int.signed_repr;inv_rtc.
           rewrite Integers.Int.signed_repr;inv_rtc.
       - auto with zarith. }
@@ -564,15 +549,16 @@ Qed.
 Lemma gt_ok: forall v1 v2 v0 x x0,
                check_overflow_value v1 -> 
                check_overflow_value v2 -> 
-               transl_value v1 = x ->
-               transl_value v2 = x0 ->
+               transl_value v1 x ->
+               transl_value v2 x0 ->
                Math.gt v1 v2 = Some v0 ->
-               transl_value v0 = (Values.Val.cmp Integers.Cgt x x0).
+               transl_value v0 (Values.Val.cmp Integers.Cgt x x0).
 Proof.
   !intros.
   !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
-  !invclear heq.
   eq_same_clear.
+  inversion heq_transl_value0;subst;simpl.
+  inversion heq_transl_value;subst;simpl.
   rewrite Z.gtb_ltb.
   !destruct (Z.lt_decidable n0 n).
   - rewrite Fcore_Zaux.Zlt_bool_true;auto.
@@ -581,7 +567,7 @@ Proof.
     simpl.
     unfold Integers.Int.lt.
     rewrite Coqlib.zlt_true.
-    + reflexivity.
+    + constructor.
     + rewrite Integers.Int.signed_repr;inv_rtc.
       rewrite Integers.Int.signed_repr;inv_rtc.
   - { rewrite Fcore_Zaux.Zlt_bool_false.
@@ -590,7 +576,7 @@ Proof.
         simpl.
         unfold Integers.Int.lt.
         rewrite Coqlib.zlt_false.
-        + reflexivity.
+        + constructor.
         + rewrite Integers.Int.signed_repr;inv_rtc.
           rewrite Integers.Int.signed_repr;inv_rtc.
       - auto with zarith. }
@@ -600,18 +586,18 @@ Qed.
 (* strangely this one does not need overflow preconditions *)
 Lemma unaryneg_ok :
   forall n v1 v,
-    transl_value v1 = n ->
+    transl_value v1 n ->
     Math.unary_operation Unary_Minus v1 = Some v ->
-    transl_value v = (Values.Val.negint n).
+    transl_value v (Values.Val.negint n).
 Proof.
   !intros.
   simpl in *.
   destruct v1;simpl in *;try discriminate.
   eq_same_clear.
-  subst.   
+  inversion heq_transl_value.
   simpl.
   rewrite Integers.Int.neg_repr.
-  reflexivity.
+  constructor.
 Qed.
 
 Lemma do_run_time_check_on_binop_ok: forall v1 v2 v op,
@@ -643,17 +629,19 @@ Lemma add_ok :
     check_overflow_value v1 -> 
     check_overflow_value v2 -> 
     do_run_time_check_on_binop Plus v1 v2 (Normal v) ->
-    transl_value v1 = n1 ->
-    transl_value v2 = n2 ->
-    transl_value v = (Values.Val.add n1 n2).
+    transl_value v1 n1 ->
+    transl_value v2 n2 ->
+    transl_value v (Values.Val.add n1 n2).
 Proof.
   !intros.
-  simpl in *.
   !destruct v1;simpl in *;try discriminate;eq_same_clear;subst;try now inv_rtc.
   !destruct v2;simpl in *; try discriminate;eq_same_clear;subst; try now inv_rtc.
-  - !invclear h_do_rtc_binop;simpl in *; eq_same_clear. 
-    !invclear h_overf_check.
-    int_simpl;auto;inv_rtc;auto 2.
+  inversion heq_transl_value0;subst;simpl.
+  inversion heq_transl_value;subst;simpl.
+  !invclear h_do_rtc_binop;simpl in *; eq_same_clear. 
+  !invclear h_overf_check.
+  int_simpl;auto;inv_rtc.
+  constructor.
 Qed.
 
 Lemma sub_ok :
@@ -661,17 +649,19 @@ Lemma sub_ok :
     check_overflow_value v1 -> 
     check_overflow_value v2 -> 
     do_run_time_check_on_binop Minus v1 v2 (Normal v) ->
-    transl_value v1 = n1 ->
-    transl_value v2 = n2 ->
-    transl_value v = (Values.Val.sub n1 n2).
+    transl_value v1 n1 ->
+    transl_value v2 n2 ->
+    transl_value v (Values.Val.sub n1 n2).
 Proof.
   !intros.
-  simpl in *.
   !destruct v1;simpl in *;try discriminate;eq_same_clear;subst; try now inv_rtc.
   !destruct v2;simpl in *; try discriminate;eq_same_clear;subst; try now inv_rtc.
-  - !invclear h_do_rtc_binop;simpl in *; eq_same_clear. 
-    !invclear h_overf_check.
-    int_simpl;auto;inv_rtc;auto 2.
+  inversion heq_transl_value0;subst;simpl.
+  inversion heq_transl_value;subst;simpl.
+  !invclear h_do_rtc_binop;simpl in *; eq_same_clear. 
+  !invclear h_overf_check.
+  int_simpl;auto;inv_rtc.
+  constructor.
 Qed.
 
 Lemma mult_ok :
@@ -679,17 +669,20 @@ Lemma mult_ok :
     check_overflow_value v1 -> 
     check_overflow_value v2 -> 
     do_run_time_check_on_binop Multiply v1 v2 (Normal v) ->
-    transl_value v1 = n1 ->
-    transl_value v2 = n2 ->
-    transl_value v = (Values.Val.mul n1 n2).
+    transl_value v1 n1 ->
+    transl_value v2 n2 ->
+    transl_value v (Values.Val.mul n1 n2).
 Proof.
   !intros.
   simpl in *.
   !destruct v1;simpl in *;try discriminate;eq_same_clear;subst; try now inv_rtc.
   !destruct v2;simpl in *; try discriminate;eq_same_clear;subst; try now inv_rtc.
-  - !invclear h_do_rtc_binop;simpl in *; eq_same_clear. 
-    !invclear h_overf_check.
-    int_simpl;auto;inv_rtc;auto 2.
+  inversion heq_transl_value0;subst;simpl.
+  inversion heq_transl_value;subst;simpl.
+  !invclear h_do_rtc_binop;simpl in *; eq_same_clear. 
+  !invclear h_overf_check.
+  int_simpl;auto;inv_rtc.
+  constructor.
 Qed.
 
 (** Compcert division return None if dividend is min_int and divisor
@@ -702,18 +695,19 @@ Lemma div_ok :
     check_overflow_value v1 -> 
     check_overflow_value v2 -> 
     do_run_time_check_on_binop Divide v1 v2 (Normal v) ->
-    transl_value v1 = n1 ->
-    transl_value v2 = n2 ->
-    transl_value v = n ->
+    transl_value v1 n1 ->
+    transl_value v2 n2 ->
+    transl_value v n ->
     Values.Val.divs n1 n2 = Some n.
 Proof.
   !intros.
   simpl in *.
   !destruct v1;subst;simpl in *;try discriminate;try now inv_rtc.
   !destruct v2;subst;simpl in *; try discriminate;try now inv_rtc.
+  inversion heq_transl_value0;subst;simpl.
+  inversion heq_transl_value1;subst;simpl.
   rename n0 into v1.
-  rename n into v2.
-  eq_same_clear;simpl in *.
+  rename n3 into v2.
   !invclear h_do_rtc_binop;simpl in *; eq_same_clear.
   { decompose [or] H;discriminate. }
   inv_rtc.
@@ -725,9 +719,9 @@ Proof.
     (* the case where division overflows is dealt with by the overflow
        check in spark semantic. Ths division is performed on Z and
        then overflow is checked and may fails. *)
-    destruct (Integers.Int.eq (Integers.Int.repr v1)
-                              (Integers.Int.repr Integers.Int.min_signed) &&
-                              Integers.Int.eq (Integers.Int.repr v2) Integers.Int.mone)
+    destruct (Int.eq (Int.repr v1)
+                              (Int.repr Int.min_signed) &&
+                              Int.eq (Int.repr v2) Int.mone)
              eqn:h_divoverf.
     + apply andb_true_iff in h_divoverf.
       destruct h_divoverf as [h_divoverf1 h_divoverf2].
@@ -756,7 +750,7 @@ Proof.
       simpl in *.
       !invclear heq;subst.
       inversion h_overf_check;subst.
-      simpl in *.
+      inversion heq_transl_value;subst;simpl.
       reflexivity.
   - unfold Integers.Int.zero.
     intro abs.
@@ -768,33 +762,64 @@ Proof.
     + split;auto.
 Qed.
 
-
+Lemma transl_value_det: forall v tv1 tv2,
+    transl_value v tv1 -> transl_value v tv2 -> tv1 = tv2.
+Proof.
+  !intros.
+  inversion heq_transl_value0; inversion heq_transl_value;subst;auto;inversion H1;auto.
+Qed.
 
 Lemma binary_operator_ok:
   forall op (n n1 n2 : Values.val) (v v1 v2 : value),
     check_overflow_value v1 ->
     check_overflow_value v2 ->
     do_run_time_check_on_binop op v1 v2 (Normal v) ->
-    transl_value v1 = n1 ->
-    transl_value v2 = n2 ->
-    transl_value v = n ->
+    transl_value v1 n1 ->
+    transl_value v2 n2 ->
+    transl_value v n ->
     forall m, Cminor.eval_binop (transl_binop op) n1 n2 m = Some n.
 Proof.
   !intros.
   assert (h_rtc:=do_run_time_check_on_binop_ok _ _ _ _ h_do_rtc_binop).
-  destruct op;simpl.
-  - erewrite (and_ok v1 v2 v n1 n2) in heq_transl_value;eq_same_clear;subst;eauto.
-  - erewrite (or_ok v1 v2 v n1 n2) in heq_transl_value;eq_same_clear;subst;eauto.
-  - erewrite (eq_ok v1 v2 v n1 n2) in heq_transl_value;eq_same_clear;subst;eauto.
-  - erewrite (neq_ok v1 v2 v n1 n2) in heq_transl_value;eq_same_clear;subst;eauto.
-  - erewrite (lt_ok v1 v2 v n1 n2) in heq_transl_value;eq_same_clear;subst;eauto.
-  - erewrite (le_ok v1 v2 v n1 n2) in heq_transl_value;eq_same_clear;subst;eauto.
-  - erewrite (gt_ok v1 v2 v n1 n2) in heq_transl_value;eq_same_clear;subst;eauto.
-  - erewrite (ge_ok v1 v2 v n1 n2) in heq_transl_value;eq_same_clear;subst;eauto.
-  - erewrite (add_ok v v1 v2 n1 n2) in heq_transl_value;eq_same_clear;subst;eauto.
-  - erewrite (sub_ok v v1 v2 n1 n2) in heq_transl_value;eq_same_clear;subst;eauto.
-  - erewrite (mult_ok v v1 v2 n1 n2) in heq_transl_value;eq_same_clear;subst;eauto.
-  - simpl in *. erewrite (div_ok v v1 v2 n n1 n2);eauto.
+  destruct op;simpl in *.
+  - eapply (and_ok v1 v2 v n1 n2) in h_rtc;auto.
+    rewrite (transl_value_det _ _ _ heq_transl_value h_rtc);reflexivity.
+  - eapply (or_ok v1 v2 v n1 n2) in h_rtc;eq_same_clear;subst;eauto.
+    rewrite (transl_value_det _ _ _ heq_transl_value h_rtc);reflexivity.
+
+  - eapply (eq_ok v1 v2 v n1 n2) in h_rtc;eq_same_clear;subst;eauto.
+    rewrite (transl_value_det _ _ _ heq_transl_value h_rtc);reflexivity.
+  - eapply (neq_ok v1 v2 v n1 n2) in h_rtc;eq_same_clear;subst;eauto.
+    rewrite (transl_value_det _ _ _ heq_transl_value h_rtc);reflexivity.
+  - eapply (lt_ok v1 v2 v n1 n2) in h_rtc;eq_same_clear;subst;eauto.
+    rewrite (transl_value_det _ _ _ heq_transl_value h_rtc);reflexivity.
+  - eapply (le_ok v1 v2 v n1 n2) in h_rtc;eq_same_clear;subst;eauto.
+    rewrite (transl_value_det _ _ _ heq_transl_value h_rtc);reflexivity.
+  - eapply (gt_ok v1 v2 v n1 n2) in h_rtc;eq_same_clear;subst;eauto.
+    rewrite (transl_value_det _ _ _ heq_transl_value h_rtc);reflexivity.
+  - eapply (ge_ok v1 v2 v n1 n2) in h_rtc;eq_same_clear;subst;eauto.
+    rewrite (transl_value_det _ _ _ heq_transl_value h_rtc);reflexivity.
+  - generalize (add_ok _ _ _ _ _
+                       h_check_overf0 h_check_overf
+                       h_do_rtc_binop heq_transl_value1 heq_transl_value0).
+    intro h.
+    rewrite (transl_value_det _ _ _ heq_transl_value h);reflexivity.
+  - generalize (sub_ok _ _ _ _ _
+                       h_check_overf0 h_check_overf
+                       h_do_rtc_binop heq_transl_value1 heq_transl_value0).
+    intro h.
+    rewrite (transl_value_det _ _ _ heq_transl_value h);reflexivity.
+  - generalize (mult_ok _ _ _ _ _
+                       h_check_overf0 h_check_overf
+                       h_do_rtc_binop heq_transl_value1 heq_transl_value0).
+    intro h.
+    rewrite (transl_value_det _ _ _ heq_transl_value h);reflexivity.
+  - generalize (div_ok _ _ _ _ _ _
+                       h_check_overf0 h_check_overf
+                       h_do_rtc_binop heq_transl_value1 heq_transl_value0
+                       heq_transl_value).
+    intro h.
+    assumption.
 Qed.
 
 
@@ -883,7 +908,7 @@ Proof.
 Qed.
   
 
-
+xxx
 Definition stack_match st s CE sp locenv g m :=
   forall nme v addrof_nme load_addrof_nme typ_nme cm_typ_nme,
     eval_name st s nme (Normal v) ->
@@ -1682,6 +1707,174 @@ Section mapping.
   Proof.
   Admitted.
 
+  (* TODO: simplify this proof. *)
+  Lemma cmtype_chk : forall tpnme t tt chk,
+      transl_type stbl tpnme = OK t -> 
+      Ctypes.opttyp_of_type t = Some tt ->
+      Ctypes.access_mode t = Ctypes.By_value chk ->
+      chk = AST.chunk_of_type tt.
+  Proof.
+    intros.
+    functional inversion H;subst;simpl in *;eq_same_clear;simpl in *.
+    - inversion H1;auto.
+    - inversion H1;auto.
+    - destruct t;simpl in *;try discriminate;eq_same_clear;
+      try
+        now
+        repeat
+        match goal with
+        | h:function_utils.transl_typenum _ _ = OK _ |- _ =>
+          try functional inversion h;eq_same_clear;subst; try clear h
+        | h:function_utils.transl_basetype _ _  =
+            OK _ |- _ => try functional inversion h;eq_same_clear;subst; try clear h
+        | h:Ctypes.By_value _ = Ctypes.By_value _ |- _ => !invclear h;auto
+        end.
+
+      + destruct i;simpl in *;
+        try
+          now
+          repeat
+          match goal with
+          | h:function_utils.transl_typenum _ _ = OK _ |- _ =>
+            try functional inversion h;eq_same_clear;subst; try clear h
+          | h:function_utils.transl_basetype _ _  =
+              OK _ |- _ => try functional inversion h;eq_same_clear;subst; try clear h
+          | h:Ctypes.By_value _ = Ctypes.By_value _ |- _ => !invclear h;auto
+          end;
+        destruct s;simpl in *; try rewrite <- transl_typenum_ok in *;
+        repeat match goal with
+               | h:function_utils.transl_typenum _ _ = OK _ |- _ =>
+                 try functional inversion h;eq_same_clear;subst; try clear h
+               | h:function_utils.transl_basetype _ _  =
+                   OK _ |- _ => try functional inversion h;eq_same_clear;subst; try clear h
+               | h:Ctypes.By_value _ = Ctypes.By_value _ |- _ => !invclear h;auto
+               end.
+      + try rewrite <- transl_typenum_ok in *;
+        repeat match goal with
+               | h:function_utils.transl_typenum _ _ = OK _ |- _ =>
+                 try functional inversion h;eq_same_clear;subst; try clear h
+               | h:function_utils.transl_basetype _ _  =
+                   OK _ |- _ => try functional inversion h;eq_same_clear;subst; try clear h
+               | h:Ctypes.By_value _ = Ctypes.By_value _ |- _ => !invclear h;auto
+               end.
+    - destruct t;simpl in *;try discriminate;eq_same_clear;
+      try
+        now
+        repeat
+        match goal with
+        | h:function_utils.transl_typenum _ _ = OK _ |- _ =>
+          try functional inversion h;eq_same_clear;subst; try clear h
+        | h:function_utils.transl_basetype _ _  =
+            OK _ |- _ => try functional inversion h;eq_same_clear;subst; try clear h
+        | h:Ctypes.By_value _ = Ctypes.By_value _ |- _ => !invclear h;auto
+        end.
+
+      + destruct i;simpl in *;
+        try
+          now
+          repeat
+          match goal with
+          | h:function_utils.transl_typenum _ _ = OK _ |- _ =>
+            try functional inversion h;eq_same_clear;subst; try clear h
+          | h:function_utils.transl_basetype _ _  =
+              OK _ |- _ => try functional inversion h;eq_same_clear;subst; try clear h
+          | h:Ctypes.By_value _ = Ctypes.By_value _ |- _ => !invclear h;auto
+          end;
+        destruct s;simpl in *; try rewrite <- transl_typenum_ok in *;
+        repeat match goal with
+               | h:function_utils.transl_typenum _ _ = OK _ |- _ =>
+                 try functional inversion h;eq_same_clear;subst; try clear h
+               | h:function_utils.transl_basetype _ _  =
+                   OK _ |- _ => try functional inversion h;eq_same_clear;subst; try clear h
+               | h:Ctypes.By_value _ = Ctypes.By_value _ |- _ => !invclear h;auto
+               end.
+      + try rewrite <- transl_typenum_ok in *;
+        repeat match goal with
+               | h:function_utils.transl_typenum _ _ = OK _ |- _ =>
+                 try functional inversion h;eq_same_clear;subst; try clear h
+               | h:function_utils.transl_basetype _ _  =
+                   OK _ |- _ => try functional inversion h;eq_same_clear;subst; try clear h
+               | h:Ctypes.By_value _ = Ctypes.By_value _ |- _ => !invclear h;auto
+               end.
+    - destruct t;simpl in *;try discriminate;eq_same_clear;
+      try
+        now
+        repeat
+        match goal with
+        | h:function_utils.transl_typenum _ _ = OK _ |- _ =>
+          try functional inversion h;eq_same_clear;subst; try clear h
+        | h:function_utils.transl_basetype _ _  =
+            OK _ |- _ => try functional inversion h;eq_same_clear;subst; try clear h
+        | h:Ctypes.By_value _ = Ctypes.By_value _ |- _ => !invclear h;auto
+        end.
+
+      + destruct i;simpl in *;
+        try
+          now
+          repeat
+          match goal with
+          | h:function_utils.transl_typenum _ _ = OK _ |- _ =>
+            try functional inversion h;eq_same_clear;subst; try clear h
+          | h:function_utils.transl_basetype _ _  =
+              OK _ |- _ => try functional inversion h;eq_same_clear;subst; try clear h
+          | h:Ctypes.By_value _ = Ctypes.By_value _ |- _ => !invclear h;auto
+          end;
+        destruct s;simpl in *; try rewrite <- transl_typenum_ok in *;
+        repeat match goal with
+               | h:function_utils.transl_typenum _ _ = OK _ |- _ =>
+                 try functional inversion h;eq_same_clear;subst; try clear h
+               | h:function_utils.transl_basetype _ _  =
+                   OK _ |- _ => try functional inversion h;eq_same_clear;subst; try clear h
+               | h:Ctypes.By_value _ = Ctypes.By_value _ |- _ => !invclear h;auto
+               end.
+      + try rewrite <- transl_typenum_ok in *;
+        repeat match goal with
+               | h:function_utils.transl_typenum _ _ = OK _ |- _ =>
+                 try functional inversion h;eq_same_clear;subst; try clear h
+               | h:function_utils.transl_basetype _ _  =
+                   OK _ |- _ => try functional inversion h;eq_same_clear;subst; try clear h
+               | h:Ctypes.By_value _ = Ctypes.By_value _ |- _ => !invclear h;auto
+               end.
+    - destruct t;simpl in *;try discriminate;eq_same_clear;
+      try
+        now
+        repeat
+        match goal with
+        | h:function_utils.transl_typenum _ _ = OK _ |- _ =>
+          try functional inversion h;eq_same_clear;subst; try clear h
+        | h:function_utils.transl_basetype _ _  =
+            OK _ |- _ => try functional inversion h;eq_same_clear;subst; try clear h
+        | h:Ctypes.By_value _ = Ctypes.By_value _ |- _ => !invclear h;auto
+        end.
+
+      + destruct i;simpl in *;
+        try
+          now
+          repeat
+          match goal with
+          | h:function_utils.transl_typenum _ _ = OK _ |- _ =>
+            try functional inversion h;eq_same_clear;subst; try clear h
+          | h:function_utils.transl_basetype _ _  =
+              OK _ |- _ => try functional inversion h;eq_same_clear;subst; try clear h
+          | h:Ctypes.By_value _ = Ctypes.By_value _ |- _ => !invclear h;auto
+          end;
+        destruct s;simpl in *; try rewrite <- transl_typenum_ok in *;
+        repeat match goal with
+               | h:function_utils.transl_typenum _ _ = OK _ |- _ =>
+                 try functional inversion h;eq_same_clear;subst; try clear h
+               | h:function_utils.transl_basetype _ _  =
+                   OK _ |- _ => try functional inversion h;eq_same_clear;subst; try clear h
+               | h:Ctypes.By_value _ = Ctypes.By_value _ |- _ => !invclear h;auto
+               end.
+      + try rewrite <- transl_typenum_ok in *;
+        repeat match goal with
+               | h:function_utils.transl_typenum _ _ = OK _ |- _ =>
+                 try functional inversion h;eq_same_clear;subst; try clear h
+               | h:function_utils.transl_basetype _ _  =
+                   OK _ |- _ => try functional inversion h;eq_same_clear;subst; try clear h
+               | h:Ctypes.By_value _ = Ctypes.By_value _ |- _ => !invclear h;auto
+               end.
+  Qed.
 
 (* storeUpdate stbl s (E_Identifier a i) e0_v (@Normal stack s') *)
 Lemma foos :
@@ -1739,15 +1932,15 @@ Proof.
     !inversion h_eval_name.
     !destruct (NPeano.Nat.eq_dec id id').
     + subst.
-      assert (transl_variable stbl CE astnum id' = OK addrof_nme
+      assert (h_transl_id':transl_variable stbl CE astnum id' = OK addrof_nme
               -> forall a,transl_variable stbl CE a id' = transl_variable stbl CE astnum id'). {
         intros H a0.
         unfold transl_variable.
         functional inversion H.
         rewrite  H2, H3, H4.
         reflexivity. }
-      specialize (H heq_transl_variable0 a).
-      rewrite H in *.
+      specialize (h_transl_id' heq_transl_variable0 a).
+      rewrite h_transl_id' in *.
       rewrite heq_transl_variable0 in heq_transl_variable.
       !invclear heq_transl_variable.
       eapply eval_Eload with (Values.Vptr b ofs).
@@ -1756,22 +1949,37 @@ Proof.
         specialize (Memory.Mem.load_store_same _ _ _ _ _ _ heq1).
         !intro .
         simpl in *.
+        unfold compute_chnk_id,compute_chnk_of_type in heq. 
+        rewrite heq_type_of_name in heq.
+        simpl in heq.
+        rewrite heq_transl_type in heq.
+        simpl in heq.
+        destruct (Ctypes.opttyp_of_type cm_typ_nme) eqn:heq_opttype;simpl in *; try discriminate.
+        !invclear heq.
+        rewrite cmtype_chk with (1:=heq_transl_type) (2:=heq_opttype) (3:=heq2).
+        rewrite  heq0.
+        specialize (storeUpdate_id_ok_same _ _ _ _ _ _ h_storeupdate)        .
+        !intro.
+        rewrite heq_SfetchG in heq_SfetchG0.
+        !invclear heq_SfetchG0.
+        assert ((AST.chunk_of_type t)= AST.Mint32). { (* for now only Int32 *)
+          admit. }
+        rewrite H.
+        simpl.
+        destruct (transl_value e_v) eqn:heq_tr_e_v;auto.
+        functional inversion heq_tr_e_v;subst;try discriminate.
+        
+        functional induction (transl_value e_v);simpl;auto.
+        destruct destruct ERROR_value;simpl
 
-        Lemma cmtype_chk : forall tpnme t tt chk,
-            transl_type stbl tpnme = OK t -> 
-            Ctypes.opttyp_of_type t = Some tt ->
-            Ctypes.access_mode t = Ctypes.By_value chk ->
-            chk = AST.chunk_of_type tt.
-        Proof.
-          intros.
-          functional inversion H;subst;simpl in *;eq_same_clear;simpl in *.
-          - inversion H1;auto.
-          - inversion H1;auto.
-          - destruct t;simpl in *;try discriminate;eq_same_clear.
-            destruct i;simpl in *;
-            destruct s;simpl in *.
-            rewrite <- transl_typenum_ok in H2.
+  - functional inversion H1.
+              destruct f;simpl in *.
+              inversion H1;auto.
+
+            
             functional inversion H2;eq_same_clear;subst.
+            functional inversion H.
+            fun
             
             inversion H1;auto.
           - inversion H1;auto.
