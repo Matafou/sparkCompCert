@@ -32,6 +32,14 @@ Ltac fallback_rename_hyp h th :=
     | false = Zeq_bool _ _ => fresh "heq_Z_false"
     | Zeq_bool _ _ = _ => fresh "heq_Z"
     | _ = Zeq_bool _ _ => fresh "heq_Z"
+    | ?f _ = _ => fresh "heq_" f
+    | ?f _ _ = _ => fresh "heq_" f
+    | ?f _ _ _ = _ => fresh "heq_" f
+    | ?f _ _ _ _ = _ => fresh "heq_" f
+    | ?f _ _ _ _ _ = _ => fresh "heq_" f
+    | ?f _ _ _ _ _ _ = _ => fresh "heq_" f
+    | ?f _ _ _ _ _ _ _ = _ => fresh "heq_" f
+    | ?f _ _ _ _ _ _ _ _ = _ => fresh "heq_" f
     | @eq bool _ true => fresh "heq_bool_true"
     | @eq bool _ false => fresh "heq_bool_false"
     | @eq bool true _ => fresh "heq_bool_true"
@@ -165,7 +173,8 @@ Tactic Notation "!!" tactic3(T) constr(h) constr(h2) :=
  tactics: induction ddestruct inversion etc. *)
 
 (* decompose and ex and or at once. TODO: generalize. *)
-Tactic Notation "decomp" hyp(h) := !! (fun x => decompose [and ex or] x) h.
+Tactic Notation "decomp" hyp(h) :=
+  !! (fun x => decompose [and ex or] x; clear x) h.
 Tactic Notation "!induction" constr(h) := !! (fun x => induction x) h.
 Tactic Notation "!functional" "induction" constr(h) :=
    !! (functional induction h).
