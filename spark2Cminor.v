@@ -193,11 +193,12 @@ Function transl_type (stbl:symboltable) (t:type): res Ctypes.type :=
   match t with
     | Boolean => transl_basetype stbl BBoolean
     | Integer => transl_basetype stbl (BInteger (Range min_signed max_signed))
-    | Subtype t' => transl_typenum stbl t'
+    | _ => Error (msg "transl_type: type not treated yet")
+  (*    | Subtype t' => transl_typenum stbl t'
     | Derived_Type t' => transl_typenum stbl t'
     | Integer_Type t' => transl_typenum stbl t'
     | Array_Type t' => transl_typenum stbl t'
-    | Record_Type t => Error (msg "transl_type: no such type")
+    | Record_Type t => Error (msg "transl_type: no such type") *)
   end.
 
 (** ** Translating expressions  *)
@@ -448,12 +449,23 @@ Function transl_value (v:value): Values.val :=
 
 
 (* FIXME *)
-Definition compute_chnk_of_type (stbl:symboltable) (typ:type): res AST.memory_chunk :=
-  do cmtype <- transl_type stbl typ ;
+(*  do cmtype <- transl_type stbl typ ;
   match Ctypes.opttyp_of_type cmtype with
   | None => Error (msg "Unknown type")
   | Some  asttyp => OK (AST.chunk_of_type asttyp)
+  end.*)
+Function compute_chnk_of_type (stbl:symboltable) (typ:type): res AST.memory_chunk :=
+  match reduce_type stbl typ max_recursivity with
+  | OK btyp =>
+    match btyp with
+    | BBoolean => OK AST.Mint32
+    | (BInteger _) => OK AST.Mint32
+    | (BArray_Type t _) => Error (msg "compute_chnk_of_type: Arrays types not yet implemented!!.")
+    | (BRecord_Type t) => Error (msg "compute_chnk_of_type: Records types not yet implemented!!.")
+    end
+  | Error x => Error x
   end.
+    
 
 (* [compute_size stbl typ] return the size needed to store values of
    typpe subtyp_mrk *)
