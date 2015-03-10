@@ -492,3 +492,27 @@ Proof.
 Qed.
 
 
+
+(* Definition foo_compute_chk:= Eval lazy beta iota delta [compute_chnk compute_chnk_id compute_chnk_of_type reduce_type bind] in compute_chnk. *)
+Function compute_chnk (stbl' : symboltable) (nme : name) :=
+match nme with
+| E_Identifier _ idnt =>
+    match fetch_var_type idnt stbl' with
+    | OK x =>
+        match reduce_type stbl' x max_recursivity with
+        | OK BBoolean => OK AST.Mint32
+        | OK (BInteger _) => OK AST.Mint32
+        | OK (BArray_Type _ _) => Error (msg "compute_chnk_of_type: Arrays types not yet implemented!!.")
+        | OK (BRecord_Type _) => Error (msg "compute_chnk_of_type: Records types not yet implemented!!.")
+        | Error x0 => Error x0
+        end
+    | Error msge => Error msge
+    end
+| E_Indexed_Component _ _ _ => Error (msg "compute_chnk: arrays not implemented yet")
+| E_Selected_Component _ _ _ => Error (msg "compute_chnk: records not implemented yet")
+end.
+
+Lemma compute_chnk_ok : forall x y, spark2Cminor.compute_chnk x y = compute_chnk x y.
+Proof.
+  reflexivity.
+Qed.

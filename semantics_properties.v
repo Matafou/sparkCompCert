@@ -238,6 +238,43 @@ Proof.
 Qed.
 
 
+
+Lemma storeUpdate_id_ok_same_eval_name: forall ast_num stbl stk id v stk',
+    storeUpdate stbl stk (E_Identifier ast_num id) v (Normal stk') ->
+    forall ast_num' v',
+      eval_name stbl stk' (E_Identifier ast_num' id) (Normal v') ->
+      v = v'.
+Proof.
+  !intros.
+  !inversion H0.
+  specialize (storeUpdate_id_ok_same _ _ _ _ _ _ h_storeUpd).
+  !intro.
+  rewrite heq_fetchG_id_stk' in heq_fetchG_id_stk'0.
+  inversion heq_fetchG_id_stk'0.
+  reflexivity. 
+Qed.
+
+Lemma storeUpdate_id_ok_others_eval_name: forall ast_num stbl stk id v stk',
+    storeUpdate stbl stk (E_Identifier ast_num id) v (Normal stk') ->
+    forall ast_num' ast_num'' id' v' v'',
+      id<>id' ->
+      eval_name stbl stk (E_Identifier ast_num' id') (Normal v') ->
+      eval_name stbl stk' (E_Identifier ast_num'' id') (Normal v'') ->
+      v' = v''.
+Proof.
+  !intros.
+  !inversion H1.
+  !inversion H2.
+  specialize (storeUpdate_id_ok_others _ _ _ _ _ _ h_storeUpd).
+  !intro.
+  specialize (H id' hneq).
+  rewrite heq_fetchG_id'_stk in H.
+  rewrite heq_fetchG_id'_stk' in H.
+  inversion H.
+  reflexivity.
+Qed.
+
+
 (* Should be somewhere in stdlib, but not in ZArith. *)
 Lemma Zeq_bool_neq_iff : forall x y : Z, Zeq_bool x y = false <-> x <> y.
 Proof.

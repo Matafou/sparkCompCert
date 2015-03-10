@@ -95,7 +95,7 @@ Definition transl_num x := (Pos.of_nat (x+80)).
     arbitrary n but in fine we should remove this n.
  Idea from Krebber: remove the type defiition from stbl after fetching
  it. That way we have a decreasing argument. *)
-Fixpoint reduce_type (stbl:symboltable.symboltable) (ty:type) (n:nat): res base_type :=
+Function reduce_type (stbl:symboltable.symboltable) (ty:type) (n:nat): res base_type :=
   match n with
     | O => Error (msg "reduce_type: exhausted recursivity")
     | S n' =>
@@ -108,14 +108,15 @@ Fixpoint reduce_type (stbl:symboltable.symboltable) (ty:type) (n:nat): res base_
         | Boolean => OK BBoolean
 
         | Array_Type typnum =>
-          match symboltable.fetch_type typnum stbl with
+          Error (msg "reduce_type: Array_Type Not yet implemented!!.")
+        (*match symboltable.fetch_type typnum stbl with
             | None => Error [ MSG "reduce_type: no such type num :" ; CTX (transl_num typnum)]
             | Some (Array_Type_Declaration _ _ tpidx tpcell) =>
               do typofcells <- reduce_type stbl tpcell n' ;
                 do rge <- range_of tpidx ;
                 OK (BArray_Type typofcells rge)
             | _ => Error [ MSG "reduce_type: not an array type :" ; CTX (transl_num typnum)]
-          end
+          end *)
         (* TODO: array and record types *)
         | Integer_Type _ => Error (msg "reduce_type: Integer_Type Not yet implemented!!.")
         | Subtype _ => Error (msg "reduce_type: Subtype Not yet implemented!!.")

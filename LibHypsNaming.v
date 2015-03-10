@@ -32,6 +32,7 @@ Ltac fallback_rename_hyp h th :=
     | false = Zeq_bool _ _ => fresh "heq_Z_false"
     | Zeq_bool _ _ = _ => fresh "heq_Z"
     | _ = Zeq_bool _ _ => fresh "heq_Z"
+    | ?f = _ => fresh "heq_" f
     | ?f _ = _ => fresh "heq_" f
     | ?f _ _ = _ => fresh "heq_" f
     | ?f _ _ _ = _ => fresh "heq_" f
@@ -185,4 +186,5 @@ Tactic Notation "!intros" := idall;intros;rename_norm;unidall.
 Tactic Notation "!intro" := idall;intro;rename_norm;unidall.
 Tactic Notation "!inversion" hyp(h) := !! (inversion h;subst).
 Tactic Notation "!invclear" hyp(h) := !! (inversion h;clear h;subst).
+Tactic Notation "!assert" constr(h) := !! (assert h).
 
