@@ -244,7 +244,7 @@ Function build_loads_ (m:nat) {struct m} : Cminor.expr :=
 (** [build_loads m n] is the expression denoting the address
     of the variable at offset [n] in the enclosing frame [m] levels
     above the current frame. This is done by following pointers from
-    frames to frames. (Load (Load ...)). *)
+    frames to frames. (Load^m 0)+n. *)
 Definition build_loads (m:nat) (n:Z) :=
   let indirections := build_loads_ m in
   Ebinop Oadd indirections (Econst (Ointconst (Integers.Int.repr n))).
