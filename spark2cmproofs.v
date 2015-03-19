@@ -2631,6 +2631,71 @@ Section mapping.
     - eauto.
   Qed.
 
+  Lemma assignment_preserve_stack_no_null_offset :
+    forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
+      increasing_orderG CE ->
+      Forall (λ otherfrm : CompilEnv.frame, increasing_order_fr otherfrm) CE ->
+      (∀ (id : idnum) (δ : CompilEnv.V),
+          CompilEnv.fetchG id CE = Some δ → 0 <= δ ∧ δ < Integers.Int.modulus) ->
+      (* translating the variabe to a Cminor load address *)
+      transl_variable stbl CE a id = OK id_t ->
+      (* translating the value, we may need a overflow hypothesis on e_v/e_t_v *)
+      transl_value e_v e_t_v ->
+      (* Evaluating var address in Cminor *)
+      Cminor.eval_expr g stkptr locenv m id_t idaddr ->
+      (* Size of variable in Cminor memorry *)
+      compute_chnk stbl (E_Identifier a id) = OK chk ->
+      (* the two storing operation maintain match_env *)
+      storeUpdate stbl s (E_Identifier a id) e_v (Normal s') ->
+      Memory.Mem.storev chk m idaddr e_t_v = Some m' ->
+      match_env stbl s CE stkptr locenv g m ->
+      stack_no_null_offset stbl CE.
+  Proof.
+    !intros.
+    destruct h_match_env.
+    assumption.
+  Qed.
+
+  Lemma assignment_preserve_stack_safe :
+    forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
+      increasing_orderG CE ->
+      Forall (λ otherfrm : CompilEnv.frame, increasing_order_fr otherfrm) CE ->
+      (∀ (id : idnum) (δ : CompilEnv.V),
+          CompilEnv.fetchG id CE = Some δ → 0 <= δ ∧ δ < Integers.Int.modulus) ->
+      (* translating the variabe to a Cminor load address *)
+      transl_variable stbl CE a id = OK id_t ->
+      (* translating the value, we may need a overflow hypothesis on e_v/e_t_v *)
+      transl_value e_v e_t_v ->
+      (* if e_v is an int, then it is not overflowing *)
+      (forall n, e_v = Int n -> do_overflow_check n (Normal (Int n))) ->
+      (* Evaluating var address in Cminor *)
+      Cminor.eval_expr g stkptr locenv m id_t idaddr ->
+      (* Size of variable in Cminor memorry *)
+      compute_chnk stbl (E_Identifier a id) = OK chk ->
+      (* the two storing operation maintain match_env *)
+      storeUpdate stbl s (E_Identifier a id) e_v (Normal s') ->
+      Memory.Mem.storev chk m idaddr e_t_v = Some m' ->
+      match_env stbl s CE stkptr locenv g m ->
+      safe_stack s'.
+  Proof.
+    !intros.
+    rename H1 into h_fetch_safe.
+    rename H4 into h_overf_e_v.
+    !destruct h_match_env.
+    !intros.
+    red.
+    !intros.
+    !destruct (NPeano.Nat.eq_dec id0 id).
+    - subst.
+      apply h_overf_e_v.
+      erewrite storeUpdate_id_ok_same in heq_SfetchG;eauto.
+      inversion heq_SfetchG.
+      reflexivity.
+    - red in h_safe_stack_s.
+      apply h_safe_stack_s with (id:=id0);eauto.
+      erewrite storeUpdate_id_ok_others;eauto.
+  Qed.
+
 
 Set Printing Width 120.
 Lemma transl_stmt_ok :
@@ -2696,9 +2761,78 @@ Proof.
         functional inversion heq_transl_name.
         eapply wf_chain_load_aligned;eauto.
         eapply eval_build_loads_offset_non_null_var;eauto.
-      * admit.
-      * admit.
-    + admit.
+      * { decompose [and ex] (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
+          eapply assignment_preserve_stack_no_null_offset;eauto.
+          decompose [ex and] (transl_expr_ok _ _ _ _ heq_tr_expr_e0 _ _ _ _ _ _
+                                             h_eval_expr_v h_match_env).
+          assert (x1 = e_t_v). {
+            eapply det_eval_expr;eauto. }
+          subst x1.
+          eassumption. }
+      * { decompose [and ex] (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
+          eapply assignment_preserve_stack_safe;eauto.
+          decompose [ex and] (transl_expr_ok _ _ _ _ heq_tr_expr_e0 _ _ _ _ _ _
+                                             h_eval_expr_v h_match_env).
+          assert (x1 = e_t_v). {
+            eapply det_eval_expr;eauto. }
+          subst x1.
+          eassumption.
+          !intros.
+          subst.
+          eapply eval_expr_overf;eauto. }
+    + rename t into nme_type.
+      rename v into e_v.
+      !invclear h_exec_stmt.
+      rename v into e_t_v.
+      rename vaddr into nme_t_addr.
+      constructor.
+      * { decompose [and ex] (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
+          eapply assignment_preserve_stack_match;eauto.
+          decompose [ex and] (transl_expr_ok _ _ _ _ heq_tr_expr_e0 _ _ _ _ _ _
+                                             h_eval_expr h_match_env).
+          assert (x1 = e_t_v). {
+            eapply det_eval_expr;eauto. }
+          subst x1.
+          assumption. }
+      * { decompose [and ex] (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
+          eapply assignment_preserve_stack_complete;eauto.
+          decompose [ex and] (transl_expr_ok _ _ _ _ heq_tr_expr_e0 _ _ _ _ _ _
+                                             h_eval_expr h_match_env).
+          assert (x1 = e_t_v). {
+            eapply det_eval_expr;eauto. }
+          subst x1.
+          assumption. }
+      * { decompose [and ex] (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
+          eapply assignment_preserve_stack_separate;eauto.
+          decompose [ex and] (transl_expr_ok _ _ _ _ heq_tr_expr_e0 _ _ _ _ _ _
+                                             h_eval_expr h_match_env).
+          assert (x1 = e_t_v). {
+            eapply det_eval_expr;eauto. }
+          subst x1.
+          eassumption. }
+      * decomp (storev_inv _ _ _ _ _ heq_storev_v) ;subst.
+        functional inversion heq_transl_name.
+        eapply wf_chain_load_aligned;eauto.
+        eapply eval_build_loads_offset_non_null_var;eauto.
+      * { decompose [and ex] (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
+          eapply assignment_preserve_stack_no_null_offset;eauto.
+          decompose [ex and] (transl_expr_ok _ _ _ _ heq_tr_expr_e0 _ _ _ _ _ _
+                                             h_eval_expr h_match_env).
+          assert (x1 = e_t_v). {
+            eapply det_eval_expr;eauto. }
+          subst x1.
+          eassumption. }
+      * { decompose [and ex] (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
+          eapply assignment_preserve_stack_safe;eauto.
+          - decompose [ex and] (transl_expr_ok _ _ _ _ heq_tr_expr_e0 _ _ _ _ _ _
+                                             h_eval_expr h_match_env).
+            assert (x1 = e_t_v). {
+              eapply det_eval_expr;eauto. }
+            subst x1.
+            eassumption.
+          - !intros.
+            inversion heq;subst.
+            eapply eval_expr_overf;eauto. }
   (* IF THEN ELSE *)
   - admit.
   (* CALL *)
