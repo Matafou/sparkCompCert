@@ -166,25 +166,25 @@ Proof.
   intros until v.
   !functional induction (updates sto id v);!intros;simpl in *;intros.
   - !invclear heq;simpl.
-    rewrite -> NPeano.Nat.eqb_eq in hbeqnat_true.
+    rewrite -> Nat.eqb_eq in hbeqnat_true.
     subst.
-    apply NPeano.Nat.neq_sym in hneq.
-    rewrite <- NPeano.Nat.eqb_neq in hneq.
+    apply Nat.neq_sym in hneq.
+    rewrite <- Nat.eqb_neq in hneq.
     rewrite hneq in *.
     reflexivity.
   - !invclear heq;simpl.
-    destruct (NPeano.Nat.eq_dec id' y).
+    destruct (Nat.eq_dec id' y).
     + subst.
-      rewrite NPeano.Nat.eqb_refl in *.
+      rewrite Nat.eqb_refl in *.
       reflexivity.
-    + rewrite <- NPeano.Nat.eqb_neq in n.
+    + rewrite <- Nat.eqb_neq in n.
       rewrite n in *.
       eapply IHo;eauto.
   - discriminate.
   - discriminate.
 Qed.
 
-(* xxx + Name hypothesis. *)
+
 Lemma update_ok_others: forall frm id v frm',
     update frm id v = Some frm' ->
     forall id', id<>id' -> fetch id' frm = fetch id' frm'.

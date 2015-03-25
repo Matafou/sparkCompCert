@@ -936,9 +936,9 @@ Proof.
   !inversion h_eval_name. (* l'environnement retourne toujours des valeur rangées. *)
   - unfold safe_stack in *.
     eapply h_safe_stack_s;eauto.
-  - admit. (* Arrays *)
-  - admit. (* records *)
-Qed.
+  - give_up. (* Arrays *)
+  - give_up. (* records *)
+Admitted.
 
 (** on a safe stack, any expression that evaluates into a value,
     evaluates to a not overflowing value, except if it is a unary_plus
@@ -1642,7 +1642,7 @@ Section mapping.
     - specialize (increasing_order_In _ _ _ _ h_incr_orderG_CE).
       !intro.
       rewrite Forall_forall in h_forall.
-      apply NPeano.Nat.lt_eq_cases.
+      apply Nat.lt_eq_cases.
       unfold CompilEnv.level_of in *.
       apply frameG_In in heq_CEframeG_id_CE.
       specialize (h_forall _ heq_CEframeG_id_CE).
@@ -1666,11 +1666,11 @@ Section mapping.
     !induction lf;simpl in *;!intros.
     - discriminate.
     - destruct a.
-      destruct (NPeano.Nat.eq_dec id₁ i);subst.
-      + rewrite NPeano.Nat.eqb_refl in heq0.
+      destruct (Nat.eq_dec id₁ i);subst.
+      + rewrite Nat.eqb_refl in heq0.
         !invclear heq0.
         assert (h:id₂ ≠ i) by auto.
-        rewrite <- (NPeano.Nat.eqb_neq id₂ i) in h.
+        rewrite <- (Nat.eqb_neq id₂ i) in h.
         rewrite h in heq.
         inversion h_incr_order;subst;simpl in *.
         assert (δ₁ > δ₂). {
@@ -1682,12 +1682,12 @@ Section mapping.
         apply Z.lt_neq.
         apply Z.gt_lt_iff.
         assumption.
-      + destruct (NPeano.Nat.eq_dec id₂ i).
+      + destruct (Nat.eq_dec id₂ i).
         * subst.
-          rewrite NPeano.Nat.eqb_refl in heq.
+          rewrite Nat.eqb_refl in heq.
           !invclear heq.
           assert (h:id₁ ≠ i) by auto.
-          rewrite <- (NPeano.Nat.eqb_neq id₁ i) in h.
+          rewrite <- (Nat.eqb_neq id₁ i) in h.
           rewrite h in heq0.
           inversion h_incr_order;subst;simpl in *.
         assert (δ₂ > δ₁). {
@@ -1698,8 +1698,8 @@ Section mapping.
         apply Z.lt_neq.
         apply Z.gt_lt_iff.
         assumption.
-        * rewrite <- (NPeano.Nat.eqb_neq id₁ i) in n.
-          rewrite <- (NPeano.Nat.eqb_neq id₂ i) in n0.
+        * rewrite <- (Nat.eqb_neq id₁ i) in n.
+          rewrite <- (Nat.eqb_neq id₂ i) in n0.
           rewrite n,n0 in *.
           apply IHlf;auto.
           inversion h_incr_order.
@@ -1746,7 +1746,7 @@ Section mapping.
       eapply CEfetch_inj;eauto.
     - left.
       apply neq_sym.
-      apply NPeano.Nat.lt_neq.
+      apply Nat.lt_neq.
       apply CEfetch_reside_false in heq_fetch_id₂.
       apply CEfetch_reside_true in heq_fetch_id₁.
       rewrite heq_fetch_id₂,heq_fetch_id₁ in *;simpl in *.
@@ -1756,7 +1756,7 @@ Section mapping.
       apply h_forall_l.
       eapply frameG_In;eauto.
     - left.
-      apply NPeano.Nat.lt_neq.
+      apply Nat.lt_neq.
       apply CEfetch_reside_true in heq_fetch_id₂.
       apply CEfetch_reside_false in heq_fetch_id₁.
       rewrite heq_fetch_id₂,heq_fetch_id₁ in *;simpl in *.
@@ -1786,13 +1786,13 @@ Section mapping.
     - inversion H;inversion H0;subst.
       + reflexivity.
       + rewrite minus_diag in H1.
-        apply NPeano.Nat.sub_0_le in H1.
+        apply Nat.sub_0_le in H1.
         assert (s3 < s3)%nat. {
           eapply lt_le_trans with s1;auto. }
         destruct (lt_irrefl s3);auto.
       + rewrite minus_diag in H1.
         symmetry in H1.
-        apply NPeano.Nat.sub_0_le in H1.
+        apply Nat.sub_0_le in H1.
         assert (s3 < s3)%nat. {
           eapply lt_le_trans with s;auto. }
         destruct (lt_irrefl s3);auto.
@@ -2450,7 +2450,7 @@ Section mapping.
       unfold value_at_addr.
       rewrite heq_transl_type;simpl.
       assumption. }
-    !destruct (NPeano.Nat.eq_dec id other_id).
+    !destruct (Nat.eq_dec id other_id).
     - subst nme. (* same variable ==> result is the value just stored *)
       subst other_nme.
       subst other_id.
@@ -2572,7 +2572,7 @@ Section mapping.
     !intros.
     red.
     !intros.
-    !destruct (NPeano.Nat.eq_dec nme id).
+    !destruct (Nat.eq_dec nme id).
     - subst.
       exists e_v.
       constructor.
@@ -2685,7 +2685,7 @@ Section mapping.
     !intros.
     red.
     !intros.
-    !destruct (NPeano.Nat.eq_dec id0 id).
+    !destruct (Nat.eq_dec id0 id).
     - subst.
       apply h_overf_e_v.
       erewrite storeUpdate_id_ok_same in heq_SfetchG;eauto.
@@ -2839,7 +2839,7 @@ Proof.
   - admit.
   (* SEQUENCE *)
   - admit.
-Qed.
+Admitted.
 
 
 
