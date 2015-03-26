@@ -1722,7 +1722,7 @@ Section mapping.
     apply CEfetches_inj.
   Qed.
 
-
+Set Printing Width 75.
   Lemma CEfetchG_inj : forall CE id₁ id₂,
       increasing_orderG CE ->
       List.Forall (fun otherfrm => increasing_order_fr otherfrm) CE ->
@@ -2381,7 +2381,7 @@ Section mapping.
   
 
   
-
+Set Printing Width 78.
 
   Lemma assignment_preserve_stack_match :
     forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
@@ -2697,7 +2697,7 @@ Section mapping.
   Qed.
 
 
-Set Printing Width 120.
+Set Printing Width 78.
 Lemma transl_stmt_ok :
   forall stbl CE  (stm:statement) (stm':Cminor.stmt),
       increasing_orderG CE ->
@@ -2834,7 +2834,51 @@ Proof.
             inversion heq;subst.
             eapply eval_expr_overf;eauto. }
   (* IF THEN ELSE *)
-  - admit.
+  - rename e0 into e.
+    rename x into e_t.
+    rename x0 into b_then.
+    rename x1 into b_else.
+    !invclear h_eval_stmt.
+    + !invclear h_exec_stmt.
+      generalize (transl_expr_ok _ _ _ e_t heq_tr_expr_e0 locenv g m _ _ (Values.Vptr spb ofs) h_eval_expr h_match_env).
+      intro h_ex.
+      decomp h_ex.
+      assert (b=true). {
+        clear IHr IHr0 h_exec_stmt.
+        !invclear h_CM_eval_expr.
+        !invclear h_CM_eval_expr.
+        simpl in *.
+        generalize (det_eval_expr _ _ _ _ _ _ _ h_CM_eval_expr_e_t h_CM_eval_expr_e_t0).
+        !intro;subst.
+        clear h_CM_eval_expr_e_t0.
+        !invclear heq_transl_value.
+        !invclear h_eval_constant.
+        !invclear heq.
+        vm_compute in H12.
+        inversion H12.
+        reflexivity. }
+      subst.
+      eapply IHr;eauto.
+    + !invclear h_exec_stmt.
+      generalize (transl_expr_ok _ _ _ e_t heq_tr_expr_e0 locenv g m _ _ (Values.Vptr spb ofs) h_eval_expr h_match_env).
+      intro h_ex.
+      decomp h_ex.
+      assert (b=false). {
+        clear IHr IHr0 h_exec_stmt.
+        !invclear h_CM_eval_expr.
+        !invclear h_CM_eval_expr.
+        simpl in *.
+        generalize (det_eval_expr _ _ _ _ _ _ _ h_CM_eval_expr_e_t h_CM_eval_expr_e_t0).
+        !intro;subst.
+        clear h_CM_eval_expr_e_t0.
+        !invclear heq_transl_value.
+        !invclear h_eval_constant.
+        !invclear heq.
+        vm_compute in H12.
+        inversion H12.
+        reflexivity. }
+      subst.
+      eapply IHr0;eauto.
   (* CALL *)
   - admit.
   (* SEQUENCE *)
