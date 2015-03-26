@@ -2711,7 +2711,7 @@ Lemma transl_stmt_ok :
       eval_stmt stbl s stm (Normal s') ->
       forall tr locenv' m' o,
         Cminor.exec_stmt g f (Values.Vptr spb ofs) locenv m stm' tr locenv' m' o
-        ->  match_env stbl s' CE (Values.Vptr spb ofs) locenv g m'.
+        ->  match_env stbl s' CE (Values.Vptr spb ofs) locenv' g m'.
 Proof.
   intros until stm.
   !functional induction (transl_stmt stbl CE stm)
@@ -2882,7 +2882,16 @@ Proof.
   (* CALL *)
   - admit.
   (* SEQUENCE *)
-  - admit.
+  - rename s1 into stmt1.
+    rename s2 into stmt2.
+    !invclear h_eval_stmt.
+    !invclear h_exec_stmt.
+    + eapply IHr0 with (6:=h_eval_stmt); eauto. 
+    + xxx eapply IHr0 with (6:=h_eval_stmt); eauto.
+    + eapply IHr with (6:=h_eval_stmt0); eauto. 
+      all:eauto.
+      * 
+    
 Admitted.
 
 
