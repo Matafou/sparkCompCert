@@ -2887,10 +2887,8 @@ Proof.
     !invclear h_eval_stmt.
     !invclear h_exec_stmt.
     + eapply IHr0 with (6:=h_eval_stmt); eauto. 
-    + xxx eapply IHr0 with (6:=h_eval_stmt); eauto.
-    + eapply IHr with (6:=h_eval_stmt0); eauto. 
-      all:eauto.
-      * 
+    + (* o <> out_normal. is this possible?  *)
+      xxx.
     
 Admitted.
 
