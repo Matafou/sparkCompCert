@@ -1,7 +1,8 @@
 Require Import LibHypsNaming.
 Require Import semantics.
 Require Import Errors.
-Require Import spark2Cminor.
+Require Import more_stdlib function_utils spark2Cminor.
+Require Import Morphisms Relations.
 Import STACK.
 
 Functional Scheme update_ind := Induction for update Sort Prop.
@@ -10,6 +11,7 @@ Functional Scheme fetch_ind := Induction for fetch Sort Prop.
 
 Ltac rename_hyp1 h th :=
   match th with
+    | in_bound _ _ _ => fresh "h_inbound"
     | updates ?sto ?x _ = _ => fresh "heq_updates_" sto "_" x
     | updates ?sto ?x _ = _ => fresh "heq_updates_" sto
     | updates ?sto ?x _ = _ => fresh "heq_updates_" x
@@ -22,10 +24,10 @@ Ltac rename_hyp1 h th :=
     | updateG ?stk ?x _ = _ => fresh "heq_updateG_" stk
     | updateG ?stk ?x _ = _ => fresh "heq_updateG_" x
     | updateG ?stk ?x _ = _ => fresh "heq_updateG"
-    | fetchG ?x ?stk = _ => fresh "heq_fetchG_" x "_" stk
-    | fetchG ?x ?stk = _ => fresh "heq_fetchG_" stk
-    | fetchG ?x ?stk = _ => fresh "heq_fetchG_" x
-    | fetchG ?x ?stk = _ => fresh "heq_fetchG"
+    | STACK.fetchG ?x ?stk = _ => fresh "heq_SfetchG_" x "_" stk
+    | STACK.fetchG ?x ?stk = _ => fresh "heq_SfetchG_" stk
+    | STACK.fetchG ?x ?stk = _ => fresh "heq_SfetchG_" x
+    | STACK.fetchG ?x ?stk = _ => fresh "heq_SfetchG"
     | fetch ?x ?frm = _ => fresh "heq_fetch_" x "_" frm
     | fetch ?x ?frm = _ => fresh "heq_fetch_" frm
     | fetch ?x ?frm = _ => fresh "heq_fetch_" x
@@ -36,9 +38,70 @@ Ltac rename_hyp1 h th :=
     | fetches ?x ?sto = _ => fresh "heq_fetches"
     | storeUpdate ?stbl ?s ?nme ?x (Normal ?rs) => fresh "h_storeUpd"
     | storeUpdate ?stbl ?s ?nme ?x ?rs => fresh "h_storeUpd"
+    | fetch_var_type _ _ = Error _ => fresh "heq_fetch_var_type_ERR"
+    | fetch_var_type _ _ = _ => fresh "heq_fetch_var_type"
+    | spark2Cminor.compute_chnk _ ?name = OK ?chk => fresh "heq_compute_chnk_" name "_" chk
+    | spark2Cminor.compute_chnk _ ?name = ?chk => fresh "heq_compute_chnk_" name "_" chk
+    | spark2Cminor.compute_chnk _ ?name = _ => fresh "heq_compute_chnk_" name
+    | spark2Cminor.compute_chnk _ _ = _ => fresh "heq_compute_chnk"
+    | symboltable.fetch_exp_type _ _ = _ => fresh "heq_fetch_exp_type"
+    | symboltable.fetch_exp_type _ _ = Error _ => fresh "heq_fetch_exp_type_ERR"
+    | fetch_exp_type _ _ = None => fresh "heq_fetch_exp_type_none"
+    | fetch_exp_type _ _ = _ => fresh "heq_fetch_exp_type"
+    | eval_expr _ _ _ (Run_Time_Error _) => fresh "h_eval_expr_RE"
+    | eval_expr _ _ _ (Normal ?v) => fresh "h_eval_expr_" v
+    | eval_expr _ _ _ ?v => fresh "h_eval_expr_" v
+    | eval_expr _ _ _ _ => fresh "h_eval_expr"
+    | eval_name _ _ _ (Run_Time_Error _) => fresh "h_eval_name_RE"
+    | eval_name _ _ _ (Normal ?v) => fresh "h_eval_name_" v
+    | eval_name _ _ _ ?v => fresh "h_eval_name_" v
+    | eval_name _ _ _ _ => fresh "h_eval_name"
+    | do_overflow_check _ (Run_Time_Error _) => fresh "h_overf_check_RE"
+    | do_overflow_check _ _ => fresh "h_overf_check"
+    | do_range_check _ _ _ (Run_Time_Error _) => fresh "h_do_range_check_RE"
+    | do_range_check _ _ _ _ => fresh "h_do_range_check"
+    | do_run_time_check_on_binop _ _ _ (Run_Time_Error _) => fresh "h_do_rtc_binop_RTE"
+    | do_run_time_check_on_binop _ _ _ _ => fresh "h_do_rtc_binop"
+    | eval_literal _ (Run_Time_Error _)  => fresh "h_eval_literal_RE"
+    | eval_literal _ _  => fresh "h_eval_literal"
+    | eval_stmt _ _ _ (Run_Time_Error _) => fresh "h_eval_stmt_RE"
+    | eval_stmt _ _ _ _ => fresh "h_eval_stmt"
+    | storeUpdate _ _ _ _ (Run_Time_Error _) => fresh "h_storeupdate_RTE"
+    | storeUpdate _ _ _ _ _ => fresh "h_storeupdate"
+    | do_run_time_check_on_binop _ _ _ (Run_Time_Error _) =>  fresh "h_do_rtc_binop_RE"
+    | do_run_time_check_on_binop _ _ _ _ =>  fresh "h_do_rtc_binop"
+    | do_run_time_check_on_unop _ _ (Run_Time_Error _) =>  fresh "h_do_rtc_unop_RE"
+    | do_run_time_check_on_unop _ _ _ =>  fresh "h_do_rtc_unop"
+    | do_division_check _ _ (Run_Time_Error _) => fresh "h_do_division_check_RTE"
+    | do_division_check _ _ _ => fresh "h_do_division_check"
   end.
 
 Ltac rename_hyp ::= rename_hyp1.
+
+
+Lemma Zneq_bool_true :  forall x y : Z, x <> y -> Zneq_bool x y = true.
+Proof.
+  intros x y H.
+  apply Zneq_bool_true_iff;easy.
+Qed.
+
+Lemma Zeq_bool_Zneq_bool : forall x y, Zeq_bool x y = negb (Zneq_bool x y).
+Proof.
+  !intros x y.
+  !destruct (Z.eq_decidable x y).
+  - generalize heq_x.
+    !intro .
+    apply Zneq_bool_false_iff in heq_x.
+    apply Zeq_is_eq_bool in heq_x1.
+    rewrite heq_x, heq_x1.
+    reflexivity.
+  - generalize hneq.
+    !intro .
+    apply Zneq_bool_true in hneq.
+    apply Zeq_is_neq_bool in hneq1.
+    rewrite hneq, hneq1.
+    reflexivity.
+Qed.
 
 
 Lemma updates_ok_none : forall sto x v, updates sto x v = None <-> fetches x sto = None.
@@ -246,11 +309,11 @@ Lemma storeUpdate_id_ok_same_eval_name: forall ast_num stbl stk id v stk',
       v = v'.
 Proof.
   !intros.
-  !inversion H0.
+  !inversion h_eval_name_v'.
   specialize (storeUpdate_id_ok_same _ _ _ _ _ _ h_storeUpd).
   !intro.
-  rewrite heq_fetchG_id_stk' in heq_fetchG_id_stk'0.
-  inversion heq_fetchG_id_stk'0.
+  rewrite heq_SfetchG_id_stk' in heq_SfetchG_id_stk'0.
+  inversion heq_SfetchG_id_stk'0.
   reflexivity. 
 Qed.
 
@@ -263,30 +326,17 @@ Lemma storeUpdate_id_ok_others_eval_name: forall ast_num stbl stk id v stk',
       v' = v''.
 Proof.
   !intros.
-  !inversion H1.
-  !inversion H2.
+  !inversion h_eval_name_v'.
+  !inversion h_eval_name_v''.
   specialize (storeUpdate_id_ok_others _ _ _ _ _ _ h_storeUpd).
   !intro.
   specialize (H id' hneq).
-  rewrite heq_fetchG_id'_stk in H.
-  rewrite heq_fetchG_id'_stk' in H.
+  rewrite heq_SfetchG_id'_stk in H.
+  rewrite heq_SfetchG_id'_stk' in H.
   inversion H.
   reflexivity.
 Qed.
 
-
-(* Should be somewhere in stdlib, but not in ZArith. *)
-Lemma Zeq_bool_neq_iff : forall x y : Z, Zeq_bool x y = false <-> x <> y.
-Proof.
-  !intros.
-  split;!intro.
-  - apply Zeq_bool_neq.
-    assumption.
-  - destruct (Zeq_bool x y) eqn:h.
-    + apply Zeq_bool_eq in h.
-      contradiction.
-    + reflexivity.
-Qed.
 
 
 Lemma updateIndexedComp_id_ok_others: forall arr k v arr',
@@ -296,13 +346,13 @@ Proof.
   intros until v.
   !functional induction (updateIndexedComp arr k v);!intros;subst;simpl in *.
   - apply Zeq_bool_eq in heq_Z_true;subst;simpl.
-    apply Zeq_bool_neq_iff in hneq.
+    apply Zeq_is_neq_bool in hneq.
     rewrite hneq.
     reflexivity.
   - specialize (IHl (updateIndexedComp a1 i v) eq_refl _ hneq).
     rewrite IHl.
     reflexivity.
-  - apply Zeq_bool_neq_iff in hneq.
+  - apply Zeq_is_neq_bool in hneq.
     rewrite hneq.
     reflexivity.
 Qed.

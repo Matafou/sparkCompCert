@@ -1,5 +1,5 @@
 
-Require Import semantics.
+Require Import semantics LibHypsNaming.
 
 Open Scope Z_scope.
 

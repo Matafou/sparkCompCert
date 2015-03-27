@@ -1033,3 +1033,58 @@ Definition stbl_of_proc (pbdy:procedure_body) :=
 
 Definition empty_CE: compilenv := nil.
 *)
+
+
+
+Ltac rename_hyp1 h th :=
+  match th with
+    | transl_stmt _ _ _ = Error _ => fresh "heq_transl_stmt_ERR"
+    | transl_stmt _ _ _ = _ => fresh "heq_transl_stmt"
+    | transl_name _ _ _ = Error _ => fresh "heq_transl_name_ERR"
+    | transl_name _ _ _ = _ => fresh "heq_transl_name"
+    | transl_value _ Error _ => fresh "heq_transl_value_RE"
+    | transl_value _ _ => fresh "heq_transl_value"
+    | transl_variable _ _ _ _ = Error _ => fresh "heq_transl_variable_RE"
+    | transl_variable _ _ _ _ = _ => fresh "heq_transl_variable"
+    | transl_type _ _ = Error _ => fresh "heq_transl_type_RE"
+    | transl_type _ _ = _ => fresh "heq_transl_type"
+    | transl_basetype _ _ = Error _ => fresh "heq_transl_basetype_RE"
+    | transl_basetype _ _ = _ => fresh "heq_transl_basetype"
+    | build_loads ?n ?z = _ => fresh "heq_build_loads_" n "_" z
+    | build_loads _ _ = _ => fresh "heq_build_loads"
+    | make_load _ _ = Error _ => fresh "heq_make_load_RE"
+    | make_load _ _ = _ => fresh "heq_make_load"
+    | reduce_type _ _ _ = Error _ => fresh "heq_reduce_type_RE"
+    | reduce_type _ _ _ = _  => fresh "heq_reduce_type"
+    | concrete_type_of_value _ = Error _ => fresh "concrete_type_of_value_RE"
+    | concrete_type_of_value _ = _ => fresh "concrete_type_of_value"
+
+    | CompilEnv.fetchG ?id ?CE = _ => fresh "heq_CEfetchG_" id "_" CE
+    | CompilEnv.fetchG ?id _ = _ => fresh "heq_CEfetchG_" id
+    | CompilEnv.fetchG _ _ = Some _ => fresh "heq_CEfetchG"
+    | CompilEnv.fetchG _ _ = None => fresh "heq_CMfetchG_none"
+
+    | CompilEnv.fetch ?id ?CE = _ => fresh "heq_CEfetch_" id "_" CE
+    | CompilEnv.fetch ?id _ = _ => fresh "heq_CEfetch_" id
+    | CompilEnv.fetch _ _ = Some _ => fresh "heq_CEfetch"
+    | CompilEnv.fetch _ _ = None => fresh "heq_CMfetch_none"
+
+    | CompilEnv.frameG ?id ?CE = _ => fresh "heq_CEframeG_" id "_" CE
+    | CompilEnv.frameG ?id _ = _ => fresh "heq_CEframeG_" id
+    | CompilEnv.frameG _ _ = Some _ => fresh "heq_CEframeG"
+    | CompilEnv.frameG _ _ = None => fresh "heq_CMframeG_none"
+
+    | CompilEnv.level_of_top ?ce = None => fresh "heq_lvloftop_none_" ce
+    | CompilEnv.level_of_top ?ce = None => fresh "heq_lvloftop_none"
+    | CompilEnv.level_of_top ?ce = Some ?s => fresh "heq_lvloftop_" ce "_" s
+    | CompilEnv.level_of_top ?ce = ?s => fresh "heq_lvloftop_" ce "_" s
+    | CompilEnv.level_of_top ?ce = _ => fresh "heq_lvloftop_" ce
+    | CompilEnv.level_of_top _ = Some ?s => fresh "heq_lvloftop_" s
+    | CompilEnv.level_of_top _ = _ => fresh "heq_lvloftop"
+
+    | transl_expr ?stbl ?CE ?e = Error => fresh "heq_tr_expr_none"
+    | transl_expr ?stbl ?CE ?e = OK ?r => fresh "heq_tr_expr_" e
+    | transl_expr ?stbl ?CE ?e = ?r => fresh "heq_tr_expr"
+end.
+
+
