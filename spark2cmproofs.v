@@ -1,8 +1,8 @@
 
 Require Import
-  ZArith Utf8 function_utils LibHypsNaming Errors spark2Cminor Cminor
-  symboltable semantics semantics_properties Sorted Relations
-  compcert.lib.Integers compcert_utils more_stdlib.
+ZArith Utf8 function_utils LibHypsNaming Errors spark2Cminor Cminor
+symboltable semantics semantics_properties Sorted Relations
+compcert.lib.Integers compcert_utils more_stdlib.
 
 Require Ctypes.
 Import Symbol_Table_Module Memory.
@@ -13,9 +13,9 @@ Open Scope Z_scope.
 (** Hypothesis renaming stuff from other files *)
 Ltac rename_hyp_prev h th :=
   match th with
-    | _ => (semantics_properties.rename_hyp1 h th)
-    | _ => (spark2Cminor.rename_hyp1 h th)
-    | _ => (compcert_utils.rename_hyp1 h th)
+  | _ => (semantics_properties.rename_hyp1 h th)
+  | _ => (spark2Cminor.rename_hyp1 h th)
+  | _ => (compcert_utils.rename_hyp1 h th)
   end.
 
 Ltac rename_hyp ::= rename_hyp_prev.
@@ -25,19 +25,19 @@ Ltac rename_hyp ::= rename_hyp_prev.
 Ltac remove_refl :=
   repeat
     match goal with
-      | H: ?e = ?e |- _ => clear H
+    | H: ?e = ?e |- _ => clear H
     end.
 
 (* + exploiting equalities. *)
 Ltac eq_same_clear :=
   repeat progress
-    (repeat remove_refl;
-     repeat match goal with
-              | H: ?A = _ , H': ?A = _ |- _ => rewrite H in H'; !inversion H'
-              | H: OK ?A = OK ?B |- _ => !inversion H
-              | H: Some ?A = Some ?B |- _ => !inversion H
-              | H: ?A <> ?A |- _ => elim H;reflexivity
-            end).
+         (repeat remove_refl;
+           repeat match goal with
+                  | H: ?A = _ , H': ?A = _ |- _ => rewrite H in H'; !inversion H'
+                  | H: OK ?A = OK ?B |- _ => !inversion H
+                  | H: Some ?A = Some ?B |- _ => !inversion H
+                  | H: ?A <> ?A |- _ => elim H;reflexivity
+                  end).
 
 
 (* basic notions coincides between compcert and spark *)
@@ -62,19 +62,19 @@ Proof. reflexivity. Qed.
 (* TODO: replace this y the real typing function *)
 Definition type_of_name (stbl:symboltable) (nme:name): res type :=
   match nme with
-    | E_Identifier astnum id => fetch_var_type id stbl
-    | E_Indexed_Component astnum x0 x1 => Error (msg "type_of_name: arrays not treated yet")
-    | E_Selected_Component astnum x0 x1 => Error (msg "transl_basetype: records not treated yet")
+  | E_Identifier astnum id => fetch_var_type id stbl
+  | E_Indexed_Component astnum x0 x1 => Error (msg "type_of_name: arrays not treated yet")
+  | E_Selected_Component astnum x0 x1 => Error (msg "transl_basetype: records not treated yet")
   end.
 
 
 (** Hypothesis renaming stuff *)
 Ltac rename_hyp1 h th :=
   match th with
-    (* TODO: remove when we remove type_of_name by the real one. *)
-    | type_of_name _ _ = Error _ => fresh "heq_type_of_name_ERR"
-    | type_of_name _ _ = _ => fresh "heq_type_of_name"
-    | _ => (rename_hyp_prev h th)
+  (* TODO: remove when we remove type_of_name by the real one. *)
+  | type_of_name _ _ = Error _ => fresh "heq_type_of_name_ERR"
+  | type_of_name _ _ = _ => fresh "heq_type_of_name"
+  | _ => (rename_hyp_prev h th)
   end.
 
 Ltac rename_hyp ::= rename_hyp1.
@@ -89,8 +89,8 @@ Qed.
 
 
 Lemma transl_value_tot: forall v,
-        (forall y:nat,(exists b, v = Bool b \/ exists n, v = Int n))
-          -> exists tv, transl_value v tv.
+    (forall y:nat,(exists b, v = Bool b \/ exists n, v = Int n))
+    -> exists tv, transl_value v tv.
 Proof.
   !intros.
   decomp (H 0%nat);subst.
@@ -99,8 +99,7 @@ Proof.
 Qed.
 
 
-Lemma transl_literal_ok1 :
-  forall g (l:literal) v,
+Lemma transl_literal_ok1 : forall g (l:literal) v,
     eval_literal l (Normal v) ->
     forall sp t_v,
       eval_constant g sp (transl_literal l) = Some t_v ->
@@ -116,8 +115,7 @@ Proof.
     + !inversion h_eval_literal;constructor.
 Qed.
 
-Lemma transl_literal_ok2 :
-  forall g (l:literal) v,
+Lemma transl_literal_ok2 : forall g (l:literal) v,
     eval_literal l (Normal v) ->
     forall sp t_v,
       transl_value v t_v ->
@@ -138,8 +136,7 @@ Proof.
       reflexivity.
 Qed.
 
-Lemma transl_literal_ok :
-  forall g (l:literal) v,
+Lemma transl_literal_ok : forall g (l:literal) v,
     eval_literal l (Normal v) ->
     forall sp t_v,
       eval_constant g sp (transl_literal l) = Some t_v <->
@@ -155,12 +152,12 @@ Qed.
 
 
 Ltac inv_if_intop op h :=
-   match op with
-     | Plus => !invclear h
-     | Minus => !invclear h
-     | Multiply => !invclear h
-     | Divide => !invclear h
-   end.
+  match op with
+  | Plus => !invclear h
+  | Minus => !invclear h
+  | Multiply => !invclear h
+  | Divide => !invclear h
+  end.
 
 (* Transform hypothesis of the form do_range_check into disequalities. *)
 (* shortening the name to shorten the tactic below *)
@@ -203,9 +200,9 @@ Ltac inv_rtc :=
     when they don't raise a runtime error, like Compcert ones. *)
 
 Lemma not_ok: forall v1 v0 x,
-                     transl_value v1 x ->
-                     Math.unary_not v1 = Some v0 ->
-                     transl_value v0 (Values.Val.notbool x).
+    transl_value v1 x ->
+    Math.unary_not v1 = Some v0 ->
+    transl_value v0 (Values.Val.notbool x).
 Proof.
   !intros.
   !destruct v1;try discriminate;simpl in *;eq_same_clear.
@@ -216,10 +213,10 @@ Qed.
 
 
 Lemma and_ok: forall v1 v2 v0 x x0,
-                     transl_value v1 x ->
-                     transl_value v2 x0 ->
-                     Math.and v1 v2 = Some v0 ->
-                     transl_value v0 (Values.Val.and x x0).
+    transl_value v1 x ->
+    transl_value v2 x0 ->
+    Math.and v1 v2 = Some v0 ->
+    transl_value v0 (Values.Val.and x x0).
 Proof.
   !intros.
   !destruct v1;simpl in *;try discriminate; !destruct v2;simpl in *;try discriminate
@@ -231,10 +228,10 @@ Proof.
 Qed.
 
 Lemma or_ok: forall v1 v2 v0 x x0,
-                     transl_value v1 x ->
-                     transl_value v2 x0 ->
-                     Math.or v1 v2 = Some v0 ->
-                     transl_value v0 (Values.Val.or x x0).
+    transl_value v1 x ->
+    transl_value v2 x0 ->
+    Math.or v1 v2 = Some v0 ->
+    transl_value v0 (Values.Val.or x x0).
 Proof.
   !intros.
   !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *;eq_same_clear.
@@ -247,29 +244,29 @@ Qed.
 
 Definition check_overflow_value (v:value) :=
   match v with
-    | Undefined => True
-    | Int n => do_overflow_check n (Normal (Int n))
-    | Bool n => True
-    | ArrayV a => True(* FIXME *)
-    | RecordV r => True (* FIXME *)
+  | Undefined => True
+  | Int n => do_overflow_check n (Normal (Int n))
+  | Bool n => True
+  | ArrayV a => True(* FIXME *)
+  | RecordV r => True (* FIXME *)
   end.
 
 Ltac rename_hyp2 h th :=
   match th with
-    | check_overflow_value _ => fresh "h_check_overf"
-    | _ => rename_hyp1 h th
+  | check_overflow_value _ => fresh "h_check_overf"
+  | _ => rename_hyp1 h th
   end.
 
 Ltac rename_hyp ::= rename_hyp2.
 
 
 Lemma eq_ok: forall v1 v2 v0 x x0,
-               check_overflow_value v1 -> 
-               check_overflow_value v2 -> 
-               transl_value v1 x ->
-               transl_value v2 x0 ->
-               Math.eq v1 v2 = Some v0 ->
-               transl_value v0 (Values.Val.cmp Integers.Ceq x x0).
+    check_overflow_value v1 -> 
+    check_overflow_value v2 -> 
+    transl_value v1 x ->
+    transl_value v2 x0 ->
+    Math.eq v1 v2 = Some v0 ->
+    transl_value v0 (Values.Val.cmp Integers.Ceq x x0).
 Proof.
   !intros.
   !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *;eq_same_clear.
@@ -296,12 +293,12 @@ Qed.
 
 
 Lemma neq_ok: forall v1 v2 v0 x x0,
-               check_overflow_value v1 -> 
-               check_overflow_value v2 -> 
-               transl_value v1 x ->
-               transl_value v2 x0 ->
-               Math.ne v1 v2 = Some v0 ->
-               transl_value v0 (Values.Val.cmp Integers.Cne x x0).
+    check_overflow_value v1 -> 
+    check_overflow_value v2 -> 
+    transl_value v1 x ->
+    transl_value v2 x0 ->
+    Math.ne v1 v2 = Some v0 ->
+    transl_value v0 (Values.Val.cmp Integers.Cne x x0).
 Proof.
   !intros.
   !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *;eq_same_clear.
@@ -331,12 +328,12 @@ Proof.
 Qed.
 
 Lemma le_ok: forall v1 v2 v0 x x0,
-               check_overflow_value v1 -> 
-               check_overflow_value v2 -> 
-               transl_value v1 x ->
-               transl_value v2 x0 ->
-               Math.le v1 v2 = Some v0 ->
-               transl_value v0 (Values.Val.cmp Integers.Cle x x0).
+    check_overflow_value v1 -> 
+    check_overflow_value v2 -> 
+    transl_value v1 x ->
+    transl_value v2 x0 ->
+    Math.le v1 v2 = Some v0 ->
+    transl_value v0 (Values.Val.cmp Integers.Cle x x0).
 Proof.
   !intros.
   !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *;eq_same_clear.
@@ -367,12 +364,12 @@ Qed.
 
 
 Lemma ge_ok: forall v1 v2 v0 x x0,
-               check_overflow_value v1 -> 
-               check_overflow_value v2 -> 
-               transl_value v1 x ->
-               transl_value v2 x0 ->
-               Math.ge v1 v2 = Some v0 ->
-               transl_value v0 (Values.Val.cmp Integers.Cge x x0).
+    check_overflow_value v1 -> 
+    check_overflow_value v2 -> 
+    transl_value v1 x ->
+    transl_value v2 x0 ->
+    Math.ge v1 v2 = Some v0 ->
+    transl_value v0 (Values.Val.cmp Integers.Cge x x0).
 Proof.
   !intros.
   !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
@@ -404,12 +401,12 @@ Proof.
 Qed.
 
 Lemma lt_ok: forall v1 v2 v0 x x0,
-               check_overflow_value v1 -> 
-               check_overflow_value v2 -> 
-               transl_value v1 x ->
-               transl_value v2 x0 ->
-               Math.lt v1 v2 = Some v0 ->
-               transl_value v0 (Values.Val.cmp Integers.Clt x x0).
+    check_overflow_value v1 -> 
+    check_overflow_value v2 -> 
+    transl_value v1 x ->
+    transl_value v2 x0 ->
+    Math.lt v1 v2 = Some v0 ->
+    transl_value v0 (Values.Val.cmp Integers.Clt x x0).
 Proof.
   !intros.
   !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
@@ -441,12 +438,12 @@ Qed.
 
 
 Lemma gt_ok: forall v1 v2 v0 x x0,
-               check_overflow_value v1 -> 
-               check_overflow_value v2 -> 
-               transl_value v1 x ->
-               transl_value v2 x0 ->
-               Math.gt v1 v2 = Some v0 ->
-               transl_value v0 (Values.Val.cmp Integers.Cgt x x0).
+    check_overflow_value v1 -> 
+    check_overflow_value v2 -> 
+    transl_value v1 x ->
+    transl_value v2 x0 ->
+    Math.gt v1 v2 = Some v0 ->
+    transl_value v0 (Values.Val.cmp Integers.Cgt x x0).
 Proof.
   !intros.
   !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
@@ -478,8 +475,7 @@ Qed.
 
 
 (* strangely this one does not need overflow preconditions *)
-Lemma unaryneg_ok :
-  forall n v1 v,
+Lemma unaryneg_ok : forall n v1 v,
     transl_value v1 n ->
     Math.unary_operation Unary_Minus v1 = Some v ->
     transl_value v (Values.Val.negint n).
@@ -495,8 +491,8 @@ Proof.
 Qed.
 
 Lemma do_run_time_check_on_binop_ok: forall v1 v2 v op,
-             do_run_time_check_on_binop op v1 v2 (Normal v) ->
-             Math.binary_operation op v1 v2 = Some v.
+    do_run_time_check_on_binop op v1 v2 (Normal v) ->
+    Math.binary_operation op v1 v2 = Some v.
 Proof.
   intros v1 v2 v op hdo_rtc.
   !invclear hdo_rtc.
@@ -511,15 +507,14 @@ Qed.
 Ltac int_simpl :=
   progress
     (try rewrite min_signed_ok;
-     try rewrite max_signed_ok;
-     try rewrite Integers.Int.add_signed;
-     try rewrite Integers.Int.sub_signed;
-     try rewrite Integers.Int.mul_signed;
-     try rewrite Integers.Int.add_signed;
-    rewrite !Integers.Int.signed_repr).
+      try rewrite max_signed_ok;
+      try rewrite Integers.Int.add_signed;
+      try rewrite Integers.Int.sub_signed;
+      try rewrite Integers.Int.mul_signed;
+      try rewrite Integers.Int.add_signed;
+      rewrite !Integers.Int.signed_repr).
 
-Lemma add_ok :
-  forall v v1 v2 n1 n2,
+Lemma add_ok : forall v v1 v2 n1 n2,
     check_overflow_value v1 -> 
     check_overflow_value v2 -> 
     do_run_time_check_on_binop Plus v1 v2 (Normal v) ->
@@ -538,8 +533,7 @@ Proof.
   constructor.
 Qed.
 
-Lemma sub_ok :
-  forall v v1 v2 n1 n2,
+Lemma sub_ok : forall v v1 v2 n1 n2,
     check_overflow_value v1 -> 
     check_overflow_value v2 -> 
     do_run_time_check_on_binop Minus v1 v2 (Normal v) ->
@@ -558,8 +552,7 @@ Proof.
   constructor.
 Qed.
 
-Lemma mult_ok :
-  forall v v1 v2 n1 n2,
+Lemma mult_ok : forall v v1 v2 n1 n2,
     check_overflow_value v1 -> 
     check_overflow_value v2 -> 
     do_run_time_check_on_binop Multiply v1 v2 (Normal v) ->
@@ -584,8 +577,7 @@ Qed.
     semantics the division is performed but then it fails overflow
     checks. *)
 (*  How to compile this? probably by performing a check before. *)
-Lemma div_ok :
-  forall v v1 v2 n n1 n2,
+Lemma div_ok : forall v v1 v2 n n1 n2,
     check_overflow_value v1 -> 
     check_overflow_value v2 -> 
     do_run_time_check_on_binop Divide v1 v2 (Normal v) ->
@@ -614,8 +606,8 @@ Proof.
        check in spark semantic. Ths division is performed on Z and
        then overflow is checked and may fails. *)
     destruct (Int.eq (Int.repr v1)
-                              (Int.repr Int.min_signed) &&
-                              Int.eq (Int.repr v2) Int.mone)
+                     (Int.repr Int.min_signed) &&
+                     Int.eq (Int.repr v2) Int.mone)
              eqn:h_divoverf.
     + apply andb_true_iff in h_divoverf.
       destruct h_divoverf as [h_divoverf1 h_divoverf2].
@@ -656,8 +648,7 @@ Proof.
 Qed.
 
 
-Lemma binary_operator_ok:
-  forall op (n n1 n2 : Values.val) (v v1 v2 : value),
+Lemma binary_operator_ok: forall op (n n1 n2 : Values.val) (v v1 v2 : value),
     check_overflow_value v1 ->
     check_overflow_value v2 ->
     do_run_time_check_on_binop op v1 v2 (Normal v) ->
@@ -686,25 +677,20 @@ Proof.
     rewrite (transl_value_det _ _ _ heq_transl_value h_rtc);reflexivity.
   - eapply (ge_ok v1 v2 v n1 n2) in h_rtc;eq_same_clear;subst;eauto.
     rewrite (transl_value_det _ _ _ heq_transl_value h_rtc);reflexivity.
-  - generalize (add_ok _ _ _ _ _
-                       h_check_overf0 h_check_overf
-                       h_do_rtc_binop heq_transl_value1 heq_transl_value0).
+  - generalize (add_ok _ _ _ _ _ h_check_overf0 h_check_overf h_do_rtc_binop
+                       heq_transl_value1 heq_transl_value0).
     intro h.
     rewrite (transl_value_det _ _ _ heq_transl_value h);reflexivity.
-  - generalize (sub_ok _ _ _ _ _
-                       h_check_overf0 h_check_overf
-                       h_do_rtc_binop heq_transl_value1 heq_transl_value0).
+  - generalize (sub_ok _ _ _ _ _ h_check_overf0 h_check_overf h_do_rtc_binop
+                       heq_transl_value1 heq_transl_value0).
     intro h.
     rewrite (transl_value_det _ _ _ heq_transl_value h);reflexivity.
-  - generalize (mult_ok _ _ _ _ _
-                       h_check_overf0 h_check_overf
-                       h_do_rtc_binop heq_transl_value1 heq_transl_value0).
+  - generalize (mult_ok _ _ _ _ _ h_check_overf0 h_check_overf h_do_rtc_binop
+                        heq_transl_value1 heq_transl_value0).
     intro h.
     rewrite (transl_value_det _ _ _ heq_transl_value h);reflexivity.
-  - generalize (div_ok _ _ _ _ _ _
-                       h_check_overf0 h_check_overf
-                       h_do_rtc_binop heq_transl_value1 heq_transl_value0
-                       heq_transl_value).
+  - generalize (div_ok _ _ _ _ _ _ h_check_overf0 h_check_overf h_do_rtc_binop
+                       heq_transl_value1 heq_transl_value0 heq_transl_value).
     intro h.
     assumption.
 Qed.
@@ -713,8 +699,7 @@ Qed.
 (** * Memory invariant and bisimilarity *)
 
 
-Lemma eval_literal_overf :
-  forall (l:literal) n, 
+Lemma eval_literal_overf : forall (l:literal) n, 
     eval_literal l (Normal (Int n)) ->
     do_overflow_check n (Normal (Int n)).
 Proof.
@@ -728,25 +713,24 @@ Qed.
 (** [safe_stack s] means that every value in the spark stack [s] is
     correct wrt to overflows.
     TODO: extend with other values than Int: floats, arrays, records. *)
-Definition safe_stack s :=
-  forall id n,
-    STACK.fetchG id s = Some (Int n)
-    -> do_overflow_check n (Normal (Int n)).
+Definition safe_stack s := forall id n,
+    STACK.fetchG id s = Some (Int n) ->
+    do_overflow_check n (Normal (Int n)).
 
 (** Hypothesis renaming stuff *)
 Ltac rename_hyp2' h th :=
   match th with
-    | safe_stack ?s => fresh "h_safe_stack_" s
-    | safe_stack _ => fresh "h_safe_stack"
-    | _ => rename_hyp2 h th
+  | safe_stack ?s => fresh "h_safe_stack_" s
+  | safe_stack _ => fresh "h_safe_stack"
+  | _ => rename_hyp2 h th
   end.
 
 Ltac rename_hyp ::= rename_hyp2'.
 
-Lemma eval_name_overf : forall s st nme n,
-                          safe_stack s
-                          -> eval_name st s nme (Normal (Int n))
-                          -> do_overflow_check n (Normal (Int n)).
+Lemma eval_name_overf: forall s st nme n,
+    safe_stack s
+    -> eval_name st s nme (Normal (Int n))
+    -> do_overflow_check n (Normal (Int n)).
 Proof.
   !intros.
   !inversion h_eval_name. (* l'environnement retourne toujours des valeur rangées. *)
@@ -759,11 +743,11 @@ Admitted.
 (** on a safe stack, any expression that evaluates into a value,
     evaluates to a not overflowing value, except if it is a unary_plus
     (in which case no check is made). *)
-Lemma eval_expr_overf :
-  forall st s, safe_stack s ->
-            forall (e:expression) n, 
-              eval_expr st s e (Normal (Int n)) ->
-              do_overflow_check n (Normal (Int n)).
+Lemma eval_expr_overf : forall st s,
+    safe_stack s ->
+    forall e n,
+      eval_expr st s e (Normal (Int n)) ->
+      do_overflow_check n (Normal (Int n)).
 Proof.
   !intros.
   revert h_safe_stack_s.
@@ -787,10 +771,10 @@ Proof.
       apply IHh_eval_expr;auto.
 Qed.
 
-Lemma eval_expr_overf2 :
-  forall st s, safe_stack s ->
-               forall (e:expression) x,
-                 eval_expr st s e (Normal x) -> check_overflow_value x.
+Lemma eval_expr_overf2 : forall st s,
+    safe_stack s ->
+    forall (e:expression) x,
+      eval_expr st s e (Normal x) -> check_overflow_value x.
 Proof.
   !intros.
   destruct x;simpl in *;auto.
@@ -798,20 +782,17 @@ Proof.
 Qed.
 
 
-Definition stack_complete stbl s CE :=
-  forall a nme addrof_nme,
+Definition stack_complete stbl s CE := forall a nme addrof_nme,
     transl_variable stbl CE a nme = OK addrof_nme
     -> exists v, eval_name stbl s (E_Identifier a nme) (Normal v).
 
 
-Definition stack_no_null_offset stbl CE :=
-  forall a nme δ_lvl δ_id,
+Definition stack_no_null_offset stbl CE := forall a nme δ_lvl δ_id,
     transl_variable stbl CE a nme = OK (build_loads δ_lvl δ_id) ->
     4 <= Int.unsigned (Int.repr δ_id).
 
 
-Definition stack_localstack_aligned locenv g m :=
-  forall b δ_lvl v,
+Definition stack_localstack_aligned locenv g m := forall b δ_lvl v,
     Cminor.eval_expr g b locenv m (build_loads_ δ_lvl) v
     -> exists b', v = Values.Vptr b' Int.zero.
 
@@ -828,10 +809,9 @@ Definition stack_match st s CE sp locenv g m :=
 
 (* Variable addresses are all disjoint *)
 Definition stack_separate st CE sp locenv g m :=
-  forall
-    nme nme' addrof_nme addrof_nme'
-    typ_nme typ_nme'  cm_typ_nme cm_typ_nme'
-    k₁ δ₁ k₂ δ₂ chnk₁ chnk₂ ,
+  forall nme nme' addrof_nme addrof_nme'
+         typ_nme typ_nme'  cm_typ_nme cm_typ_nme'
+         k₁ δ₁ k₂ δ₂ chnk₁ chnk₂ ,
     type_of_name st nme = OK typ_nme ->
     type_of_name st nme' = OK typ_nme' ->
     transl_name st CE nme = OK addrof_nme ->
@@ -873,9 +853,7 @@ Definition increasing_orderG (stk: CompilEnv.stack): Prop :=
    ELoad((Eload(Eload ...(Eload(0)))) + n)).
  - spark variables and there translated address yield the same
    (translated) value. i.e. the two memories commute. *)
-Record match_env (st:symboltable) (s: STACK.stack)
-       (CE:compilenv) (sp:Values.val) (locenv: Cminor.env)
-       (g:genv)(m:Mem.mem): Prop :=
+Record match_env st s CE sp locenv g m: Prop :=
   mk_match_env {
       me_stack_match: stack_match st s CE sp locenv g m;
       me_stack_complete: stack_complete st s CE;
@@ -924,23 +902,23 @@ Ltac rename_hyp ::= rename_hyp3.
 
 Ltac rename_hyp4 h th :=
   match reverse goal with
-    | H: fetch_var_type ?X _ = OK h |- _  => (fresh "type_" X)
-    | H: id (fetch_var_type ?X _ = OK h) |- _ => (fresh "type_" X)
-    | H: (value_at_addr _ _ ?X = OK h) |- _ => fresh "val_at_" X
-    | H: id (value_at_addr _ _ ?X = OK h) |- _ => fresh "val_at_" X
-    | H: transl_variable _ _ _ ?X = OK h |- _ => fresh X "_t"
-    | H: id (transl_variable _ _ _ ?X = OK h) |- _ => fresh X "_t"
-    | H: transl_value ?X = OK h |- _ => fresh X "_t"
-    | H: id (transl_value ?X = OK h) |- _ => fresh X "_t"
-    | H: id (CompilEnv.frameG ?X _ = Some (h, _)) |- _ => fresh "lvl_" X
-    | H: CompilEnv.frameG ?X _ = Some (h, _) |- _ => fresh "lvl_" X
-    | H: id (CompilEnv.frameG ?X _ = Some (_, h)) |- _ => fresh "fr_" X
-    | H: CompilEnv.frameG ?X _ = Some (_, h) |- _ => fresh "fr_" X
-    | H: id (CompilEnv.fetchG ?X _ = Some h) |- _ => fresh "δ_" X
-    | H: CompilEnv.fetchG ?X _ = Some h |- _ => fresh "δ_" X
-    | H: id (CompilEnv.fetchG ?X _ = h) |- _ => fresh "δ_" X
-    | H: CompilEnv.fetchG ?X _ = h |- _ => fresh "δ_" X
-    | _ => rename_hyp3 h th
+  | H: fetch_var_type ?X _ = OK h |- _  => (fresh "type_" X)
+  | H: id (fetch_var_type ?X _ = OK h) |- _ => (fresh "type_" X)
+  | H: (value_at_addr _ _ ?X = OK h) |- _ => fresh "val_at_" X
+  | H: id (value_at_addr _ _ ?X = OK h) |- _ => fresh "val_at_" X
+  | H: transl_variable _ _ _ ?X = OK h |- _ => fresh X "_t"
+  | H: id (transl_variable _ _ _ ?X = OK h) |- _ => fresh X "_t"
+  | H: transl_value ?X = OK h |- _ => fresh X "_t"
+  | H: id (transl_value ?X = OK h) |- _ => fresh X "_t"
+  | H: id (CompilEnv.frameG ?X _ = Some (h, _)) |- _ => fresh "lvl_" X
+  | H: CompilEnv.frameG ?X _ = Some (h, _) |- _ => fresh "lvl_" X
+  | H: id (CompilEnv.frameG ?X _ = Some (_, h)) |- _ => fresh "fr_" X
+  | H: CompilEnv.frameG ?X _ = Some (_, h) |- _ => fresh "fr_" X
+  | H: id (CompilEnv.fetchG ?X _ = Some h) |- _ => fresh "δ_" X
+  | H: CompilEnv.fetchG ?X _ = Some h |- _ => fresh "δ_" X
+  | H: id (CompilEnv.fetchG ?X _ = h) |- _ => fresh "δ_" X
+  | H: CompilEnv.fetchG ?X _ = h |- _ => fresh "δ_" X
+  | _ => rename_hyp3 h th
   end.
 Ltac rename_hyp ::= rename_hyp4.
 
@@ -970,7 +948,8 @@ Qed.
 
 (** Property of the translation: Since chain variables have always
     zero offset, the offset of a variable in CE must be more than 3. *)
-Lemma eval_build_loads_offset_non_null_var: forall stbl CE g stkptr locenv m nme a bld_lds b ofs,
+Lemma eval_build_loads_offset_non_null_var:
+  forall stbl CE g stkptr locenv m nme a bld_lds b ofs,
     stack_no_null_offset stbl CE ->
     stack_localstack_aligned locenv g m ->
     transl_variable stbl CE a nme = OK bld_lds ->
@@ -995,14 +974,13 @@ Qed.
 
 
 
-Lemma transl_expr_ok :
-  forall stbl CE (e:expression) (e':Cminor.expr),
+Lemma transl_expr_ok : forall stbl CE e e',
     transl_expr stbl CE e = OK e' ->
     forall locenv g m (s:STACK.stack)  (v:value) stkptr,
-    eval_expr stbl s e (Normal v) ->
-    match_env stbl s CE stkptr locenv g m ->
-    exists v_t,
-      (transl_value v v_t /\ Cminor.eval_expr g stkptr locenv m e' v_t).
+      eval_expr stbl s e (Normal v) ->
+      match_env stbl s CE stkptr locenv g m ->
+      exists v_t,
+        (transl_value v v_t /\ Cminor.eval_expr g stkptr locenv m e' v_t).
 Proof.
   intros until e.
   !functional induction (transl_expr stbl CE e);try discriminate;simpl; !intros;
@@ -1098,9 +1076,9 @@ Qed.
 (** Hypothesis renaming stuff *)
 Ltac rename_hyp5 th :=
   match th with
-    | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ None  => fresh "h_exec_stmt_None"
-    | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ _  => fresh "h_exec_stmt"
-    | _ => rename_hyp4 th
+  | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ None  => fresh "h_exec_stmt_None"
+  | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ _  => fresh "h_exec_stmt"
+  | _ => rename_hyp4 th
   end.
 
 Ltac rename_hyp ::= rename_hyp5.
@@ -1108,7 +1086,7 @@ Ltac rename_hyp ::= rename_hyp5.
 Scheme Equality for binary_operator.
 Scheme Equality for unary_operator.
 Scheme Equality for literal.
-  
+
 Ltac finish_eqdec := try subst;try (left;reflexivity);(try now right;intro abs;inversion abs;contradiction).
 
 Lemma expression_dec: forall e1 e2:expression, ({e1=e2} + {e1<>e2})
@@ -1143,14 +1121,14 @@ Defined.
 Import STACK.
 (* Is this true? *)
 Axiom det_eval_expr: forall g stkptr locenv m e v v',
-                       Cminor.eval_expr g stkptr locenv m e v
-                       -> Cminor.eval_expr g stkptr locenv m e v'
-                       -> v = v'.
+    Cminor.eval_expr g stkptr locenv m e v
+    -> Cminor.eval_expr g stkptr locenv m e v'
+    -> v = v'.
 
 Inductive le_loads (lds: Cminor.expr): Cminor.expr -> Prop :=
   le_loads_n: le_loads lds lds
 | le_loads_L: ∀ lds', le_loads lds lds' -> le_loads lds (Eload AST.Mint32 lds').
- 
+
 Definition lt_loads := λ l₁ l₂, le_loads(Eload AST.Mint32 l₁) l₂.
 
 Lemma le_loads_ese_L : forall lds₁ lds₂: Cminor.expr,
@@ -1228,8 +1206,7 @@ Proof.
 Qed.
 
 
-Lemma build_loads__inj :
-  forall i₁ i₂,
+Lemma build_loads__inj : forall i₁ i₂,
     (* translating the variabe to a Cminor load address *)
     build_loads_ i₁ = build_loads_ i₂ ->
     i₁ = i₂.
@@ -1245,8 +1222,7 @@ Proof.
       rewrite (IHi₁ i₂);auto.
 Qed.
 
-Lemma build_loads__inj_lt :
-  forall i₁ i₂,
+Lemma build_loads__inj_lt : forall i₁ i₂,
     (i₁ < i₂)%nat ->
     forall e₁ e₂ ,
       (* translating the variabe to a Cminor load address *)
@@ -1264,8 +1240,7 @@ Proof.
     apply IHle;auto.
 Qed.
 
-Lemma build_loads__inj_neq :
-  forall i₁ i₂,
+Lemma build_loads__inj_neq : forall i₁ i₂,
     i₁ ≠ i₂ ->
     forall e₁ e₂ ,
       (* translating the variabe to a Cminor load address *)
@@ -1281,11 +1256,10 @@ Proof.
   contradiction.
 Qed.
 
-Lemma build_loads_inj :
-  forall i₁ i₂ k k' ,
-      (* translating the variabe to a Cminor load address *)
-      build_loads k i₁ = build_loads k' i₂ ->
-      k = k' ∧ Integers.Int.Z_mod_modulus i₁ = Integers.Int.Z_mod_modulus i₂.
+Lemma build_loads_inj : forall i₁ i₂ k k' ,
+    (* translating the variabe to a Cminor load address *)
+    build_loads k i₁ = build_loads k' i₂ ->
+    k = k' ∧ Integers.Int.Z_mod_modulus i₁ = Integers.Int.Z_mod_modulus i₂.
 Proof.
   unfold build_loads.
   !intros.
@@ -1294,8 +1268,7 @@ Proof.
   apply build_loads__inj;auto.
 Qed.
 
-Lemma build_loads_inj_neq1 :
-  forall i₁ i₂ k k' e₁ e₂,
+Lemma build_loads_inj_neq1 : forall i₁ i₂ k k' e₁ e₂,
     k ≠ k' ->
     build_loads k i₁ = e₁ ->
     build_loads k' i₂ = e₂ ->
@@ -1308,8 +1281,7 @@ Proof.
   destruct abs;contradiction.
 Qed.
 
-Lemma build_loads_inj_neq2 :
-  forall i₁ i₂ k k' e₁ e₂,
+Lemma build_loads_inj_neq2 : forall i₁ i₂ k k' e₁ e₂,
     Integers.Int.Z_mod_modulus i₁ ≠ Integers.Int.Z_mod_modulus i₂ ->
     build_loads k i₁ = e₁ ->
     build_loads k' i₂ = e₂ ->
@@ -1392,31 +1364,24 @@ Proof.
 Qed.
 
 
-
-
-
-
-
-
 Ltac rename_hyp_incro h th :=
   match th with
-    | increasing_order_fr ?x => fresh "h_incr_order_fr_" x
-    | increasing_order_fr _ => fresh "h_incr_order_fr"
-    | increasing_order ?x => fresh "h_incr_order_" x
-    | increasing_order _ => fresh "h_incr_order"
-    | increasing_orderG ?x => fresh "h_incr_orderG_" x
-    | increasing_orderG _ => fresh "h_incr_orderG"
-    | Forall ?P ?x => fresh "h_forall_" P "_" x
-    | Forall _ ?x => fresh "h_forall_" x
-    | Forall ?P _ => fresh "h_forall_" P
-    | Forall _ _ => fresh "h_forall"
-    | _ => rename_hyp5 h th
+  | increasing_order_fr ?x => fresh "h_incr_order_fr_" x
+  | increasing_order_fr _ => fresh "h_incr_order_fr"
+  | increasing_order ?x => fresh "h_incr_order_" x
+  | increasing_order _ => fresh "h_incr_order"
+  | increasing_orderG ?x => fresh "h_incr_orderG_" x
+  | increasing_orderG _ => fresh "h_incr_orderG"
+  | Forall ?P ?x => fresh "h_forall_" P "_" x
+  | Forall _ ?x => fresh "h_forall_" x
+  | Forall ?P _ => fresh "h_forall_" P
+  | Forall _ _ => fresh "h_forall"
+  | _ => rename_hyp5 h th
   end.
 Ltac rename_hyp ::= rename_hyp_incro.
 
 
-Lemma increase_order_level_of_top_ge:
-  forall CE id s s0 s3,
+Lemma increase_order_level_of_top_ge: forall CE id s s0 s3,
     increasing_orderG CE ->
     CompilEnv.frameG id CE = Some (s, s0) ->
     CompilEnv.level_of_top CE = Some s3 -> 
@@ -1598,8 +1563,7 @@ Proof.
 Qed.
 
 
-Lemma transl_variable_inj :
-  forall CE stbl a₁ a₂ id₁ id₂ k₁ k₂ δ₁ δ₂,
+Lemma transl_variable_inj : forall CE stbl a₁ a₂ id₁ id₂ k₁ k₂ δ₁ δ₂,
     (* Frame are numbered with different (increasing) numers *)
     increasing_orderG CE ->
     (* In each frame, stacks are also numbered with (increasing) numbers *)
@@ -1652,8 +1616,7 @@ Proof.
   - discriminate.
 Qed.
 
-Lemma transl_variable_astnum:
-  forall stbl CE astnum id' addrof_nme,
+Lemma transl_variable_astnum: forall stbl CE astnum id' addrof_nme,
     transl_variable stbl CE astnum id' = OK addrof_nme
     -> forall a,transl_variable stbl CE a id' = transl_variable stbl CE astnum id'.
 Proof.
@@ -1666,8 +1629,7 @@ Qed.
 
 
 
-Lemma compute_chk_32 :
-  forall stbl t,
+Lemma compute_chk_32 : forall stbl t,
     compute_chnk_of_type stbl t = OK AST.Mint32
     -> transl_type stbl t = OK (Ctypes.Tint Ctypes.I32 Ctypes.Signed Ctypes.noattr).
 Proof.
@@ -1688,8 +1650,8 @@ Ltac simplify_do :=
          (match goal with
           | H: context [do _ <- ?e ; _] , H': ?e = _ |- _ =>
             rewrite H' in H;simpl in H
-                          | H': ?e = _ |- context [do _ <- ?e ; _]  =>
-                            rewrite H';simpl
+          | H': ?e = _ |- context [do _ <- ?e ; _]  =>
+            rewrite H';simpl
           end).
 
 
@@ -1698,8 +1660,7 @@ Ltac simplify_do :=
      expressions of the form ((Load(Load(...(Load 0))))+δ) with δ >= 4
      and that stores never touch the addresses 0, variables addresses
      never change. *)
-Lemma wf_chain_load'2:forall g locenv stkptr chk m m' b ofs e_t_v
-                             vaddr,
+Lemma wf_chain_load'2:forall g locenv stkptr chk m m' b ofs e_t_v vaddr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
     -> (stack_localstack_aligned locenv g m)
     -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
@@ -1740,8 +1701,7 @@ Qed.
      expressions of the form ((Load(Load(...(Load 0))))+δ) with δ >= 4
      and that stores never touch the addresses 0, variables addresses
      never change. *)
-Lemma wf_chain_load'3:forall g locenv stkptr chk m m' b ofs e_t_v
-                             vaddr,
+Lemma wf_chain_load'3:forall g locenv stkptr chk m m' b ofs e_t_v vaddr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
     -> stack_localstack_aligned locenv g m'
     -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
@@ -1777,8 +1737,7 @@ Proof.
 Qed.
 
 
-Lemma wf_chain_load'':forall g locenv stkptr chk m m' b ofs e_t_v
-                             vaddr,
+Lemma wf_chain_load'':forall g locenv stkptr chk m m' b ofs e_t_v vaddr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
     -> (stack_localstack_aligned locenv g m)
     -> (stack_localstack_aligned locenv g m')
@@ -1799,8 +1758,7 @@ Qed.
      expressions of the form ((Load(Load(...(Load 0))))+δ) with δ >= 4
      and that stores never touch the addresses 0, variables addresses
      never change. *)
-Lemma wf_chain_load':forall g locenv stkptr chk m m' b ofs e_t_v
-                            vaddr,
+Lemma wf_chain_load':forall g locenv stkptr chk m m' b ofs e_t_v vaddr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
     -> (stack_localstack_aligned locenv g m')
     -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
@@ -1826,8 +1784,7 @@ Qed.
      expressions of the form ((Load(Load(...(Load 0))))+δ) with δ >= 4
      and that stores never touch the addresses 0, variables addresses
      never change. *)
-Lemma wf_chain_load'_2:forall g locenv stkptr chk m m' b ofs e_t_v
-                              vaddr,
+Lemma wf_chain_load'_2:forall g locenv stkptr chk m m' b ofs e_t_v vaddr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
     -> (stack_localstack_aligned locenv g m)
     -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
@@ -1853,8 +1810,8 @@ Qed.
      expressions of the form ((Load(Load(...(Load 0))))+δ) with δ >= 4
      and that stores never touch the addresses 0, variables addresses
      never change. *)
-Lemma wf_chain_load_var:forall stbl CE g locenv stkptr astnum chk m m' b ofs e_t_v
-                               id load_id vaddr,
+Lemma wf_chain_load_var:
+  forall stbl CE g locenv stkptr astnum chk m m' b ofs e_t_v id load_id vaddr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
     -> (stack_localstack_aligned locenv g m')
     -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
@@ -1876,8 +1833,8 @@ Qed.
      expressions of the form ((Load(Load(...(Load 0))))+δ) with δ >= 4
      and that stores never touch the addresses 0, variables addresses
      never change. *)
-Lemma wf_chain_load_var':forall stbl CE g locenv stkptr astnum chk m m' b ofs e_t_v
-                                id load_id vaddr,
+Lemma wf_chain_load_var':
+  forall stbl CE g locenv stkptr astnum chk m m' b ofs e_t_v id load_id vaddr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
     -> (stack_localstack_aligned locenv g m)
     -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
@@ -2098,7 +2055,8 @@ Qed.
 
 Lemma transl_name_OK_inv : forall stbl CE nme nme_t,
     transl_name stbl CE nme = OK nme_t
-    -> exists astnum id, (transl_variable stbl CE astnum id =  OK nme_t /\ nme = E_Identifier astnum id).
+    -> exists astnum id, (transl_variable stbl CE astnum id =  OK nme_t
+                          /\ nme = E_Identifier astnum id).
 Proof.
   !intros stbl CE nme nme_t H.
   functional inversion H.
@@ -2253,8 +2211,7 @@ Proof.
 Qed.
 
 
-Lemma transl_stmt_ok :
-  forall stbl CE  (stm:statement) (stm':Cminor.stmt),
+Lemma transl_stmt_ok : forall stbl CE  (stm:statement) (stm':Cminor.stmt),
     invariant_compile CE ->
     transl_stmt stbl CE stm = (OK stm') ->
     forall locenv g m s s' spb ofs f,
