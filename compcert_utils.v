@@ -13,7 +13,9 @@ Ltac rename_hyp1 h th :=
     | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ _  => fresh "h_exec_stmt"
     | Cminor.eval_constant _ _ _ = (Some _)  => fresh "h_eval_constant"
     | Cminor.eval_constant _ _ _ = None  => fresh "h_eval_constant_None"
+    | Cminor.eval_expr _ _ _ _ ?x ?y => fresh "h_CM_eval_expr_" x "_" y
     | Cminor.eval_expr _ _ _ _ ?x _ => fresh "h_CM_eval_expr_" x
+    | Cminor.eval_expr _ _ _ _ _ ?y => fresh "h_CM_eval_expr_" y
     | Cminor.eval_expr _ _ _ _ _ _ => fresh "h_CM_eval_expr"
     | Mem.store ?chk ?m ?blk ?n ?v = None => fresh "heq_store_" v "_none"
     | Mem.store ?chk ?m ?blk ?n ?v = Some ?m2 => fresh "heq_store_" v "_" m2

@@ -114,17 +114,25 @@ Ltac unidall :=
     tactic. It does not rename hypothesis already marked (i.e. of type
     (id _)). *)
 Ltac rename_norm :=
-  repeat match goal with
+  repeat match reverse goal with
            | H:_ |- _ =>
              match type of H with
                | id _ => fail 1 (** This hyp is marked, chose another one *)
-               | ?th => let newname := rename_hyp H th in
-                        rename H into newname;
-                        change (id th) in newname
+               | ?th => 
+                 let dummy_name := fresh "dummy" in
+                 rename H into dummy_name; (* this renaming makes the renaming more or 
+                                              less idempotent, it is backtracked if the
+                                              rename_hyp below fails. *)
+                 let newname := rename_hyp dummy_name th in
+                 rename dummy_name into newname;
+                 change (id th) in newname
                (* If the custom renaming tactic failed, then try the fallback one *)
-               | ?th => let newname := fallback_rename_hyp H th in
-                        rename H into newname;
-                        change (id th) in newname
+               | ?th =>
+                 let dummy_name := fresh "dummy" in
+                 rename H into dummy_name;
+                 let newname := fallback_rename_hyp dummy_name th in
+                 rename dummy_name into newname;
+                 change (id th) in newname
              end
          end.
 

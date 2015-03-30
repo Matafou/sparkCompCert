@@ -93,13 +93,13 @@ Proof.
   - generalize heq_x.
     !intro .
     apply Zneq_bool_false_iff in heq_x.
-    apply Zeq_is_eq_bool in heq_x1.
-    rewrite heq_x, heq_x1.
+    apply Zeq_is_eq_bool in heq_x0.
+    rewrite heq_x, heq_x0.
     reflexivity.
   - generalize hneq.
     !intro .
     apply Zneq_bool_true in hneq.
-    apply Zeq_is_neq_bool in hneq1.
-    rewrite hneq, hneq1.
+    apply Zeq_is_neq_bool in hneq0.
+    rewrite hneq, hneq0.
     reflexivity.
 Qed.

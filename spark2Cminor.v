@@ -1039,10 +1039,19 @@ Definition empty_CE: compilenv := nil.
 Ltac rename_hyp1 h th :=
   match th with
     | transl_stmt _ _ _ = Error _ => fresh "heq_transl_stmt_ERR"
-    | transl_stmt _ _ _ = _ => fresh "heq_transl_stmt"
+    | transl_stmt _ _ ?s = (OK ?r) => fresh "heq_transl_stmt_" s "_" r
+    | transl_stmt _ _ ?s = (OK ?r) => fresh "heq_transl_stmt_" r
+    | transl_stmt _ _ ?s = (Error _) => fresh "heq_transl_stmt_" s "_err"
+    | transl_stmt _ _ ?s = (Error _) => fresh "heq_transl_stmt_err"
+    | transl_stmt _ _ ?s = ?r => fresh "heq_transl_stmt_" s "_" r
+    | transl_stmt _ _ ?s = ?r => fresh "heq_transl_stmt_" r
+    | transl_stmt _ _ ?s = ?r => fresh "heq_transl_stmt_" s
+    | transl_stmt _ _ ?s = ?r => fresh "heq_transl_stmt"
     | transl_name _ _ _ = Error _ => fresh "heq_transl_name_ERR"
     | transl_name _ _ _ = _ => fresh "heq_transl_name"
-    | transl_value _ Error _ => fresh "heq_transl_value_RE"
+    | transl_value ?v ?vt => fresh "heq_transl_value_" v "_" vt
+    | transl_value ?v ?vt => fresh "heq_transl_value_" v
+    | transl_value ?v ?vt => fresh "heq_transl_value_" vt
     | transl_value _ _ => fresh "heq_transl_value"
     | transl_variable _ _ _ _ = Error _ => fresh "heq_transl_variable_RE"
     | transl_variable _ _ _ _ = _ => fresh "heq_transl_variable"

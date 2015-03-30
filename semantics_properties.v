@@ -79,31 +79,6 @@ Ltac rename_hyp1 h th :=
 Ltac rename_hyp ::= rename_hyp1.
 
 
-Lemma Zneq_bool_true :  forall x y : Z, x <> y -> Zneq_bool x y = true.
-Proof.
-  intros x y H.
-  apply Zneq_bool_true_iff;easy.
-Qed.
-
-Lemma Zeq_bool_Zneq_bool : forall x y, Zeq_bool x y = negb (Zneq_bool x y).
-Proof.
-  !intros x y.
-  !destruct (Z.eq_decidable x y).
-  - generalize heq_x.
-    !intro .
-    apply Zneq_bool_false_iff in heq_x.
-    apply Zeq_is_eq_bool in heq_x1.
-    rewrite heq_x, heq_x1.
-    reflexivity.
-  - generalize hneq.
-    !intro .
-    apply Zneq_bool_true in hneq.
-    apply Zeq_is_neq_bool in hneq1.
-    rewrite hneq, hneq1.
-    reflexivity.
-Qed.
-
-
 Lemma updates_ok_none : forall sto x v, updates sto x v = None <-> fetches x sto = None.
 Proof.
   !intros.
