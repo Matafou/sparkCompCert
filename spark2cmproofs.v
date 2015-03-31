@@ -62,7 +62,11 @@ Proof. reflexivity. Qed.
 (* TODO: replace this y the real typing function *)
 Definition type_of_name (stbl:symboltable) (nme:name): res type :=
   match nme with
-  | E_Identifier astnum id => fetch_var_type id stbl
+(*   | E_Identifier astnum id => fetch_var_type id stbl *)
+  | E_Identifier astnum id => match symboltable.fetch_exp_type astnum stbl with
+                                Some x => OK x
+                              | None =>  Error (msg "type_of_name: unknown type for astnum")
+                              end
   | E_Indexed_Component astnum x0 x1 => Error (msg "type_of_name: arrays not treated yet")
   | E_Selected_Component astnum x0 x1 => Error (msg "transl_basetype: records not treated yet")
   end.
@@ -89,8 +93,8 @@ Ltac rename_hyp1 h th :=
                    end
   | SymTable_Exps.V =>
     match goal with
-    | H: symboltable.fetch_exp_type (name_astnum ?x) _ = Some h |- _ =>
-      fresh x "_type"
+    | H: symboltable.fetch_exp_type (name_astnum ?x) _ = Some h |- _ => fresh x "_type"
+    | H: symboltable.fetch_exp_type ?x _ = Some h |- _ => fresh x "_type"
     end
   | Values.val =>
     match goal with
@@ -1033,9 +1037,12 @@ Proof.
       * constructor.
         reflexivity.
   - unfold value_at_addr in heq.
-    destruct (transl_type stbl type_id) eqn:heq_transl_type;simpl in *.
+    destruct (transl_type stbl astnum_type) eqn:heq_transl_type;simpl in *.
     + !destruct h_match_env.
       eapply h_stk_mtch_s_m;eauto.
+      simpl.
+      rewrite heq_fetch_exp_type.
+      reflexivity.
     + discriminate.
   - decomp (IHr _ heq_tr_expr_e _ _ _ _ _ _ h_eval_expr_e_v h_match_env).
     decomp (IHr0 _ heq_tr_expr_e0 _ _ _ _ _ _ h_eval_expr_e0_v h_match_env).
@@ -1974,12 +1981,19 @@ Proof.
               _ _ _ _ _ _ h_eval_name_other_id_val_prev
               heq_type_of_name heq_transl_name heq_transl_type heq_make_load)
     as [ cm_v [tr_val_v_other cm_eval_m_v_other]].
+  assert (heq_ftch_astnum:symboltable.fetch_exp_type astnum stbl = Some type_other). {
+    simpl in heq_type_of_name.
+    destruct (symboltable.fetch_exp_type astnum stbl);try discriminate.
+    !inversion heq_type_of_name.
+    reflexivity. }
   assert (h_tr_exp_other:
             transl_expr stbl CE (E_Name 1%nat (E_Identifier astnum other_id))
                         =: load_addr_other). {
     simpl.
     simpl in heq_type_of_name.
-    rewrite heq_transl_variable0, heq_type_of_name.
+    rewrite heq_ftch_astnum.
+    rewrite heq_transl_variable0.
+    !invclear heq_type_of_name.
     unfold value_at_addr.
     rewrite heq_transl_type;simpl.
     assumption. }
@@ -1992,8 +2006,10 @@ Proof.
       rewrite compute_chnk_ok in heq_compute_chnk.
       !functional inversion heq_compute_chnk;subst;auto. }
     simpl in heq_compute_chnk.
-    unfold compute_chnk_id in heq_compute_chnk.
-    rewrite heq_type_of_name in heq_compute_chnk.
+    unfold compute_chnk_astnum in heq_compute_chnk.
+(*     unfold compute_chnk_id in heq_compute_chnk. *)
+    rewrite heq_ftch_astnum in heq_type_of_name.
+(*     rewrite heq_type_of_name in heq_compute_chnk. *)
     lazy beta iota delta [bind] in heq_compute_chnk.
     rewrite (transl_variable_astnum _ _ _ _ _ heq_transl_variable0 a) in *.
     rewrite heq_transl_variable0 in heq_transl_variable.
@@ -2050,21 +2066,23 @@ Proof.
       clear h_tr_exp_other.
       erewrite Mem.load_store_other;[now eassumption| now eassumption | ].
       subst nme other_nme.
-      unfold compute_chnk_id in heq_compute_chnk.
-      destruct (fetch_var_type id stbl) eqn:heq_fetchvartyp;try discriminate.
-      simpl in heq_compute_chnk.
-
+      unfold compute_chnk_astnum in heq_compute_chnk.
+      destruct (symboltable.fetch_exp_type a stbl) eqn:heq_fetchvartyp;try discriminate.
       assert (heq_tr_type_id:transl_type stbl t
                              = OK (Ctypes.Tint Ctypes.I32 Ctypes.Signed Ctypes.noattr)). {
-        apply compute_chk_32;auto. }
+        apply compute_chk_32.
+        unfold compute_chnk_astnum in heq_compute_chnk.
+        assumption. }
       unfold stack_separate in h_separate_CE_m.
       { eapply h_separate_CE_m with (nme:=(E_Identifier a id))
                                       (nme':=(E_Identifier astnum other_id))
                                       (k₂ := b0) (k₁:=b);
         clear h_separate_CE_m;simpl;try eassumption;auto.
-        intro abs.
-        inversion abs;subst;try discriminate.
-        elim hneq;reflexivity. }
+        - rewrite heq_fetchvartyp.
+          reflexivity.
+        - intro abs.
+          inversion abs;subst;try discriminate.
+          elim hneq;reflexivity. }
 Qed.
 
 
@@ -2242,6 +2260,62 @@ Hint Resolve
      assignment_preserve_stack_no_null_offset assignment_preserve_stack_safe.
 
 
+(*Lemma transl_stmt_ok : forall stbl CE  (stm:statement) (stm':Cminor.stmt),
+    invariant_compile CE ->
+    transl_stmt stbl CE stm = (OK stm') ->
+    forall locenv g m s s' spb ofs f,
+      match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
+      eval_stmt stbl s stm (Normal s') ->
+      exists tr locenv' m',
+        Cminor.exec_stmt g f (Values.Vptr spb ofs) locenv m stm' tr locenv' m' Out_normal.
+Proof.
+  intros until stm.
+  functional induction (transl_stmt stbl CE stm)
+  ;simpl;intros;eq_same_clear;subst;simpl in *;try discriminate;
+  rename_norm;unidall.
+  (* skip *)
+  - !invclear h_eval_stmt.
+    repeat eexists.
+    econstructor.
+  (* assignment *)
+  - !invclear h_eval_stmt.
+    + decomp (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
+      decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _
+                             h_eval_expr_e_v h_match_env).
+      
+      !destruct h_match_env.
+      !destruct (h_stk_cmpl_s_CE _ _ _ heq_transl_variable).
+      unfold stack_match in *.
+      
+      destruct nme_type;simpl; simpl in *;eauto.
+      { edestruct (h_stk_mtch_s_m ).
+        * eapply h_eval_name_x1.
+        * simpl.
+          simpl in heq_fetch_exp_type.
+          rewrite heq_fetch_exp_type.
+          reflexivity.
+        * eassumption.
+        * simpl in *.
+          unfold transl_type.
+          eauto.
+        * 
+          destruct nme_type;simpl; simpl in *;eauto.
+          
+          unfold symboltable.fetch_exp_type in *.
+          assumption.
+          
+      eexists.
+      eexists.
+      eexists.
+      assert (h:eval_name stbl s (E_Name x ((E_Identifier x x0))) ).
+      eapply exec_Sstore with (vaddr:= ).
+      * 
+        
+
+  -
+Qed.
+*)
+
 Lemma transl_stmt_ok : forall stbl CE  (stm:statement) (stm':Cminor.stmt),
     invariant_compile CE ->
     transl_stmt stbl CE stm = (OK stm') ->
@@ -2250,7 +2324,7 @@ Lemma transl_stmt_ok : forall stbl CE  (stm:statement) (stm':Cminor.stmt),
       eval_stmt stbl s stm (Normal s') ->
       forall tr locenv' m' o,
         Cminor.exec_stmt g f (Values.Vptr spb ofs) locenv m stm' tr locenv' m' o
-        ->  match_env stbl s' CE (Values.Vptr spb ofs) locenv' g m'.
+        -> match_env stbl s' CE (Values.Vptr spb ofs) locenv' g m'.
 Proof.
   intros until stm.
   functional induction (transl_stmt stbl CE stm)

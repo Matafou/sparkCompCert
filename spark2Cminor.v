@@ -334,8 +334,12 @@ Definition transl_expr_aux := fix transl_expr (stbl:symboltable) (CE:compilenv) 
     | E_Name _ (E_Identifier astnum id) =>
       do addrid <- transl_variable stbl CE astnum id ; (* get the address of the variable *)
         (* get type from stbl or from actual value? *)
-        do typ <- fetch_var_type id stbl ;
-        value_at_addr stbl typ addrid
+        (* do typ <- fetch_var_type id stbl *)  (* TRYING TO USE ASTNUM instead *)
+        match symboltable.fetch_exp_type astnum stbl with
+          | Some typ => value_at_addr stbl typ addrid
+          | None => Error ([MSG "transl_expr unknown type at astnum: ";
+                            CTX (Pos.of_nat astnum) ])
+        end
 (*        match fetch_exp_type astnum stbl with (* get type from stbl or from actual value? *)
           | None => Error ([MSG "transl_expr: no such variable " ; CTX (Pos.of_nat id)])
           | Some (typ) => value_at_addr stbl typ addrid
@@ -480,9 +484,17 @@ Definition compute_chnk_id (stbl:symboltable) (id:idnum): res AST.memory_chunk :
   compute_chnk_of_type stbl typ.
 
 (* FIXME *)
+Definition compute_chnk_astnum (stbl:symboltable) (astn:astnum): res AST.memory_chunk :=
+  match symboltable.fetch_exp_type astn stbl with
+    | Some typ => compute_chnk_of_type stbl typ
+    | None => Error ([MSG "compute_chnk_astnum: unkniwn type on astnum: ";
+                       CTX (Pos.of_nat astn)])
+  end.
+
+(* FIXME *)
 Definition compute_chnk (stbl:symboltable) (nme:name): res AST.memory_chunk :=
   match nme with
-  | E_Identifier _ id => compute_chnk_id stbl id
+  | E_Identifier astnum id => compute_chnk_astnum stbl astnum
   | E_Indexed_Component _ nme' e => Error (msg "compute_chnk: arrays not implemented yet")
   | E_Selected_Component _ nme' id => Error (msg "compute_chnk: records not implemented yet")
   end.

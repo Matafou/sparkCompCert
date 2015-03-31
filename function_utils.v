@@ -269,12 +269,15 @@ Function transl_expr (stbl : symboltable) (CE : compilenv)
                 (e : expression) {struct e} : res expr :=
   match e with
   | E_Literal _ lit => OK (Econst (transl_literal lit))
-  | E_Name _ (E_Identifier astnum0 id) =>
-      match transl_variable stbl CE astnum0 id with
+  | E_Name _ (E_Identifier astnum1 id) =>
+      match transl_variable stbl CE astnum1 id with
       | OK x =>
-          match fetch_var_type id stbl with
-          | OK x0 => value_at_addr stbl x0 x
-          | Error msg => Error msg
+          match fetch_exp_type astnum1 stbl with
+          | Some typ => value_at_addr stbl typ x
+          | None =>
+              Error
+                [MSG "transl_expr unknown type at astnum: ";
+                CTX (Pos.of_nat astnum1)]
           end
       | Error msg => Error msg
       end
@@ -493,7 +496,26 @@ Qed.
 
 
 
-(* Definition foo_compute_chk:= Eval lazy beta iota delta [compute_chnk compute_chnk_id compute_chnk_of_type reduce_type bind] in compute_chnk. *)
+(* Definition foo_compute_chk:= Eval lazy beta iota delta [compute_chnk compute_chnk_id compute_chnk_astnum compute_chnk_of_type bind] in compute_chnk. *)
+Function compute_chnk (stbl' : symboltable) (nme : name) :=
+match nme with
+| E_Identifier astnum0 _ =>
+    match fetch_exp_type astnum0 stbl' with
+    | Some typ =>
+        match reduce_type stbl' typ max_recursivity with
+        | OK BBoolean => OK AST.Mint32
+        | OK (BInteger _) => OK AST.Mint32
+        | OK (BArray_Type _ _) => Error (msg "compute_chnk_of_type: Arrays types not yet implemented!!.")
+        | OK (BRecord_Type _) => Error (msg "compute_chnk_of_type: Records types not yet implemented!!.")
+        | Error x => Error x
+        end
+    | None =>
+        Error [MSG "compute_chnk_astnum: unkniwn type on astnum: ";
+          CTX (Pos.of_nat astnum0)] end
+| E_Indexed_Component _ _ _ => Error (msg "compute_chnk: arrays not implemented yet")
+| E_Selected_Component _ _ _ => Error (msg "compute_chnk: records not implemented yet")
+end.
+(*
 Function compute_chnk (stbl' : symboltable) (nme : name) :=
 match nme with
 | E_Identifier _ idnt =>
@@ -511,7 +533,7 @@ match nme with
 | E_Indexed_Component _ _ _ => Error (msg "compute_chnk: arrays not implemented yet")
 | E_Selected_Component _ _ _ => Error (msg "compute_chnk: records not implemented yet")
 end.
-
+*)
 Lemma compute_chnk_ok : forall x y, spark2Cminor.compute_chnk x y = compute_chnk x y.
 Proof.
   reflexivity.
