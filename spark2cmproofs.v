@@ -1,8 +1,7 @@
-
 Require Import
-ZArith Utf8 function_utils LibHypsNaming Errors spark2Cminor Cminor
-symboltable semantics semantics_properties Sorted Relations
-compcert.lib.Integers compcert_utils more_stdlib.
+ ZArith function_utils LibHypsNaming Errors spark2Cminor Cminor
+ symboltable semantics semantics_properties Sorted Relations
+ compcert.lib.Integers compcert_utils more_stdlib Utf8.
 
 Require Ctypes.
 Import Symbol_Table_Module Memory.
@@ -903,6 +902,13 @@ Record match_env st s CE sp locenv g m: Prop :=
       me_stack_no_null_offset: stack_no_null_offset st CE;
       me_overflow: safe_stack s (* Put this somewhere else, concerns only s *)
     }.
+
+Arguments me_stack_match : default implicits.
+Arguments me_overflow : default implicits.
+Arguments me_stack_no_null_offset : default implicits.
+Arguments me_stack_localstack_aligned : default implicits.
+Arguments me_stack_separate : default implicits.
+Arguments me_stack_complete : default implicits.
 
 (** The compilation environment has some intrinsic properties:
  - Frame are numbered in increasing order in the global store
@@ -2260,7 +2266,10 @@ Hint Resolve
      assignment_preserve_stack_no_null_offset assignment_preserve_stack_safe.
 
 
-(*Lemma transl_stmt_ok : forall stbl CE  (stm:statement) (stm':Cminor.stmt),
+
+Notation stbl_exp_type := symboltable.fetch_exp_type.
+
+Lemma transl_stmt_normal_complete : forall stbl CE  (stm:statement) (stm':Cminor.stmt),
     invariant_compile CE ->
     transl_stmt stbl CE stm = (OK stm') ->
     forall locenv g m s s' spb ofs f,
@@ -2275,46 +2284,72 @@ Proof.
   rename_norm;unidall.
   (* skip *)
   - !invclear h_eval_stmt.
-    repeat eexists.
-    econstructor.
+    eexists. eexists. eexists.
+    try now constructor.
   (* assignment *)
-  - !invclear h_eval_stmt.
-    + decomp (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
-      decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _
+  - exists Events.E0.
+    exists locenv.
+    decomp (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
+    !! (edestruct (me_stack_complete h_match_env);eauto).
+    !invclear h_eval_stmt.
+    + decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _ 
                              h_eval_expr_e_v h_match_env).
-      
-      !destruct h_match_env.
-      !destruct (h_stk_cmpl_s_CE _ _ _ heq_transl_variable).
-      unfold stack_match in *.
-      
-      destruct nme_type;simpl; simpl in *;eauto.
-      { edestruct (h_stk_mtch_s_m ).
-        * eapply h_eval_name_x1.
-        * simpl.
-          simpl in heq_fetch_exp_type.
-          rewrite heq_fetch_exp_type.
-          reflexivity.
-        * eassumption.
-        * simpl in *.
-          unfold transl_type.
+      (* transl_type never fails (except of currently unsupported types) *)
+      assert (hex:exists nme_type_t, transl_type stbl t =: nme_type_t).
+      { simpl in *.        
+        destruct t;simpl in * ; simpl; try discriminate ;eauto.
+        - admit. (* arrays *)
+        - admit. (* records *) }
+      !destruct hex.
+      (* make_load does not fail on a translated variable coming from CE *)
+      assert (hex: exists load_addr_nme, make_load nme_t x2 =: load_addr_nme). {
+        simpl in *.        
+        destruct t;simpl in * ; simpl; try discriminate;eauto.
+        - inversion heq_transl_type. subst.
+          simpl.
+          unfold make_load.
+          simpl.
           eauto.
-        * 
-          destruct nme_type;simpl; simpl in *;eauto.
-          
-          unfold symboltable.fetch_exp_type in *.
-          assumption.
-          
-      eexists.
-      eexists.
-      eexists.
-      assert (h:eval_name stbl s (E_Name x ((E_Identifier x x0))) ).
-      eapply exec_Sstore with (vaddr:= ).
-      * 
-        
-
-  -
-Qed.
-*)
+        - inversion heq_transl_type. subst.
+          simpl.
+          unfold make_load.
+          simpl.
+          eauto. }
+      !destruct hex.
+      (* Cminor.eval_expr does not fail on a translated variable (invariant?) *)
+      assert (hex: exists vaddr,
+                 Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t vaddr).
+      { !destruct h_match_env.
+        unfold stack_match in h_stk_mtch_s_m.
+        generalize (h_stk_mtch_s_m (E_Identifier x x0) x1 nme_t x3 t x2).
+        intro h.
+        destruct h;auto.
+        - admit. (* consistency of stbl wrt to astnum's types. *)
+        - decomp H0.
+          unfold make_load in heq_make_load.
+          destruct (Ctypes.access_mode x2) eqn:h;simpl in *;try discriminate.
+          !invclear heq_make_load.
+          !inversion h_CM_eval_expr_x3_x4.
+          exists nme_t_v.
+          assumption. }
+      (* A translated variable always results in a Vptr. *)
+      !destruct hex.
+      assert (hex:∃ nme_block nme_ofst, nme_t_v = (Values.Vptr nme_block nme_ofst)). {
+        admit. (* TODO *) }
+      decomp hex. 
+      (* Adresses of translated variables are always writable (invariant?) *)
+      assert(Mem.valid_access m nme_chk x4 (Int.unsigned x5) Writable). {
+         admit. (* One more invariant? *) }
+      eapply Mem.valid_access_store in H0.
+      destruct H0.
+      exists x6.
+      econstructor;eauto.
+      subst.
+      simpl.
+      eassumption.
+    + (* FINISH *)
+      admit.
+Admitted.
 
 Lemma transl_stmt_ok : forall stbl CE  (stm:statement) (stm':Cminor.stmt),
     invariant_compile CE ->
