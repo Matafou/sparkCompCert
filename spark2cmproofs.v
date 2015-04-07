@@ -760,13 +760,13 @@ Lemma eval_name_overf: forall s st nme n,
     safe_stack s
     -> eval_name st s nme (Normal (Int n))
     -> do_overflow_check n (Normal (Int n)).
-Proof.
+Proof using.
   !intros.
   !inversion h_eval_name. (* l'environnement retourne toujours des valeur rangées. *)
   - unfold safe_stack in *.
     eapply h_safe_stack_s;eauto.
-  - give_up. (* Arrays *)
-  - give_up. (* records *)
+  - admit. (* Arrays *)
+  - admit. (* records *)
 Admitted.
 
 (** on a safe stack, any expression that evaluates into a value,
@@ -2288,14 +2288,18 @@ Qed.
 
 Notation stbl_exp_type := symboltable.fetch_exp_type.
 
-Lemma transl_stmt_normal_complete : forall stbl CE  (stm:statement) (stm':Cminor.stmt),
+
+
+Lemma transl_stmt_normal_OK : forall stbl CE  (stm:statement) (stm':Cminor.stmt),
     invariant_compile CE ->
     transl_stmt stbl CE stm = (OK stm') ->
     forall locenv g m s s' spb ofs f,
       match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
       eval_stmt stbl s stm (Normal s') ->
       exists tr locenv' m',
-        Cminor.exec_stmt g f (Values.Vptr spb ofs) locenv m stm' tr locenv' m' Out_normal.
+        Cminor.exec_stmt g f (Values.Vptr spb ofs) locenv m stm' tr locenv' m' Out_normal
+        /\  match_env stbl s' CE (Values.Vptr spb ofs) locenv' g m'.
+Proof.
 Proof.
   intros until stm.
   functional induction (transl_stmt stbl CE stm)
@@ -2304,7 +2308,9 @@ Proof.
   (* skip *)
   - !invclear h_eval_stmt.
     eexists. eexists. eexists.
-    try now constructor.
+    split.
+    + try now constructor.
+    + assumption.
   (* assignment *)
   - exists Events.E0.
     exists locenv.
@@ -2349,10 +2355,25 @@ Proof.
       eapply Mem.valid_access_store in H0.
       destruct H0.
       exists x6.
-      econstructor;eauto.
-      subst.
-      simpl.
-      eassumption.
+      assert (exec_stmt g f (Values.Vptr spb ofs) locenv m (Sstore nme_chk nme_t e_t)
+                        Events.E0 locenv x6 Out_normal). {
+        econstructor;eauto.
+        subst.
+        simpl.
+        eassumption. }
+        split.
+        * assumption.
+        * { !invclear H0.
+            assert (e_t_v0 = e_t_v). {
+              eapply det_eval_expr;eauto. }
+            subst e_t_v0.
+            constructor;eauto 7.
+            eapply assignment_preserve_stack_safe;eauto.
+            !intros.
+            subst.
+            eapply eval_expr_overf;eauto.
+          }
+
     + decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _ h_eval_expr h_match_env).
       (* transl_type never fails (except of currently unsupported types) *)
       assert (hex:exists nme_type_t, transl_type stbl t =: nme_type_t).
@@ -2394,10 +2415,23 @@ Proof.
       eapply Mem.valid_access_store in H0.
       destruct H0.
       exists x6.
-      econstructor;eauto.
-      subst.
-      simpl.
-      eassumption.
+      assert (exec_stmt g f (Values.Vptr spb ofs) locenv m (Sstore nme_chk nme_t e_t)
+                        Events.E0 locenv x6 Out_normal). {
+        econstructor;eauto.
+        subst.
+        simpl.
+        eassumption. }
+      split.
+      * assumption.
+      * !invclear H0.
+        assert (e_t_v0 = e_t_v). {
+          eapply det_eval_expr;eauto. }
+        subst e_t_v0.
+        constructor;eauto 7.
+        eapply assignment_preserve_stack_safe;eauto.
+        !intros.
+        !invclear heq.
+        eapply eval_expr_overf;eauto.
   - rename x0 into b_then.
     rename x1 into b_else.
     rename_norm; unidall.
@@ -2410,18 +2444,24 @@ Proof.
       exists x0.
       exists x1.
       decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e locenv g m s _ (Values.Vptr spb ofs) h_eval_expr h_match_env).
-      econstructor;eauto.
-      * { econstructor;eauto.
-          - econstructor;eauto.
-            simpl.
-            reflexivity.
-          - simpl.
-            reflexivity. }
-      * inversion  heq_transl_value_e_t_v0.
-        subst. 
-        econstructor.
-      * rewrite  Int.eq_false;eauto.
-        apply Int.one_not_zero.
+      assert (exec_stmt g f (Values.Vptr spb ofs) locenv m
+                        (Sifthenelse (Ebinop (Ocmp Cne) e_t (Econst (Ointconst Int.zero)))
+                                     b_then b_else) x x0 x1 Out_normal).
+      { econstructor;eauto.
+        * { econstructor;eauto.
+            - econstructor;eauto.
+              simpl.
+              reflexivity.
+            - simpl.
+              reflexivity. }
+        * inversion  heq_transl_value_e_t_v0.
+          subst. 
+          econstructor.
+        * rewrite  Int.eq_false;eauto.
+          apply Int.one_not_zero. }
+      split.
+      * assumption.
+      * assumption.
     + decomp (transl_expr_ok _ _ _ e_t heq_tr_expr_e locenv g m _ _
                              (Values.Vptr spb ofs) h_eval_expr h_match_env).
       decomp (IHr0 b_else H heq_transl_stmt_stmt0_b_else locenv g m s s' spb ofs f
@@ -2430,126 +2470,30 @@ Proof.
       exists x0.
       exists x1.
       decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e locenv g m s _ (Values.Vptr spb ofs) h_eval_expr h_match_env).
-      econstructor;eauto.
+      split.
       * { econstructor;eauto.
-          - econstructor;eauto.
-            simpl.
-            reflexivity.
-          - simpl.
-            reflexivity. }
-      * inversion  heq_transl_value_e_t_v0.
-        subst. 
-        econstructor.
-      * rewrite  Int.eq_true;eauto.
+          * { econstructor;eauto.
+              - econstructor;eauto.
+                simpl.
+                reflexivity.
+              - simpl.
+                reflexivity. }
+          * inversion  heq_transl_value_e_t_v0.
+            subst. 
+            econstructor.
+          * rewrite  Int.eq_true;eauto. }
+      * assumption.
   - admit. (* Procedure Call *)
   - !invclear h_eval_stmt.
     decomp (IHr x H heq_transl_stmt_stmt_x locenv g m s s1 spb ofs f
                 h_match_env h_eval_stmt).
-    assert (h_me:match_env stbl s1 CE (Values.Vptr spb ofs) x2 g x3). { admit. (* mutual *) }
-    decomp (IHr0 x0 H heq_transl_stmt_stmt0_x0 x2 g x3 s1 s' spb ofs f h_me h_eval_stmt0).
+    decomp (IHr0 x0 H heq_transl_stmt_stmt0_x0 x2 g x3 s1 s' spb ofs f h_match_env0 h_eval_stmt0).
     exists (Events.Eapp x1 x4).
     exists x5.
     exists x6.
-    econstructor;eauto.
+    split.
+    + econstructor;eauto.
+    + assumption.
 Admitted.
 
-Lemma transl_stmt_ok : forall stbl CE  (stm:statement) (stm':Cminor.stmt),
-    invariant_compile CE ->
-    transl_stmt stbl CE stm = (OK stm') ->
-    forall locenv g m s s' spb ofs f,
-      match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
-      eval_stmt stbl s stm (Normal s') ->
-      forall tr locenv' m' o,
-        Cminor.exec_stmt g f (Values.Vptr spb ofs) locenv m stm' tr locenv' m' o
-        -> match_env stbl s' CE (Values.Vptr spb ofs) locenv' g m'.
-Proof.
-  intros until stm.
-  functional induction (transl_stmt stbl CE stm)
-  ;simpl;intros;eq_same_clear;subst;simpl in *;try discriminate;
-  rename_norm;unidall.
-  (* skip *)
-  - !invclear h_eval_stmt.
-    !invclear h_exec_stmt.
-    assumption.
-  (* assignment *)
-  - !invclear h_exec_stmt.
-    !invclear h_eval_stmt.
-    + rename_norm;unidall.
-      decomp (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
-      decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _
-                             h_eval_expr_e_v h_match_env).
-      assert (e_t_v0 = e_t_v). {
-        eapply det_eval_expr;eauto. }
-      subst e_t_v0.
-      constructor;eauto 7.
-      eapply assignment_preserve_stack_safe;eauto.
-      !intros.
-      subst.
-      eapply eval_expr_overf;eauto.
-    + rename_norm;unidall.
-      decomp (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
-      decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _
-                             h_eval_expr h_match_env).
-      assert (e_t_v0 = e_t_v). {
-        eapply det_eval_expr;eauto. }
-      subst e_t_v0.
-      constructor;eauto 7.
-      * eapply assignment_preserve_stack_safe;eauto.
-        !intros.
-        !invclear heq.
-        eapply eval_expr_overf;eauto.
-  (* IF THEN ELSE *)
-  - rename x0 into b_then.
-    rename x1 into b_else.
-    rename_norm; unidall.
-    !invclear h_exec_stmt.
-    rename v into eistrue_t_v.
-    !invclear h_eval_stmt.
-    + decomp (transl_expr_ok _ _ _ e_t heq_tr_expr_e locenv g m _ _
-                             (Values.Vptr spb ofs) h_eval_expr h_match_env).
-      assert (b=true). {
-        clear IHr IHr0 h_exec_stmt.
-        !invclear h_CM_eval_expr_v.
-        !invclear h_CM_eval_expr_v2.
-        simpl in *.
-        generalize (det_eval_expr _ _ _ _ _ _ _ h_CM_eval_expr_e_t_e_t_v
-                                  h_CM_eval_expr_e_t_e_t_v0).
-        !intro;subst.
-        !invclear heq_transl_value_e_t_v.
-        !invclear h_eval_constant.
-        !invclear heq.
-        vm_compute in heq_bofv_v_b.
-        inversion heq_bofv_v_b.
-        reflexivity. }
-      subst.
-      eapply IHr;eauto.
-    + decomp (transl_expr_ok _ _ _ e_t heq_tr_expr_e locenv g m _ _
-                             (Values.Vptr spb ofs) h_eval_expr h_match_env).
-      assert (b=false). {
-        clear IHr IHr0 h_exec_stmt.
-        !invclear h_CM_eval_expr_v.
-        !invclear h_CM_eval_expr_v2.
-        simpl in *.
-        generalize (det_eval_expr _ _ _ _ _ _ _ h_CM_eval_expr_e_t_e_t_v
-                                  h_CM_eval_expr_e_t_e_t_v0).
-        !intro;subst.
-        !invclear heq_transl_value_e_t_v.
-        !invclear h_eval_constant.
-        !invclear heq.
-        vm_compute in heq_bofv_v_b.
-        inversion heq_bofv_v_b.
-        reflexivity. }
-      subst.
-      eapply IHr0;eauto.
-  (* CALL *)
-  - admit.
-  (* SEQUENCE *)
-  - rename_norm;unidall.
-    !invclear h_eval_stmt.
-    !invclear h_exec_stmt.
-    + eapply IHr0 with (4:=h_eval_stmt0); eauto. 
-    + (* o <> out_normal. is this possible?  *)
-      admit.
 
-      
-Admitted.
