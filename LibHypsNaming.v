@@ -156,6 +156,9 @@ Ltac idall :=
              end
          end.
 
+(** This renames all hypothesis. This tactic should be idempotent in
+    most cases. *)
+Ltac rename_hyps := rename_norm ; unidall.
 
 (** ** Renaming Tacticals *)
 
@@ -165,13 +168,13 @@ Ltac idall :=
   [h], [h1] and [h2]) are marked. It may happen that this mark get in
   the way during the execution of <<tactic>>. We might try to find a
   better way to mark hypothesis. *)
-Tactic Notation "!!" tactic3(T) := idall; T ; rename_norm ; unidall.
+Tactic Notation "!!" tactic3(T) := idall; T ; rename_hyps.
 Tactic Notation "!!" tactic3(T) constr(h) :=
-  idall; try unid h; (T h) ; try id_ify h; rename_norm ; unidall.
+  idall; try unid h; (T h) ; try id_ify h; rename_hyps.
 (* begin hide *)
 Tactic Notation "!!" tactic3(T) constr(h) constr(h2) :=
   idall; try unid h;try unid h2; (T h h2) ;
-  try id_ify h;try id_ify h2; rename_norm ; unidall.
+  try id_ify h;try id_ify h2; rename_hyps.
 (* end hide *)
 
 (** ** Specific redefinition of usual tactics. *)
@@ -196,28 +199,28 @@ Tactic Notation "!inversion" hyp(h) := !! (inversion h;subst).
 Tactic Notation "!invclear" hyp(h) := !! (inversion h;clear h;subst).
 Tactic Notation "!assert" constr(h) := !! (assert h).
 
-Tactic Notation "!intros" := idall;intros;rename_norm;unidall.
+Tactic Notation "!intros" := idall;intros;rename_hyps.
 
-Tactic Notation "!intro" := idall;intro;rename_norm;unidall.
+Tactic Notation "!intro" := idall;intro;rename_hyps.
 
 Tactic Notation "!intros" "until" ident(id)
-  := idall;intros until id;rename_norm;unidall.
+  := idall;intros until id;rename_hyps.
 
 Tactic Notation "!intros" simple_intropattern(id1)
-  := intro id1;idall; id_ify id1; intros;rename_norm;unidall.
+  := intro id1;idall; id_ify id1; intros;rename_hyps.
 Tactic Notation "!intros" ident(id1) ident(id2)
-  := idall;intros id1 id2; id_ify id1; id_ify id2; intros;rename_norm;unidall.
+  := idall;intros id1 id2; id_ify id1; id_ify id2; intros;rename_hyps.
 Tactic Notation "!intros" ident(id1) ident(id2) ident(id3)
   := idall;intros id1 id2 id3; id_ify id1; id_ify id2;
-     id_ify id3; intros;rename_norm;unidall.
+     id_ify id3; intros;rename_hyps.
 Tactic Notation "!intros" ident(id1) ident(id2) ident(id3) ident(id4)
   := idall;intros id1 id2 id3 id4; id_ify id1; id_ify id2;
-     id_ify id3; id_ify id4; intros;rename_norm;unidall.
+     id_ify id3; id_ify id4; intros;rename_hyps.
 Tactic Notation "!intros" ident(id1) ident(id2) ident(id3) ident(id4) ident(id5)
   := idall;intros id1 id2 id3 id4 id5; id_ify id1; id_ify id2;
-     id_ify id3; id_ify id4; id_ify id5;intros;rename_norm;unidall.
+     id_ify id3; id_ify id4; id_ify id5;intros;rename_hyps.
 Tactic Notation "!intros" ident(id1) ident(id2) ident(id3) ident(id4) ident(id5) ident(id6)
   := idall;intros id1 id2 id3 id4 id5 id6; id_ify id1; id_ify id2;
-     id_ify id3; id_ify id4; id_ify id5; id_ify id6 ;intros;rename_norm;unidall.
+     id_ify id3; id_ify id4; id_ify id5; id_ify id6 ;intros;rename_hyps.
 
 

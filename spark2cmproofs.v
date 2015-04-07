@@ -2304,7 +2304,7 @@ Proof.
   intros until stm.
   functional induction (transl_stmt stbl CE stm)
   ;simpl;intros;eq_same_clear;subst;simpl in *;try discriminate;
-  rename_norm;unidall.
+  rename_hyps.
   (* skip *)
   - !invclear h_eval_stmt.
     eexists. eexists. eexists.
@@ -2434,7 +2434,7 @@ Proof.
         eapply eval_expr_overf;eauto.
   - rename x0 into b_then.
     rename x1 into b_else.
-    rename_norm; unidall.
+    rename_hyps.
     !invclear h_eval_stmt.
     + decomp (transl_expr_ok _ _ _ e_t heq_tr_expr_e locenv g m _ _
                              (Values.Vptr spb ofs) h_eval_expr h_match_env).
