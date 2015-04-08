@@ -2288,7 +2288,48 @@ Qed.
 
 Notation stbl_exp_type := symboltable.fetch_exp_type.
 
+(** Consequence of chained structure: build_load returns always a pointeur *)
+Lemma build_loads_Vptr : forall lvl_nme g spb ofs locenv m δ_nme nme_t nme_t_v,
+    stack_localstack_aligned locenv g m -> 
+    build_loads lvl_nme δ_nme = nme_t ->
+    Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_v ->
+    ∃ nme_block nme_ofst, nme_t_v = (Values.Vptr nme_block nme_ofst).
+Proof.
+  intro.
+  !destruct lvl_nme;!intros.
+  - unfold build_loads in *.
+    simpl in *.
+    subst.
+    !invclear h_CM_eval_expr_nme_t_nme_t_v.
+    !invclear h_CM_eval_expr_v1;simpl in *.
+    !invclear h_eval_constant.
+    !invclear h_CM_eval_expr_v2;simpl in *.
+    !invclear h_eval_constant.
+    inversion heq.
+    eauto.
+  - subst.
+    !invclear h_CM_eval_expr_nme_t_nme_t_v.
+    destruct (h_aligned_g_m (Values.Vptr spb ofs) (S lvl_nme) v1);auto.
+    subst.
+    simpl in *.
+    !invclear h_CM_eval_expr_v2.
+    simpl in *.
+    !invclear h_eval_constant.
+    !invclear heq.
+    eauto.
+Qed.  
 
+(** Consequence of chained structure: a variable is always translated into a pointer. *)
+Lemma transl_variable_Vptr : forall g spb ofs locenv m stbl CE astnm nme nme_t nme_t_v,
+    stack_localstack_aligned locenv g m -> 
+    transl_variable stbl CE astnm nme =: nme_t ->
+    Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_v ->
+    ∃ nme_block nme_ofst, nme_t_v = (Values.Vptr nme_block nme_ofst).
+Proof.
+  !intros.
+  !functional inversion heq_transl_variable.
+  eapply build_loads_Vptr;eauto.
+Qed.
 
 Lemma transl_stmt_normal_OK : forall stbl CE  (stm:statement) (stm':Cminor.stmt),
     invariant_compile CE ->
@@ -2336,7 +2377,11 @@ Proof.
         generalize (h_stk_mtch_s_m (E_Identifier x x0) x1 nme_t x3 t x2).
         intro h.
         destruct h;auto.
-        - admit. (* consistency of stbl wrt to astnum's types. *)
+        (* correction of type_of_name wrt to stbl_exp_type *)
+        - simpl in heq_fetch_exp_type.
+          simpl.
+          rewrite heq_fetch_exp_type.
+          reflexivity.
         - decomp H0.
           unfold make_load in heq_make_load.
           destruct (Ctypes.access_mode x2) eqn:h;simpl in *;try discriminate.
@@ -2346,9 +2391,12 @@ Proof.
           assumption. }
       (* A translated variable always results in a Vptr. *)
       !destruct hex.
-      assert (hex:∃ nme_block nme_ofst, nme_t_v = (Values.Vptr nme_block nme_ofst)). {
-        admit. (* TODO *) }
-      decomp hex. 
+      specialize transl_variable_Vptr with
+        (1:=(me_stack_localstack_aligned h_match_env))
+          (2:=heq_transl_variable)
+          (3:= h_CM_eval_expr_nme_t_nme_t_v).
+      intro hex.
+      decomp hex.
       (* Adresses of translated variables are always writable (invariant?) *)
       assert(Mem.valid_access m nme_chk x4 (Int.unsigned x5) Writable). {
          admit. (* One more invariant? *) }
