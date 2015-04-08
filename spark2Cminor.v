@@ -659,6 +659,7 @@ Definition transl_stmt_aux :=
 Definition transl_stmt := Eval cbv iota beta delta [transl_stmt_aux bind bind2] in transl_stmt_aux.
 
 Functional Scheme transl_stmt_ind := Induction for transl_stmt Sort Prop.
+
 (** * Functions for manipulating the [compilenv]
 
 [compilenv] is the type of the static frame stack we maintain during
