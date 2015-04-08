@@ -816,11 +816,9 @@ Definition stack_complete stbl s CE := forall a nme addr_nme,
     transl_variable stbl CE a nme = OK addr_nme
     -> exists v, eval_name stbl s (E_Identifier a nme) (Normal v).
 
-
 Definition stack_no_null_offset stbl CE := forall a nme δ_lvl δ_id,
     transl_variable stbl CE a nme = OK (build_loads δ_lvl δ_id) ->
     4 <= Int.unsigned (Int.repr δ_id).
-
 
 Definition stack_localstack_aligned locenv g m := forall b δ_lvl v,
     Cminor.eval_expr g b locenv m (build_loads_ δ_lvl) v
@@ -856,6 +854,17 @@ Definition stack_separate st CE sp locenv g m :=
     (k₂ <> k₁
      \/ Int.unsigned δ₂ + Memdata.size_chunk chnk₂ <= Int.unsigned δ₁
      \/ Int.unsigned δ₁ + Memdata.size_chunk chnk₁ <= Int.unsigned δ₂).
+
+Definition stack_freeable st CE sp g locenv m :=
+  forall a chk id id_t b ofs,
+    (* translating the variabe to a Cminor load address *)
+    transl_variable st CE a id = OK id_t ->
+    (* Evaluating var address in Cminor *)
+    Cminor.eval_expr g sp locenv m id_t (Values.Vptr b ofs) ->
+    (* Size of variable in Cminor memorry *)
+    compute_chnk st (E_Identifier a id) = OK chk ->
+    Mem.valid_access m chk b (Int.unsigned ofs) Freeable.
+
 
 (* TODO: swap arguments *)
 Definition ord_snd (x y:(idnum * CompilEnv.V)) := snd y < snd x.
@@ -900,6 +909,7 @@ Record match_env st s CE sp locenv g m: Prop :=
       me_stack_separate: stack_separate st CE sp locenv g m;
       me_stack_localstack_aligned: stack_localstack_aligned locenv g m;
       me_stack_no_null_offset: stack_no_null_offset st CE;
+      me_stack_freeable: stack_freeable st CE sp g locenv m;
       me_overflow: safe_stack s (* Put this somewhere else, concerns only s *)
     }.
 
@@ -908,6 +918,7 @@ Arguments me_overflow : default implicits.
 Arguments me_stack_no_null_offset : default implicits.
 Arguments me_stack_localstack_aligned : default implicits.
 Arguments me_stack_separate : default implicits.
+Arguments me_stack_freeable : default implicits.
 Arguments me_stack_complete : default implicits.
 
 (** The compilation environment has some intrinsic properties:
@@ -943,6 +954,10 @@ Ltac rename_hyp3 h th :=
   | stack_separate _ _ _ _ _ ?m => fresh "h_separate_" m
   | stack_separate _ ?CE _ _ _ _ => fresh "h_separate_" CE
   | stack_separate _ _ _ _ _ _ => fresh "h_separate"
+  | stack_freeable _ ?CE _ _ _ ?m => fresh "h_freeable_" CE "_" m
+  | stack_freeable _ _ _ _ _ ?m => fresh "h_freeable_" m
+  | stack_freeable _ ?CE _ _ _ _ => fresh "h_freeable_" CE
+  | stack_freeable _ _ _ _ _ _ => fresh "h_freeable"
   | _ => rename_hyp2' h th
   end.
 
@@ -2260,10 +2275,32 @@ Proof.
   eapply eval_build_loads_offset_non_null_var;eauto.
 Qed.
 
+Lemma assignment_preserve_stack_freeable:
+  forall stbl s CE spb ofs locenv' g m x x0 nme_t nme_chk nme_t_addr e_t_v m',
+    match_env stbl s CE (Values.Vptr spb ofs) locenv' g m ->
+    transl_name stbl CE (E_Identifier x x0) =: nme_t ->
+    Cminor.eval_expr g (Values.Vptr spb ofs) locenv' m nme_t nme_t_addr ->
+    Mem.storev nme_chk m nme_t_addr e_t_v = Some m' ->
+    stack_freeable stbl CE (Values.Vptr spb ofs) g locenv' m'. 
+Proof.
+  !intros.
+  red.
+  !intros.
+  destruct nme_t_v;simpl in * ; try discriminate.
+  eapply Mem.store_valid_access_1.
+  - eassumption.
+  - eapply (me_stack_freeable h_match_env);eauto.
+    eapply wf_chain_load_var';eauto.
+    eapply eval_build_loads_offset_non_null_var
+      with (4:=h_CM_eval_expr_nme_t_nme_t_v);eauto.
+Qed.
+
+
 Hint Resolve
      assignment_preserve_stack_match assignment_preserve_stack_complete
      assignment_preserve_stack_separate assignment_preserve_loads_offset_non_null
-     assignment_preserve_stack_no_null_offset assignment_preserve_stack_safe.
+     assignment_preserve_stack_no_null_offset assignment_preserve_stack_safe
+     assignment_preserve_stack_freeable.
 
 (* [make_load] does not fail on transl_type a translated variable coming
    from stbl *)
@@ -2398,8 +2435,13 @@ Proof.
       intro hex.
       decomp hex.
       (* Adresses of translated variables are always writable (invariant?) *)
-      assert(Mem.valid_access m nme_chk x4 (Int.unsigned x5) Writable). {
-         admit. (* One more invariant? *) }
+      assert (Mem.valid_access m nme_chk x4 (Int.unsigned x5) Writable). {
+        apply Mem.valid_access_implies with (p1:=Freeable).
+        - !destruct h_match_env.
+          eapply h_freeable_CE_m;eauto.
+          subst.
+          assumption.
+        - constructor 2. }
       eapply Mem.valid_access_store in H0.
       destruct H0.
       exists x6.
