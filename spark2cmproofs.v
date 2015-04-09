@@ -2496,12 +2496,20 @@ Proof.
           assumption. }
       (* A translated variable always results in a Vptr. *)
       !destruct hex.
-      assert (hex:∃ nme_block nme_ofst, nme_t_v = (Values.Vptr nme_block nme_ofst)). {
-        admit. (* TODO *) }
-      decomp hex. 
+      specialize transl_variable_Vptr with
+        (1:=(me_stack_localstack_aligned h_match_env))
+          (2:=heq_transl_variable)
+          (3:= h_CM_eval_expr_nme_t_nme_t_v).
+      intro hex.
+      decomp hex.
       (* Adresses of translated variables are always writable (invariant?) *)
-      assert(Mem.valid_access m nme_chk x4 (Int.unsigned x5) Writable). {
-         admit. (* One more invariant? *) }
+      assert (Mem.valid_access m nme_chk x4 (Int.unsigned x5) Writable). {
+        apply Mem.valid_access_implies with (p1:=Freeable).
+        - !destruct h_match_env.
+          eapply h_freeable_CE_m;eauto.
+          subst.
+          assumption.
+        - constructor 2. }
       eapply Mem.valid_access_store in H0.
       destruct H0.
       exists x6.
