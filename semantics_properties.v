@@ -74,6 +74,9 @@ Ltac rename_hyp1 h th :=
     | do_run_time_check_on_unop _ _ _ =>  fresh "h_do_rtc_unop"
     | do_division_check _ _ (Run_Time_Error _) => fresh "h_do_division_check_RTE"
     | do_division_check _ _ _ => fresh "h_do_division_check"
+    | extract_subtype_range _ ?t ?rge => fresh "subtype_rge_" t "_" rge
+    | extract_subtype_range _ ?t _ => fresh "subtype_rge_" t
+    | extract_subtype_range _ _ _ => fresh "subtype_rge"
   end.
 
 Ltac rename_hyp ::= rename_hyp1.

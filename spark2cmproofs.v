@@ -61,13 +61,21 @@ Proof. reflexivity. Qed.
 (* TODO: replace this y the real typing function *)
 Definition type_of_name (stbl:symboltable) (nme:name): res type :=
   match nme with
-(*   | E_Identifier astnum id => fetch_var_type id stbl *)
-  | E_Identifier astnum id => match symboltable.fetch_exp_type astnum stbl with
-                                Some x => OK x
-                              | None =>  Error (msg "type_of_name: unknown type for astnum")
-                              end
-  | E_Indexed_Component astnum x0 x1 => Error (msg "type_of_name: arrays not treated yet")
-  | E_Selected_Component astnum x0 x1 => Error (msg "transl_basetype: records not treated yet")
+  | E_Identifier astnum id =>
+    match symboltable.fetch_exp_type astnum stbl with
+      Some x => OK x
+    | None =>  Error (msg "type_of_name: unknown type for astnum")
+    end
+  | E_Indexed_Component astnum x0 x1 =>
+    match symboltable.fetch_exp_type astnum stbl with
+      Some x => OK x
+    | None =>  Error (msg "type_of_name: unknown type for astnum (indexed_component")
+    end
+  | E_Selected_Component astnum x0 x1 =>
+    match symboltable.fetch_exp_type astnum stbl with
+      Some x => OK x
+    | None =>  Error (msg "type_of_name: unknown type for astnum (selected_component")
+    end
   end.
 
 
@@ -290,8 +298,8 @@ Ltac rename_hyp ::= rename_hyp2.
 
 
 Lemma eq_ok: forall v1 v2 v0 x x0,
-    check_overflow_value v1 -> 
-    check_overflow_value v2 -> 
+    check_overflow_value v1 ->
+    check_overflow_value v2 ->
     transl_value v1 x ->
     transl_value v2 x0 ->
     Math.eq v1 v2 = Some v0 ->
@@ -322,8 +330,8 @@ Qed.
 
 
 Lemma neq_ok: forall v1 v2 v0 x x0,
-    check_overflow_value v1 -> 
-    check_overflow_value v2 -> 
+    check_overflow_value v1 ->
+    check_overflow_value v2 ->
     transl_value v1 x ->
     transl_value v2 x0 ->
     Math.ne v1 v2 = Some v0 ->
@@ -357,8 +365,8 @@ Proof.
 Qed.
 
 Lemma le_ok: forall v1 v2 v0 x x0,
-    check_overflow_value v1 -> 
-    check_overflow_value v2 -> 
+    check_overflow_value v1 ->
+    check_overflow_value v2 ->
     transl_value v1 x ->
     transl_value v2 x0 ->
     Math.le v1 v2 = Some v0 ->
@@ -393,8 +401,8 @@ Qed.
 
 
 Lemma ge_ok: forall v1 v2 v0 x x0,
-    check_overflow_value v1 -> 
-    check_overflow_value v2 -> 
+    check_overflow_value v1 ->
+    check_overflow_value v2 ->
     transl_value v1 x ->
     transl_value v2 x0 ->
     Math.ge v1 v2 = Some v0 ->
@@ -430,8 +438,8 @@ Proof.
 Qed.
 
 Lemma lt_ok: forall v1 v2 v0 x x0,
-    check_overflow_value v1 -> 
-    check_overflow_value v2 -> 
+    check_overflow_value v1 ->
+    check_overflow_value v2 ->
     transl_value v1 x ->
     transl_value v2 x0 ->
     Math.lt v1 v2 = Some v0 ->
@@ -467,8 +475,8 @@ Qed.
 
 
 Lemma gt_ok: forall v1 v2 v0 x x0,
-    check_overflow_value v1 -> 
-    check_overflow_value v2 -> 
+    check_overflow_value v1 ->
+    check_overflow_value v2 ->
     transl_value v1 x ->
     transl_value v2 x0 ->
     Math.gt v1 v2 = Some v0 ->
@@ -531,7 +539,7 @@ Proof.
     !invclear h_overf_check.
     assumption.
   - assumption.
-Qed.  
+Qed.
 
 Ltac int_simpl :=
   progress
@@ -544,8 +552,8 @@ Ltac int_simpl :=
       rewrite !Integers.Int.signed_repr).
 
 Lemma add_ok : forall v v1 v2 n1 n2,
-    check_overflow_value v1 -> 
-    check_overflow_value v2 -> 
+    check_overflow_value v1 ->
+    check_overflow_value v2 ->
     do_run_time_check_on_binop Plus v1 v2 (Normal v) ->
     transl_value v1 n1 ->
     transl_value v2 n2 ->
@@ -556,15 +564,15 @@ Proof.
   !destruct v2;simpl in *; try discriminate;eq_same_clear;subst; try now inv_rtc.
   inversion heq_transl_value_v1_n1;subst;simpl.
   inversion heq_transl_value_v2_n2;subst;simpl.
-  !invclear h_do_rtc_binop;simpl in *; eq_same_clear. 
+  !invclear h_do_rtc_binop;simpl in *; eq_same_clear.
   !invclear h_overf_check.
   int_simpl;auto;inv_rtc.
   constructor.
 Qed.
 
 Lemma sub_ok : forall v v1 v2 n1 n2,
-    check_overflow_value v1 -> 
-    check_overflow_value v2 -> 
+    check_overflow_value v1 ->
+    check_overflow_value v2 ->
     do_run_time_check_on_binop Minus v1 v2 (Normal v) ->
     transl_value v1 n1 ->
     transl_value v2 n2 ->
@@ -575,15 +583,15 @@ Proof.
   !destruct v2;simpl in *; try discriminate;eq_same_clear;subst; try now inv_rtc.
   inversion heq_transl_value_v1_n1;subst;simpl.
   inversion heq_transl_value_v2_n2;subst;simpl.
-  !invclear h_do_rtc_binop;simpl in *; eq_same_clear. 
+  !invclear h_do_rtc_binop;simpl in *; eq_same_clear.
   !invclear h_overf_check.
   int_simpl;auto;inv_rtc.
   constructor.
 Qed.
 
 Lemma mult_ok : forall v v1 v2 n1 n2,
-    check_overflow_value v1 -> 
-    check_overflow_value v2 -> 
+    check_overflow_value v1 ->
+    check_overflow_value v2 ->
     do_run_time_check_on_binop Multiply v1 v2 (Normal v) ->
     transl_value v1 n1 ->
     transl_value v2 n2 ->
@@ -595,7 +603,7 @@ Proof.
   !destruct v2;simpl in *; try discriminate;eq_same_clear;subst; try now inv_rtc.
   inversion heq_transl_value_v1_n1;subst;simpl.
   inversion heq_transl_value_v2_n2;subst;simpl.
-  !invclear h_do_rtc_binop;simpl in *; eq_same_clear. 
+  !invclear h_do_rtc_binop;simpl in *; eq_same_clear.
   !invclear h_overf_check.
   int_simpl;auto;inv_rtc.
   constructor.
@@ -607,8 +615,8 @@ Qed.
     checks. *)
 (*  How to compile this? probably by performing a check before. *)
 Lemma div_ok : forall v v1 v2 n n1 n2,
-    check_overflow_value v1 -> 
-    check_overflow_value v2 -> 
+    check_overflow_value v1 ->
+    check_overflow_value v2 ->
     do_run_time_check_on_binop Divide v1 v2 (Normal v) ->
     transl_value v1 n1 ->
     transl_value v2 n2 ->
@@ -658,7 +666,7 @@ Proof.
       inversion heq.
       subst.
       inversion h_overf_check;subst.
-      inv_rtc.      
+      inv_rtc.
     + unfold Integers.Int.divs.
       rewrite !Integers.Int.signed_repr;auto 2.
       simpl in *.
@@ -672,7 +680,7 @@ Proof.
     rewrite <- (Integers.Int.signed_repr v2).
     + rewrite abs.
       rewrite (Integers.Int.signed_repr 0);auto.
-      split; intro;discriminate.      
+      split; intro;discriminate.
     + split;auto.
 Qed.
 
@@ -728,7 +736,7 @@ Qed.
 (** * Memory invariant and bisimilarity *)
 
 
-Lemma eval_literal_overf : forall (l:literal) n, 
+Lemma eval_literal_overf : forall (l:literal) n,
     eval_literal l (Normal (Int n)) ->
     do_overflow_check n (Normal (Int n)).
 Proof.
@@ -810,7 +818,7 @@ Proof.
   eapply eval_expr_overf;eauto.
 Qed.
 
-Hint Resolve eval_expr_overf2.    
+Hint Resolve eval_expr_overf2.
 
 Definition stack_complete stbl s CE := forall a nme addr_nme,
     transl_variable stbl CE a nme = OK addr_nme
@@ -884,6 +892,9 @@ Definition all_frm_increasing CE := Forall increasing_order_fr CE.
 Definition all_addr_no_overflow CE := forall id δ,
     CompilEnv.fetchG id CE = Some δ -> 0 <= δ < Integers.Int.modulus.
 
+Definition stbl_var_types_ok st :=
+  ∀ nme t, type_of_name st nme = OK t ->
+           ∃ nme_type_t, transl_type st t = OK nme_type_t.
 
 (* See CminorgenProof.v@205. *)
 
@@ -925,12 +936,17 @@ Arguments me_stack_complete : default implicits.
  - Frame are numbered in increasing order in the global store
  - In each frame variables are numbered in increasing order
  - variable addresses do not overflow. *)
-Record invariant_compile CE :=
-  { increasing_lvls: increasing_orderG CE ;
-    increasing_ids: all_frm_increasing CE ;
-    no_overflow: all_addr_no_overflow CE }.
+Record invariant_compile CE stbl :=
+  { ci_increasing_lvls: increasing_orderG CE ;
+    ci_increasing_ids: all_frm_increasing CE ;
+    ci_no_overflow: all_addr_no_overflow CE ;
+    ci_stbl_var_types_ok: stbl_var_types_ok stbl }.
 
-Hint Resolve increasing_lvls increasing_ids no_overflow.
+Arguments ci_increasing_ids : default implicits.
+Arguments ci_no_overflow : default implicits.
+Arguments ci_stbl_var_types_ok : default implicits.
+
+Hint Resolve ci_increasing_lvls ci_increasing_ids ci_no_overflow ci_stbl_var_types_ok.
 Hint Resolve me_stack_match me_stack_complete me_stack_separate me_stack_localstack_aligned me_stack_no_null_offset me_overflow.
 
 
@@ -1310,7 +1326,7 @@ Proof.
   unfold build_loads.
   !intros.
   inversion heq.
-  split;auto.  
+  split;auto.
   apply build_loads__inj;auto.
 Qed.
 
@@ -1434,7 +1450,7 @@ Ltac rename_hyp ::= rename_hyp_incro.
 Lemma increase_order_level_of_top_ge: forall CE id s s0 s3,
     increasing_orderG CE ->
     CompilEnv.frameG id CE = Some (s, s0) ->
-    CompilEnv.level_of_top CE = Some s3 -> 
+    CompilEnv.level_of_top CE = Some s3 ->
     (s3 >= s)%nat.
 Proof.
   !intros.
@@ -2056,7 +2072,7 @@ Proof.
       erewrite (Mem.load_store_same _ _ _ _ _ _ heq_store_e_t_v_m') .
       { destruct e_t_v;auto;destruct e_v;simpl in *;try discriminate;
         now inversion heq_transl_value_e_v_e_t_v. }
-      
+
   - (* loading a different variable id' than the one stored id.
          2 steps: first prove that the addresses of id' and id did
          not change (the translated expressions did not change + the
@@ -2114,7 +2130,7 @@ Proof.
   !intros.
   destruct nme_t_addr; try discriminate.
   eauto.
-Qed.        
+Qed.
 
 Lemma transl_name_OK_inv : forall stbl CE nme nme_t,
     transl_name stbl CE nme = OK nme_t
@@ -2281,7 +2297,7 @@ Lemma assignment_preserve_stack_freeable:
     transl_name stbl CE (E_Identifier x x0) =: nme_t ->
     Cminor.eval_expr g (Values.Vptr spb ofs) locenv' m nme_t nme_t_addr ->
     Mem.storev nme_chk m nme_t_addr e_t_v = Some m' ->
-    stack_freeable stbl CE (Values.Vptr spb ofs) g locenv' m'. 
+    stack_freeable stbl CE (Values.Vptr spb ofs) g locenv' m'.
 Proof.
   !intros.
   red.
@@ -2305,10 +2321,11 @@ Hint Resolve
 (* [make_load] does not fail on transl_type a translated variable coming
    from stbl *)
 Lemma make_load_no_fail: forall stbl t nme_t x2,
-    transl_type stbl t =: x2 -> 
+    transl_type stbl t =: x2 ->
     exists load_addr_nme, make_load nme_t x2 =: load_addr_nme.
 Proof.
   !intros.
+  unfold make_load.
   destruct t;simpl in * ; simpl; try discriminate;eauto.
   - inversion heq_transl_type. subst.
     simpl.
@@ -2322,12 +2339,9 @@ Proof.
     eauto.
 Qed.
 
-
-Notation stbl_exp_type := symboltable.fetch_exp_type.
-
 (** Consequence of chained structure: build_load returns always a pointeur *)
 Lemma build_loads_Vptr : forall lvl_nme g spb ofs locenv m δ_nme nme_t nme_t_v,
-    stack_localstack_aligned locenv g m -> 
+    stack_localstack_aligned locenv g m ->
     build_loads lvl_nme δ_nme = nme_t ->
     Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_v ->
     ∃ nme_block nme_ofst, nme_t_v = (Values.Vptr nme_block nme_ofst).
@@ -2354,11 +2368,11 @@ Proof.
     !invclear h_eval_constant.
     !invclear heq.
     eauto.
-Qed.  
+Qed.
 
 (** Consequence of chained structure: a variable is always translated into a pointer. *)
 Lemma transl_variable_Vptr : forall g spb ofs locenv m stbl CE astnm nme nme_t nme_t_v,
-    stack_localstack_aligned locenv g m -> 
+    stack_localstack_aligned locenv g m ->
     transl_variable stbl CE astnm nme =: nme_t ->
     Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_v ->
     ∃ nme_block nme_ofst, nme_t_v = (Values.Vptr nme_block nme_ofst).
@@ -2369,7 +2383,7 @@ Proof.
 Qed.
 
 Lemma transl_stmt_normal_OK : forall stbl CE  (stm:statement) (stm':Cminor.stmt),
-    invariant_compile CE ->
+    invariant_compile CE stbl ->
     transl_stmt stbl CE stm = (OK stm') ->
     forall locenv g m s s' spb ofs f,
       match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
@@ -2395,14 +2409,16 @@ Proof.
     decomp (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
     !! (edestruct (me_stack_complete h_match_env);eauto).
     !invclear h_eval_stmt.
-    + decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _ 
+    + decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _
                              h_eval_expr_e_v h_match_env).
       (* transl_type never fails (except of currently unsupported types) *)
       assert (hex:exists nme_type_t, transl_type stbl t =: nme_type_t).
-      { simpl in *.        
-        destruct t;simpl in * ; simpl ; try discriminate ;eauto.
-        - admit. (* arrays *)
-        - admit. (* records *) }
+      { simpl in *.
+        assert (type_of_name stbl (E_Identifier x x0) = OK t).
+        { simpl.
+          rewrite heq_fetch_exp_type.
+          reflexivity. }
+        eapply (ci_stbl_var_types_ok H);eauto. }
       !destruct hex.
       (* make_load does not fail on a translated variable coming from CE *)
       !destruct (make_load_no_fail _ _ nme_t _ heq_transl_type).
@@ -2458,18 +2474,17 @@ Proof.
               eapply det_eval_expr;eauto. }
             subst e_t_v0.
             constructor;eauto 7.
-            eapply assignment_preserve_stack_safe;eauto.
-            !intros.
-            subst.
-            eapply eval_expr_overf;eauto.
-          }
+            - eapply assignment_preserve_stack_safe;eauto.
+              !intros.
+              subst.
+              eapply eval_expr_overf;eauto. }
 
     + decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _ h_eval_expr h_match_env).
       (* transl_type never fails (except of currently unsupported types) *)
       assert (hex:exists nme_type_t, transl_type stbl t =: nme_type_t).
       { simpl in *.
         clear heq_transl_name.
-        destruct t;simpl in * ; simpl;simpl in * ; try discriminate ;eauto.
+        !destruct t;simpl in * ; simpl;simpl in * ; try discriminate ;eauto.
         - admit. (* Subtype *)
         - admit. (* Derived *)
         - admit. (* Integer_Type *)
@@ -2477,7 +2492,7 @@ Proof.
         - admit. (* records *) }
       !destruct hex.
       (* make_load does not fail on a translated variable coming from CE *)
-      !destruct (make_load_no_fail _ _ nme_t _ heq_transl_type).
+      !destruct (make_load_no_fail stbl t nme_t x2 heq_transl_type).
       (* Cminor.eval_expr does not fail on a translated variable (invariant?) *)
       assert (hex: exists vaddr,
                  Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t vaddr).
@@ -2553,7 +2568,7 @@ Proof.
             - simpl.
               reflexivity. }
         * inversion  heq_transl_value_e_t_v0.
-          subst. 
+          subst.
           econstructor.
         * rewrite  Int.eq_false;eauto.
           apply Int.one_not_zero. }
@@ -2577,7 +2592,7 @@ Proof.
               - simpl.
                 reflexivity. }
           * inversion  heq_transl_value_e_t_v0.
-            subst. 
+            subst.
             econstructor.
           * rewrite  Int.eq_true;eauto. }
       * assumption.
