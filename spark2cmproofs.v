@@ -35,6 +35,9 @@ Ltac eq_same_clear :=
                   | H: ?A = _ , H': ?A = _ |- _ => rewrite H in H'; !inversion H'
                   | H: OK ?A = OK ?B |- _ => !inversion H
                   | H: Some ?A = Some ?B |- _ => !inversion H
+                  | H: Normal ?A = Normal ?B |- _ => !inversion H
+                  | H: Normal ?A = Run_Time_Error ?B |- _ => discriminate H
+                  | H: Run_Time_Error ?B= Normal ?A |- _ => discriminate H
                   | H: ?A <> ?A |- _ => elim H;reflexivity
                   end).
 
@@ -773,7 +776,9 @@ Proof using.
   !inversion h_eval_name. (* l'environnement retourne toujours des valeur rangées. *)
   - unfold safe_stack in *.
     eapply h_safe_stack_s;eauto.
-  - admit. (* Arrays *)
+  - simpl in *.
+    constructor.
+    admit. (* Arrays *)
   - admit. (* records *)
 Admitted.
 
@@ -1042,15 +1047,6 @@ Proof.
   subst.
   eapply h_nonul_ofs;eauto.
 Qed.
-
-
-
-(* Is this true? *)
-(*Axiom CM_eval_bigstep_det: forall g sp locenv m e v v',
-    Cminor.eval_expr g sp locenv m e v ->
-    Cminor.eval_expr g sp locenv m e v' ->
-    v = v'.*)
-
 
 
 Lemma transl_expr_ok : forall stbl CE e e',
@@ -2382,18 +2378,232 @@ Proof.
   eapply build_loads_Vptr;eauto.
 Qed.
 
-Lemma transl_stmt_normal_OK : forall stbl CE  (stm:statement) (stm':Cminor.stmt),
-    invariant_compile CE stbl ->
-    transl_stmt stbl CE stm = (OK stm') ->
-    forall locenv g m s s' spb ofs f,
-      match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
-      eval_stmt stbl s stm (Normal s') ->
-      exists tr locenv' m',
-        Cminor.exec_stmt g f (Values.Vptr spb ofs) locenv m stm' tr locenv' m' Out_normal
-        /\  match_env stbl s' CE (Values.Vptr spb ofs) locenv' g m'.
+Lemma transl_stmt_normal_OK : forall stbl (stm:statement) s s',
+    eval_stmt stbl s stm (Normal s') ->
+    forall CE (stm':Cminor.stmt) locenv g m,
+      invariant_compile CE stbl ->
+      transl_stmt stbl CE stm = (OK stm') ->
+      forall spb ofs f,
+        match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
+        exists tr locenv' m',
+          Cminor.exec_stmt g f (Values.Vptr spb ofs) locenv m stm' tr locenv' m' Out_normal
+          /\  match_env stbl s' CE (Values.Vptr spb ofs) locenv' g m'.
 Proof.
-Proof.
-  intros until stm.
+  intros until 1.
+  remember (Normal s') as norms'.
+  revert dependent s'.
+  rename_hyps.
+  Opaque transl_stmt.
+  induction h_eval_stmt;simpl in *;intros ; rename_hyps ; eq_same_clear;
+  try (rewrite <- transl_stmt_ok in heq_transl_stmt_stm';
+        !functional inversion heq_transl_stmt_stm';
+        subst;
+        try rewrite -> transl_stmt_ok in *); eq_same_clear.
+  - eexists. eexists. eexists.
+    split.
+    + try now constructor.
+    + assumption.
+  (* assignment *)
+  - rename x into nme.
+    rename st into stbl.
+    rename_hyps.
+    exists Events.E0.
+    exists locenv.
+    decomp (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
+    !! (edestruct (me_stack_complete h_match_env);eauto).
+    decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _
+                           h_eval_expr_e_v h_match_env).
+    (* transl_type never fails *)
+    assert (hex:exists nme_type_t, transl_type stbl nme_type =: nme_type_t).
+    { simpl in *.
+      assert (type_of_name stbl (E_Identifier x x0) = OK nme_type).
+      { simpl.
+        rewrite heq_fetch_exp_type.
+        reflexivity. }
+      rename_hyps.
+      eapply (ci_stbl_var_types_ok H3);eauto. }
+    !destruct hex.
+    (* make_load does not fail on a translated variable coming from CE *)
+    !destruct (make_load_no_fail _ _ nme_t _ heq_transl_type).
+    (* Cminor.eval_expr does not fail on a translated variable (invariant?) *)
+    assert (hex: exists vaddr,
+               Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t vaddr).
+    { !destruct h_match_env.
+      unfold stack_match in h_stk_mtch_s_m.
+      generalize (h_stk_mtch_s_m (E_Identifier x x0) x1 nme_t x3 nme_type x2).
+      intro h.
+      destruct h;auto.
+      (* correction of type_of_name wrt to stbl_exp_type *)
+      - simpl in heq_fetch_exp_type.
+        simpl.
+        rewrite heq_fetch_exp_type.
+        reflexivity.
+      - decomp H.
+        unfold make_load in heq_make_load.
+        destruct (Ctypes.access_mode x2) eqn:h;simpl in *;try discriminate.
+        !invclear heq_make_load.
+        !inversion h_CM_eval_expr_x3_x4.
+        exists nme_t_v.
+        assumption. }
+    (* A translated variable always results in a Vptr. *)
+    !destruct hex.
+    specialize transl_variable_Vptr with
+    (1:=(me_stack_localstack_aligned h_match_env))
+      (2:=heq_transl_variable)
+      (3:= h_CM_eval_expr_nme_t_nme_t_v).
+    intro hex.
+    decomp hex.
+    (* Adresses of translated variables are always writable (invariant?) *)
+    assert (Mem.valid_access m nme_chk x4 (Int.unsigned x5) Writable). {
+      apply Mem.valid_access_implies with (p1:=Freeable).
+      - !destruct h_match_env.
+        eapply h_freeable_CE_m;eauto.
+        subst.
+        assumption.
+      - constructor 2. }
+    eapply Mem.valid_access_store in H.
+    destruct H.
+    exists x6.
+    assert (exec_stmt g f (Values.Vptr spb ofs) locenv m (Sstore nme_chk nme_t e_t)
+                      Events.E0 locenv x6 Out_normal). {
+      econstructor;eauto.
+      subst.
+      simpl.
+      eassumption. }
+    split.
+    * assumption.
+    * !invclear H.
+      assert (e_t_v0 = e_t_v).
+      { eapply det_eval_expr;eauto. }
+      subst e_t_v0.
+      constructor;eauto 7.
+      eapply assignment_preserve_stack_safe;eauto.
+      !intros.
+      subst.
+      eapply eval_expr_overf;eauto.
+  - rename x into nme.
+    rename st into stbl.
+    rename_hyps.
+    exists Events.E0.
+    exists locenv.
+    decomp (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
+    !! (edestruct (me_stack_complete h_match_env);eauto).
+    decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _ h_eval_expr h_match_env).
+      (* transl_type never fails *)
+      assert (hex:exists nme_type_t, transl_type stbl nme_type =: nme_type_t).
+      { simpl in *.
+        assert (type_of_name stbl (E_Identifier x x0) = OK nme_type).
+        { simpl.
+          rewrite heq_fetch_exp_type.
+          reflexivity. }
+        eapply (ci_stbl_var_types_ok H4);eauto. }
+      !destruct hex.
+      (* make_load does not fail on a translated variable coming from CE *)
+      !destruct (make_load_no_fail stbl nme_type nme_t x2 heq_transl_type).
+      (* Cminor.eval_expr does not fail on a translated variable (invariant?) *)
+      assert (hex: exists vaddr,
+                 Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t vaddr).
+      { !destruct h_match_env.
+        unfold stack_match in h_stk_mtch_s_m.
+        generalize (h_stk_mtch_s_m (E_Identifier x x0) x1 nme_t x3 nme_type x2).
+        intro h.
+        destruct h;auto.
+        - simpl in *.
+          rewrite heq_fetch_exp_type.
+          reflexivity.
+        - decomp H.
+          unfold make_load in heq_make_load.
+          destruct (Ctypes.access_mode x2) eqn:h;simpl in *;try discriminate.
+          !invclear heq_make_load.
+          !inversion h_CM_eval_expr_x3_x4.
+          exists nme_t_v.
+          assumption. }
+      (* A translated variable always results in a Vptr. *)
+      !destruct hex.
+      specialize transl_variable_Vptr with
+        (1:=(me_stack_localstack_aligned h_match_env))
+          (2:=heq_transl_variable)
+          (3:= h_CM_eval_expr_nme_t_nme_t_v).
+      intro hex.
+      decomp hex.
+      (* Adresses of translated variables are always writable (invariant?) *)
+      assert (Mem.valid_access m nme_chk x4 (Int.unsigned x5) Writable). {
+        apply Mem.valid_access_implies with (p1:=Freeable).
+        - !destruct h_match_env.
+          eapply h_freeable_CE_m;eauto.
+          subst.
+          assumption.
+        - constructor 2. }
+      eapply Mem.valid_access_store in H.
+      destruct H.
+      exists x6.
+      assert (exec_stmt g f (Values.Vptr spb ofs) locenv m (Sstore nme_chk nme_t e_t)
+                        Events.E0 locenv x6 Out_normal). {
+        econstructor;eauto.
+        subst.
+        simpl.
+        eassumption. }
+      split.
+      * assumption.
+      * !invclear H.
+        assert (e_t_v0 = e_t_v). {
+          eapply det_eval_expr;eauto. }
+        subst e_t_v0.
+        constructor;eauto 7.
+        eapply assignment_preserve_stack_safe;eauto.
+        !intros.
+        !invclear heq.
+        eapply eval_expr_overf;eauto.
+  - rename x1 into b_then.
+    rename x2 into b_else.
+    rename_hyps.
+    + decomp (transl_expr_ok _ _ _ e_t heq_tr_expr_e locenv g m _ _
+                             (Values.Vptr spb ofs) h_eval_expr h_match_env).
+      decomp (IHh_eval_stmt s' eq_refl CE b_then locenv g m H0 heq_transl_stmt_stmt_b_then spb ofs f
+                            h_match_env).
+      exists x.
+      exists x0.
+      exists x1.
+      decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e locenv g m s _ (Values.Vptr spb ofs) h_eval_expr h_match_env).
+      assert (exec_stmt g f (Values.Vptr spb ofs) locenv m
+                        (Sifthenelse (Ebinop (Ocmp Cne) e_t (Econst (Ointconst Int.zero)))
+                                     b_then b_else) x x0 x1 Out_normal).
+      { econstructor;eauto.
+        * { econstructor;eauto.
+            - econstructor;eauto.
+              simpl.
+              reflexivity.
+            - simpl.
+              reflexivity. }
+        * inversion  heq_transl_value_e_t_v0.
+          subst.
+          econstructor.
+        * rewrite  Int.eq_false;eauto.
+          apply Int.one_not_zero. }
+      split.
+      * assumption.
+      * assumption.
+  - 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+xxxxxxxxxxxxxxxxxxxxxxxxx
+  (*  *)
+  revert stbl CE.
+  induction stm.
   functional induction (transl_stmt stbl CE stm)
   ;simpl;intros;eq_same_clear;subst;simpl in *;try discriminate;
   rename_hyps.
@@ -2411,7 +2621,7 @@ Proof.
     !invclear h_eval_stmt.
     + decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _
                              h_eval_expr_e_v h_match_env).
-      (* transl_type never fails (except of currently unsupported types) *)
+      (* transl_type never fails *)
       assert (hex:exists nme_type_t, transl_type stbl t =: nme_type_t).
       { simpl in *.
         assert (type_of_name stbl (E_Identifier x x0) = OK t).
@@ -2467,29 +2677,26 @@ Proof.
         subst.
         simpl.
         eassumption. }
-        split.
-        * assumption.
-        * { !invclear H0.
-            assert (e_t_v0 = e_t_v). {
-              eapply det_eval_expr;eauto. }
-            subst e_t_v0.
-            constructor;eauto 7.
-            - eapply assignment_preserve_stack_safe;eauto.
-              !intros.
-              subst.
-              eapply eval_expr_overf;eauto. }
-
+      split.
+      * assumption.
+      * !invclear H0.
+        assert (e_t_v0 = e_t_v).
+        { eapply det_eval_expr;eauto. }
+        subst e_t_v0.
+        constructor;eauto 7.
+        eapply assignment_preserve_stack_safe;eauto.
+        !intros.
+        subst.
+        eapply eval_expr_overf;eauto.
     + decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _ h_eval_expr h_match_env).
-      (* transl_type never fails (except of currently unsupported types) *)
+      (* transl_type never fails *)
       assert (hex:exists nme_type_t, transl_type stbl t =: nme_type_t).
       { simpl in *.
-        clear heq_transl_name.
-        !destruct t;simpl in * ; simpl;simpl in * ; try discriminate ;eauto.
-        - admit. (* Subtype *)
-        - admit. (* Derived *)
-        - admit. (* Integer_Type *)
-        - admit. (* Array *)
-        - admit. (* records *) }
+        assert (type_of_name stbl (E_Identifier x x0) = OK t).
+        { simpl.
+          rewrite heq_fetch_exp_type.
+          reflexivity. }
+        eapply (ci_stbl_var_types_ok H);eauto. }
       !destruct hex.
       (* make_load does not fail on a translated variable coming from CE *)
       !destruct (make_load_no_fail stbl t nme_t x2 heq_transl_type).
@@ -2501,7 +2708,9 @@ Proof.
         generalize (h_stk_mtch_s_m (E_Identifier x x0) x1 nme_t x3 t x2).
         intro h.
         destruct h;auto.
-        - admit. (* consistency of stbl wrt to astnum's types. *)
+        - simpl in *.
+          rewrite heq_fetch_exp_type.
+          reflexivity.
         - decomp H0.
           unfold make_load in heq_make_load.
           destruct (Ctypes.access_mode x2) eqn:h;simpl in *;try discriminate.
@@ -2596,7 +2805,21 @@ Proof.
             econstructor.
           * rewrite  Int.eq_true;eauto. }
       * assumption.
-  - admit. (* Procedure Call *)
+  - !invclear h_eval_stmt.
+    eexists. eexists. eexists.
+    split.
+    instantiate (2 := locenv).
+    + eapply exec_Scall;simpl;eauto.
+      
+      
+      with (fd:=x0).
+      * 
+
+
+
+
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx    
+    admit. (* Procedure Call *)
   - !invclear h_eval_stmt.
     decomp (IHr x H heq_transl_stmt_stmt_x locenv g m s s1 spb ofs f
                 h_match_env h_eval_stmt).
