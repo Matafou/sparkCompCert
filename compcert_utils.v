@@ -8,6 +8,8 @@ Ltac rename_hyp1 h th :=
     | ?min <= ?x and ?x < ?max => fresh "h_" x "_bounded_"
     | ?min <= ?x and ?x < ?max => fresh "h_bounded"
     | Ctypes.access_mode ?x = _ => fresh "h_access_mode_" x
+    | Mem.valid_access ?m ?chk ?b ?ofs ?perm => fresh "h_valid_access_" b
+    | Mem.valid_access ?m ?chk ?b ?ofs ?perm => fresh "h_valid_access"
     | Ctypes.access_mode _ = _ => fresh "h_access_mode"
     | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ None  => fresh "h_exec_stmt_None"
     | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ _  => fresh "h_exec_stmt"

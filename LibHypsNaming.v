@@ -53,6 +53,9 @@ Ltac fallback_rename_hyp h th :=
     | @eq nat _ _ => fresh "heq_nat"
     | _ <> _ => fresh "hneq"
     | _ = _ => fresh "heq"
+    | _ /\ _ => fresh "h_and"
+    | _ \/ _ => fresh "h_or"
+    | @ex _ _ => fresh "h_ex"
   end.
 
 (** ** The custom renaming tactic
