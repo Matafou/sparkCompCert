@@ -77,6 +77,9 @@ Ltac rename_hyp1 h th :=
     | extract_subtype_range _ ?t ?rge => fresh "subtype_rge_" t "_" rge
     | extract_subtype_range _ ?t _ => fresh "subtype_rge_" t
     | extract_subtype_range _ _ _ => fresh "subtype_rge"
+    | copy_out ?st ?s ?pstmt ?paramsprf ?args (Normal ?s') => fresh "h_copy_out_" s "_" s'
+    | copy_out ?st ?s ?pstmt ?paramsprf ?args _ => fresh "h_copy_out_" s
+    | copy_out ?st ?s ?pstmt ?paramsprf ?args _ => fresh "h_copy_out"
   end.
 
 Ltac rename_hyp ::= rename_hyp1.
