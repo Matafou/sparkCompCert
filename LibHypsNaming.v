@@ -56,6 +56,18 @@ Ltac fallback_rename_hyp h th :=
     | _ /\ _ => fresh "h_and"
     | _ \/ _ => fresh "h_or"
     | @ex _ _ => fresh "h_ex"
+    | ?x < ?y => fresh "h_lt_" x "_" y
+    | ?x < _ => fresh "h_lt_" x
+    | _ < _ => fresh "h_lt"
+    | ?x <= ?y => fresh "h_le_" x "_" y
+    | ?x <= _ => fresh "h_le_" x
+    | _ <= _ => fresh "h_le"
+    | ?x > ?y => fresh "h_gt_" x "_" y
+    | ?x > _ => fresh "h_gt_" x
+    | _ > _ => fresh "h_gt"
+    | ?x >= ?y => fresh "h_ge_" x "_" y
+    | ?x >= _ => fresh "h_ge_" x
+    | _ >= _ => fresh "h_ge"
   end.
 
 (** ** The custom renaming tactic
@@ -96,7 +108,7 @@ Ltac my_rename_hyp h th :=
 Ltac rename_hyp ::= my_rename_hyp.>> *)
 
 Ltac rename_hyp h ht := fail.
-
+(*
 (** "marks" hypothesis h of the current goal by putting id(..) on top
    of there types. *)
 Ltac id_ify h := let th := type of h in change (id th) in h.
@@ -138,8 +150,8 @@ Ltac rename_norm :=
                  change (id th) in newname
              end
          end.
-
-
+*)
+(*
 
 (* Mark all current hypothesis of the goal to prevent re-renaming hyps
    when calling renaming tactics multiple times.
@@ -162,6 +174,67 @@ Ltac idall :=
 (** This renames all hypothesis. This tactic should be idempotent in
     most cases. *)
 Ltac rename_hyps := rename_norm ; unidall.
+*)
+
+(* Credit for the harvesting of hypothesis: Jonathan Leivant *)
+Ltac harvest_hyps harvester := constr:($(harvester; constructor)$ : True).
+
+Ltac revert_clearbody_all := 
+  repeat lazymatch goal with H:_ |- _ => try clearbody H; revert H end.
+
+Ltac all_hyps := harvest_hyps revert_clearbody_all.
+
+Ltac next_hyp hs step last := 
+  lazymatch hs with 
+  | (?hs' ?H) => step H hs'
+  | _ => last
+  end.
+
+Ltac map_hyps tac hs :=
+  idtac;
+  let rec step H hs := next_hyp hs step idtac; tac H in
+  next_hyp hs step idtac.
+
+(* Renames hypothesis H if it is not in old_hyps. Use user defined
+   renaming scheme, and fall back to the default one of it fails. *)
+Ltac rename_if_not_old old_hyps H :=
+  lazymatch old_hyps with 
+  | context[H] => idtac
+  | _ =>
+    match type of H with
+    | ?th => 
+      let dummy_name := fresh "dummy" in
+      rename H into dummy_name; (* this renaming makes the renaming more or 
+                                          less idempotent, it is backtracked if the
+                                          rename_hyp below fails. *)
+        let newname := rename_hyp dummy_name th in
+        rename dummy_name into newname
+    | ?th => 
+      let dummy_name := fresh "dummy" in
+      rename H into dummy_name; (* this renaming makes the renaming more or 
+                                          less idempotent, it is backtracked if the
+                                          rename_hyp below fails. *)
+        let newname := fallback_rename_hyp dummy_name th in
+        rename dummy_name into newname
+    | _ => idtac "no renaming pattern for " H
+    end
+  end.
+
+Ltac rename_new_hyps tac :=
+  let old_hyps := all_hyps in
+  let renam H := rename_if_not_old old_hyps H in
+  tac;
+  let new_hyps := all_hyps in
+  map_hyps renam new_hyps.
+
+Ltac rename_all_hyps :=
+  let renam H := rename_if_not_old (I) H in
+  let hyps := all_hyps in
+  map_hyps renam hyps.
+
+Tactic Notation "!!" tactic3(Tac) := (rename_new_hyps Tac).
+Tactic Notation "!!" tactic3(Tac) constr(h) :=
+  (rename_new_hyps (Tac h)).
 
 (** ** Renaming Tacticals *)
 
@@ -171,13 +244,14 @@ Ltac rename_hyps := rename_norm ; unidall.
   [h], [h1] and [h2]) are marked. It may happen that this mark get in
   the way during the execution of <<tactic>>. We might try to find a
   better way to mark hypothesis. *)
-Tactic Notation "!!" tactic3(T) := idall; T ; rename_hyps.
-Tactic Notation "!!" tactic3(T) constr(h) :=
-  idall; try unid h; (T h) ; try id_ify h; rename_hyps.
+
+(* Tactic Notation "!!" tactic3(T) := idall; T ; rename_hyps. *)
+(* Tactic Notation "!!" tactic3(T) constr(h) := *)
+(*   idall; try unid h; (T h) ; try id_ify h; rename_hyps. *)
 (* begin hide *)
-Tactic Notation "!!" tactic3(T) constr(h) constr(h2) :=
-  idall; try unid h;try unid h2; (T h h2) ;
-  try id_ify h;try id_ify h2; rename_hyps.
+(* Tactic Notation "!!" tactic3(T) constr(h) constr(h2) := *)
+(*   idall; try unid h;try unid h2; (T h h2) ; *)
+(*   try id_ify h;try id_ify h2; rename_hyps. *)
 (* end hide *)
 
 (** ** Specific redefinition of usual tactics. *)
@@ -190,18 +264,18 @@ Tactic Notation "!!" tactic3(T) constr(h) constr(h2) :=
 (* decompose and ex and or at once. TODO: generalize. *)
 (* clear may fail if h is not a hypname *)
 Tactic Notation "decomp" constr(h) :=
-  !! (fun x => decompose [and ex or] x; try clear x) h.
+       !! (decompose [and ex or] h; try clear h).
 
-Tactic Notation "!induction" constr(h) := !! (fun x => induction x) h.
+Tactic Notation "!induction" constr(h) := !! (induction h).
 Tactic Notation "!functional" "induction" constr(h) :=
    !! (functional induction h).
 Tactic Notation "!functional" "inversion" constr(h) :=
-  !! (fun x => functional inversion x) h.
+  !! (functional inversion h).
 Tactic Notation "!destruct" constr(h) := !! (destruct h).
 Tactic Notation "!inversion" hyp(h) := !! (inversion h;subst).
 Tactic Notation "!invclear" hyp(h) := !! (inversion h;clear h;subst).
 Tactic Notation "!assert" constr(h) := !! (assert h).
-
+(*
 Tactic Notation "!intros" := idall;intros;rename_hyps.
 
 Tactic Notation "!intro" := idall;intro;rename_hyps.
@@ -226,4 +300,27 @@ Tactic Notation "!intros" ident(id1) ident(id2) ident(id3) ident(id4) ident(id5)
   := idall;intros id1 id2 id3 id4 id5 id6; id_ify id1; id_ify id2;
      id_ify id3; id_ify id4; id_ify id5; id_ify id6 ;intros;rename_hyps.
 
+*)
 
+
+Tactic Notation "!intros" := !!intros.
+
+Tactic Notation "!intro" := !!intro.
+
+Tactic Notation "!intros" "until" ident(id)
+  := intros until id; !intros.
+
+Tactic Notation "!intros" simple_intropattern(id1)
+  := !! intro id1.
+
+Tactic Notation "!intros" ident(id1) ident(id2)
+  := intros id1 id2; !intros.
+Tactic Notation "!intros" ident(id1) ident(id2) ident(id3)
+  := intros id1 id2 id3; !!intros.
+Tactic Notation "!intros" ident(id1) ident(id2) ident(id3) ident(id4)
+  := intros id1 id2 id3 id4; !!intros.
+
+Tactic Notation "!intros" ident(id1) ident(id2) ident(id3) ident(id4) ident(id5)
+  := intros id1 id2 id3 id4 id5; !!intros.
+Tactic Notation "!intros" ident(id1) ident(id2) ident(id3) ident(id4) ident(id5) ident(id6)
+  := intros id1 id2 id3 id4 id5 id6; !!intros.

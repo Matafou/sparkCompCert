@@ -49,11 +49,17 @@ Ltac rename_hyp1 h th :=
     | fetch_exp_type _ _ = None => fresh "heq_fetch_exp_type_none"
     | fetch_exp_type _ _ = _ => fresh "heq_fetch_exp_type"
     | eval_expr _ _ _ (Run_Time_Error _) => fresh "h_eval_expr_RE"
+    | eval_expr _ _ ?e (Normal ?v) => fresh "h_eval_expr_" e "_" v
     | eval_expr _ _ _ (Normal ?v) => fresh "h_eval_expr_" v
+    | eval_expr _ _ ?e ?v => fresh "h_eval_expr_" e "_" v
+    | eval_expr _ _ ?e _ => fresh "h_eval_expr_" e
     | eval_expr _ _ _ ?v => fresh "h_eval_expr_" v
     | eval_expr _ _ _ _ => fresh "h_eval_expr"
     | eval_name _ _ _ (Run_Time_Error _) => fresh "h_eval_name_RE"
+    | eval_name _ _ ?e (Normal ?v) => fresh "h_eval_name_" e "_" v
     | eval_name _ _ _ (Normal ?v) => fresh "h_eval_name_" v
+    | eval_name _ _ ?e ?v => fresh "h_eval_name_" e "_" v
+    | eval_name _ _ ?e _ => fresh "h_eval_name_" e
     | eval_name _ _ _ ?v => fresh "h_eval_name_" v
     | eval_name _ _ _ _ => fresh "h_eval_name"
     | do_overflow_check _ (Run_Time_Error _) => fresh "h_overf_check_RE"

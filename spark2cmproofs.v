@@ -147,6 +147,9 @@ Proof.
   inversion heq_transl_value_v_tv1; inversion heq_transl_value_v_tv2;subst;auto;inversion H1;auto.
 Qed.
 
+(* clear may fail if h is not a hypname *)
+(* Tactic Notation "decomp" constr(h) := *)
+(*        !! (decompose [and ex or] h). *)
 
 Lemma transl_value_tot: forall v,
     (forall y:nat,(exists b, v = Bool b \/ exists n, v = Int n))
@@ -793,7 +796,7 @@ Lemma eval_name_overf: forall s st nme n,
     -> do_overflow_check n (Normal (Int n)).
 Proof using.
   !intros.
-  !inversion h_eval_name. (* l'environnement retourne toujours des valeur rangées. *)
+  !inversion h_eval_name_nme. (* l'environnement retourne toujours des valeur rangées. *)
   - unfold safe_stack in *.
     eapply h_safe_stack_s;eauto.
   - simpl in *.
@@ -815,7 +818,7 @@ Proof.
   revert h_safe_stack_s.
   remember (Normal (Int n)) as hN.
   revert HeqhN.
-  !induction h_eval_expr;!intros;subst;try discriminate.
+  !induction h_eval_expr_e;!intros;subst;try discriminate.
   - eapply eval_literal_overf;eauto.
   - eapply eval_name_overf;eauto.
   - !invclear h_do_rtc_binop.
@@ -830,7 +833,7 @@ Proof.
       !functional inversion heq;subst
       ;try match goal with H: ?A <> ?A |- _ => elim H;auto end.
       !invclear heq.
-      apply IHh_eval_expr;auto.
+      apply IHh_eval_expr_e;auto.
 Qed.
 
 Lemma eval_expr_overf2 : forall st s,
@@ -1072,7 +1075,6 @@ Proof.
   eapply h_nonul_ofs;eauto.
 Qed.
 
-
 Lemma transl_expr_ok : forall stbl CE e e',
     transl_expr stbl CE e = OK e' ->
     forall locenv g m (s:STACK.stack)  (v:value) stkptr,
@@ -1082,7 +1084,7 @@ Lemma transl_expr_ok : forall stbl CE e e',
         (transl_value v v_t /\ Cminor.eval_expr g stkptr locenv m e' v_t).
 Proof.
   intros until e.
-  !functional induction (transl_expr stbl CE e);try discriminate;simpl; !intros;
+  !functional induction (transl_expr stbl CE e) ;try discriminate;simpl; !intros;
   !invclear h_eval_expr_v;eq_same_clear.
   - inversion h_eval_literal;subst.
     + !destruct v0.
@@ -1101,8 +1103,8 @@ Proof.
       rewrite heq_fetch_exp_type.
       reflexivity.
     + discriminate.
-  - decomp (IHr _ heq_tr_expr_e _ _ _ _ _ _ h_eval_expr_e_v h_match_env).
-    decomp (IHr0 _ heq_tr_expr_e0 _ _ _ _ _ _ h_eval_expr_e0_v h_match_env).
+  - decomp (IHr _ heq_tr_expr_e _ _ _ _ _ _ h_eval_expr_e_e_v h_match_env).
+    decomp (IHr0 _ heq_tr_expr_e0 _ _ _ _ _ _ h_eval_expr_e0_e0_v h_match_env).
     assert (hex:or (exists b, v = Bool b) (exists n, v = Int n)). {
       apply do_run_time_check_on_binop_ok in h_do_rtc_binop.
       rewrite binopexp_ok in h_do_rtc_binop.
@@ -1124,7 +1126,7 @@ Proof.
     simpl in heq.
     eq_same_clear.
     specialize (IHr e_t heq_tr_expr_e locenv g m s e_v stkptr
-                    h_eval_expr_e_v h_match_env).
+                    h_eval_expr_e_e_v h_match_env).
     decomp IHr.
     !invclear h_do_rtc_unop;eq_same_clear.
     !invclear h_overf_check.
@@ -1138,7 +1140,7 @@ Proof.
       reflexivity.
   (* Not *)
   - !invclear h_do_rtc_unop;simpl in *;try eq_same_clear.
-    specialize (IHr _ heq_tr_expr_e _ _ _ _ _ _ h_eval_expr_e_v h_match_env).
+    specialize (IHr _ heq_tr_expr_e _ _ _ _ _ _ h_eval_expr_e_e_v h_match_env).
     decomp IHr.
     generalize (not_ok _ _ _ heq_transl_value_e_v_e_t_v heq).
     !intro.
@@ -1174,7 +1176,7 @@ Ltac finish_eqdec := try subst;try (left;reflexivity);(try now right;intro abs;i
 Lemma expression_dec: forall e1 e2:expression, ({e1=e2} + {e1<>e2})
 with name_dec: forall n1 n2:name, ({n1=n2} + {n1<>n2}).
 Proof.
-  { !intros e1 e2.
+  { intros e1 e2.
     case e1;case e2;intros;try now((left+right)).
     - destruct (Nat.eq_dec a0 a);finish_eqdec.
       destruct (literal_eq_dec l0 l);finish_eqdec.
@@ -1316,10 +1318,10 @@ Proof.
   intros i₁ i₂.
   unfold lt_loads.
   !intro.
-  induction H;simpl;!intros;subst.
+  induction h_lt_i₁_i₂;simpl;!intros;subst.
   - constructor 1.
   - constructor 2.
-    apply IHle;auto.
+    apply IHh_lt_i₁_i₂;auto.
 Qed.
 
 Lemma build_loads__inj_neq : forall i₁ i₂,
@@ -2019,12 +2021,19 @@ Proof.
 
   unfold stack_match.
   !intros other_nme other_v addr_other load_addr_other type_other cm_typ_other.
+
   (* id can already be evaluated in s *)
   destruct (h_stk_cmpl_s_CE _ _ _ heq_transl_variable)
     as [v_id_prev h_eval_name_id_val_prev].
   set (nme:=(E_Identifier a id)) in *.
   (* done *)
   (* Getting rid of erronous cases *)
+(* xxx *)
+
+
+
+
+(* xxxxx *)
   !functional inversion heq_transl_name.
   subst.
   rename id0 into other_id.
@@ -2402,6 +2411,12 @@ Proof.
   eapply build_loads_Vptr;eauto.
 Qed.
 
+
+Ltac rename_all_hyps :=
+  let renam H := rename_if_not_old (I) H in
+  let hyps := all_hyps in
+  map_hyps renam hyps.
+
 Lemma transl_stmt_normal_OK : forall stbl (stm:statement) s s',
     eval_stmt stbl s stm (Normal s') ->
     forall CE (stm':Cminor.stmt),
@@ -2416,9 +2431,9 @@ Proof.
   intros until 1.
   remember (Normal s') as norms'.
   revert dependent s'.
-  rename_hyps.
+  rename_all_hyps.
   Opaque transl_stmt.
-  induction h_eval_stmt;simpl in *;intros ; rename_hyps ; eq_same_clear;
+  induction h_eval_stmt;simpl in *;intros ; rename_all_hyps ; eq_same_clear;
   try (rewrite <- transl_stmt_ok in heq_transl_stmt_stm';
         !functional inversion heq_transl_stmt_stm';
         subst;
@@ -2430,13 +2445,13 @@ Proof.
   (* assignment *)
   - rename x into nme.
     rename st into stbl.
-    rename_hyps.
+    rename_all_hyps.
     exists Events.E0.
     exists locenv.
     decomp (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
     !! (edestruct (me_stack_complete h_match_env);eauto).
     decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _
-                           h_eval_expr_e_v h_match_env).
+                           h_eval_expr_e_e_v h_match_env).
     (* transl_type never fails *)
     assert (hex:exists nme_type_t, transl_type stbl nme_type =: nme_type_t).
     { simpl in *.
@@ -2444,7 +2459,7 @@ Proof.
       { simpl.
         rewrite heq_fetch_exp_type.
         reflexivity. }
-      rename_hyps.
+      rename_all_hyps.
       eapply (ci_stbl_var_types_ok h_inv_comp_CE_stbl);eauto. }
     !destruct hex.
     (* make_load does not fail on a translated variable coming from CE *)
@@ -2507,12 +2522,12 @@ Proof.
       eapply eval_expr_overf;eauto.
   - rename x into nme.
     rename st into stbl.
-    rename_hyps.
+    rename_all_hyps.
     exists Events.E0.
     exists locenv.
     decomp (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
     !! (edestruct (me_stack_complete h_match_env);eauto).
-    decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _ h_eval_expr h_match_env).
+    decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _ h_eval_expr_e h_match_env).
       (* transl_type never fails *)
       assert (hex:exists nme_type_t, transl_type stbl nme_type =: nme_type_t).
       { simpl in *.
@@ -2580,15 +2595,15 @@ Proof.
         eapply eval_expr_overf;eauto.
   - rename x1 into b_then.
     rename x2 into b_else.
-    rename_hyps.
+    rename_all_hyps.
     + decomp (transl_expr_ok _ _ _ e_t heq_tr_expr_e locenv g m _ _
-                             (Values.Vptr spb ofs) h_eval_expr h_match_env).
+                             (Values.Vptr spb ofs) h_eval_expr_e h_match_env).
       decomp (IHh_eval_stmt s' eq_refl CE b_then h_inv_comp_CE_st heq_transl_stmt_stmt_b_then spb ofs f
                             locenv g m h_match_env).
       exists x.
       exists x0.
       exists x1.
-      decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e locenv g m s _ (Values.Vptr spb ofs) h_eval_expr h_match_env).
+      decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e locenv g m s _ (Values.Vptr spb ofs) h_eval_expr_e h_match_env).
       assert (exec_stmt g f (Values.Vptr spb ofs) locenv m
                         (Sifthenelse (Ebinop (Ocmp Cne) e_t (Econst (Ointconst Int.zero)))
                                      b_then b_else) x x0 x1 Out_normal).
@@ -2609,15 +2624,15 @@ Proof.
       * assumption.
   - rename x1 into b_then.
     rename x2 into b_else.
-    rename_hyps.
+    rename_all_hyps.
     + decomp (transl_expr_ok _ _ _ e_t heq_tr_expr_e locenv g m _ _
-                             (Values.Vptr spb ofs) h_eval_expr h_match_env).
+                             (Values.Vptr spb ofs) h_eval_expr_e h_match_env).
       decomp (IHh_eval_stmt s' eq_refl CE b_else h_inv_comp_CE_st heq_transl_stmt_stmt_b_else spb ofs f
                             locenv g m h_match_env).
       exists x.
       exists x0.
       exists x1.
-      decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e locenv g m s _ (Values.Vptr spb ofs) h_eval_expr h_match_env).
+      decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e locenv g m s _ (Values.Vptr spb ofs) h_eval_expr_e h_match_env).
       assert (exec_stmt g f (Values.Vptr spb ofs) locenv m
                         (Sifthenelse (Ebinop (Ocmp Cne) e_t (Econst (Ointconst Int.zero)))
                                      b_then b_else) x x0 x1 Out_normal).
@@ -2653,12 +2668,12 @@ Proof.
     { admit. (* All procedures do compile *) }
     !destruct h_ex.
     rename x0 into pb_stmt.
-    rename_hyps.
+    rename_all_hyps.
     specialize IHh_eval_stmt with (1:=eq_refl) (2:=h_inv_comp_CE_st) (3:=heq_transl_stmt_pb_stmt).
     unfold transl_procsig in *.
     unfold symboltable.fetch_proc in heq.
     rewrite heq in heq1.
-
+(*
 
     eexists.
     eexists.
@@ -2695,7 +2710,7 @@ Lemma foo :
           injection Heqnewf_copyin.
           induction profile;simpl in *.
 *)          
-
+*)
 
 
 
