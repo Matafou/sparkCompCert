@@ -2442,7 +2442,7 @@ Proof.
     split.
     + try now constructor.
     + assumption.
-  (* assignment *)
+  (* assignment no range constraint *)
   - rename x into nme.
     rename st into stbl.
     rename_all_hyps.
@@ -2520,6 +2520,7 @@ Proof.
       !intros.
       subst.
       eapply eval_expr_overf;eauto.
+  (* Assignment with satisifed range constraint (Range l u) *)
   - rename x into nme.
     rename st into stbl.
     rename_all_hyps.
@@ -2593,6 +2594,7 @@ Proof.
         !intros.
         !invclear heq.
         eapply eval_expr_overf;eauto.
+  (* If statement --> true *)
   - rename x1 into b_then.
     rename x2 into b_else.
     rename_all_hyps.
@@ -2622,6 +2624,7 @@ Proof.
       split.
       * assumption.
       * assumption.
+  (* If statement --> false *)
   - rename x1 into b_then.
     rename x2 into b_else.
     rename_all_hyps.
@@ -2652,6 +2655,7 @@ Proof.
       split.
       * assumption.
       * assumption.
+  (* Procedure call *)
   - subst x1.
     subst current_lvl.
     rewrite <- transl_stmt_ok in heq_transl_stmt_stm'.
@@ -2720,7 +2724,8 @@ Lemma foo :
 
 
 
-    admit. (* Procedure Call *)
+    admit.
+  (* Sequence *)
   - simpl in *.
     decomp (IHh_eval_stmt1 s1 eq_refl CE _ h_inv_comp_CE_st
                            heq1 spb ofs f  locenv g m h_match_env).
@@ -2732,4 +2737,6 @@ Lemma foo :
     split.
     + econstructor;eauto.
     + assumption.
+  
+  unshelve.
 Admitted.

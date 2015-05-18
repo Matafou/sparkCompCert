@@ -216,7 +216,7 @@ Ltac rename_if_not_old old_hyps H :=
                                           rename_hyp below fails. *)
         let newname := fallback_rename_hyp dummy_name th in
         rename dummy_name into newname
-    | _ => idtac "no renaming pattern for " H
+    | _ => idtac (* "no renaming pattern for " H *)
     end
   end.
 
