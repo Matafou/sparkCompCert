@@ -12,22 +12,29 @@ Open Scope Z_scope.
 (* stdlib unicode binders are not boxed correctly imho. *)
 Notation "∀ x .. y , P" := (forall x, .. (forall y, P) ..)
   (at level 200, x binder, y binder, right associativity,
-  format "'[hv' ∀  '[' x  '/' ..  '/' y , ']' '/' P ']'") : type_scope.
+  format "'[' ∀  x  ..  y , '/' P ']'") : type_scope.
 Notation "∃ x .. y , P" := (exists x, .. (exists y, P) ..)
   (at level 200, x binder, y binder, right associativity,
-   format "'[hv' ∃  '[' x  '/' ..  '/' y , ']' '/' P ']'") : type_scope.
+   format "'[' ∃  '[ ' x  '/' ..  '/' y , ']' '/' P ']'") : type_scope.
 Notation "'λ' x .. y , P" := (fun x => .. (fun y => P) ..)
   (at level 200, x binder, y binder, right associativity,
-   format "'[hv' λ  '[' x  '/' ..  '/' y , ']' '/' P ']'") : type_scope.
-Notation "x ∨ y" := (x \/ y) (at level 85, right associativity) : type_scope.
-Notation "x ∧ y" := (x /\ y) (at level 80, right associativity) : type_scope.
-Notation "x → y" := (x -> y) (at level 99, y at level 200, right associativity): type_scope.
-Notation "x ↔ y" := (x <-> y) (at level 95, no associativity): type_scope.
+   format "'[' λ  '[ ' x  '/' ..  '/' y , ']' '/' P ']'") : type_scope.
+Notation "x ∨ y" := (x \/ y)
+  (at level 85, right associativity,
+   format "'[ ' x  ∨ '/' y ']'") : type_scope.
+Notation "x ∧ y" := (x /\ y)
+  (at level 80, right associativity,y at level 80,
+   format "'[ ' x  '/' ∧  y ']'") : type_scope.
+Notation "x → y" := (x -> y)
+ (at level 99, y at level 200, right associativity,
+   format "'[ ' x  '/' →  y ']'"): type_scope.
+Notation "x ↔ y" := (x <-> y)
+  (at level 95, no associativity,
+     format "'[ ' x  '/' ↔  y ']'"): type_scope.
 Notation "¬ x" := (~x) (at level 75, right associativity) : type_scope.
 Notation "x ≠ y" := (x <> y) (at level 70) : type_scope.
 Notation "x ≤ y" := (le x y) (at level 70, no associativity).
 Notation "x ≥ y" := (ge x y) (at level 70, no associativity).
-
 
 (** Hypothesis renaming stuff from other files *)
 Ltac rename_hyp_prev h th :=
@@ -2658,35 +2665,49 @@ Proof.
   (* Procedure call *)
   - subst x1.
     subst current_lvl.
+    rename f0 into func.
     rewrite <- transl_stmt_ok in heq_transl_stmt_stm'.
+    !functional inversion heq_transl_stmt_stm';subst;eq_same_clear; clear heq_transl_stmt_stm'.
     rename s1 into suffix_s .
     rename s3 into suffix_s'.
-    rename y into lvl_p.
-    rename x into args_t.
+    rename y0 into lvl_p.
+    rename x1 into args_t.
     rename x0 into p_sign.
-    !functional inversion heq_transl_stmt_stm';subst;eq_same_clear; clear heq_transl_stmt_stm'.
-    subst x1.
+    subst x3.
     subst current_lvl.
     eq_same_clear.
     !assert(exists stm', transl_stmt st CE (procedure_statements pb) =: stm').
     { admit. (* All procedures do compile *) }
     !destruct h_ex.
-    rename x0 into pb_stmt.
+    rename x into pb_stmt.
     rename_all_hyps.
     specialize IHh_eval_stmt with (1:=eq_refl) (2:=h_inv_comp_CE_st) (3:=heq_transl_stmt_pb_stmt).
     unfold transl_procsig in *.
     unfold symboltable.fetch_proc in heq.
     rewrite heq in heq1.
-(*
+    
+(*     assert (match_env st (f1 :: suffix_s) ). *)
 
+(*
     eexists.
     eexists.
     eexists.
     split.
     + econstructor.
+      Focus 1.
+      { econstructor.
+        econstructor. }
+      Unfocus.
+      Focus 2.
+      rewrite <- transl_stmt_ok in heq_transl_stmt_pb_stmt.
+      functional inversion heq_transl_stmt_pb_stmt.
+      
+
       * econstructor.
         econstructor.
-      *
+      * econstructor.
+        
+        econstructor.
 
 (*
 Lemma foo : 
@@ -2709,7 +2730,7 @@ Lemma foo :
           { induction H0;subst;simpl in *;try !invclear Heqnewf_copyin;subst.
             - exists (@nil Values.val).
               constructor.
-            - 
+            - }}
           
           injection Heqnewf_copyin.
           induction profile;simpl in *.

@@ -830,9 +830,10 @@ Definition CMfundecls: Type := (list (AST.ident * AST.globdef fundef unit)).
     from previous enclosing compilenv and local parameters and
     variables and then add a prelude (and a postlude) to the statement
     of the procedure. The prelude copies parameter to the local stack
-    (including the chaining parameter) and execute intialization of
-    local vars. *)
-Fixpoint transl_procedure_body (stbl:symboltable) (enclosingCE:compilenv)
+    (including the chaining parameter) and executes intialization of
+    local vars. The postlude copies "Out" parameters to there destination
+    variables. *)
+Fixpoint transl_procedure (stbl:symboltable) (enclosingCE:compilenv)
          (lvl:Symbol_Table_Module.level) (pbdy:procedure_body) (lfundef:CMfundecls)
   : res CMfundecls  :=
   match pbdy with
@@ -899,7 +900,7 @@ with transl_declaration
      : res CMfundecls :=
   match decl with
       | D_Procedure_Body _ pbdy =>
-        transl_procedure_body stbl enclosingCE lvl pbdy lfundef
+        transl_procedure stbl enclosingCE lvl pbdy lfundef
       | D_Seq_Declaration _ decl1 decl2 =>
         do p1 <- transl_declaration stbl enclosingCE lvl decl1 lfundef;
         do p2 <- transl_declaration stbl enclosingCE lvl decl2 p1;
