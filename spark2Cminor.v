@@ -541,9 +541,9 @@ Definition default_calling_convention := {| AST.cc_vararg := true;
 
 Definition transl_lparameter_specification_to_procsig
            (stbl:symboltable) (lvl:Symbol_Table_Module.level)
-           (lparams:list parameter_specification) : res (AST.signature * Symbol_Table_Module.level) :=
+           (lparams:list parameter_specification) : res AST.signature :=
   do tparams <- transl_lparameter_specification_to_ltype stbl lparams ;
-  OK ({|
+  OK {|
          (* add a void* to the list of parameters, for frame chaining *)
          AST.sig_args:= match lvl with
                           | O => tparams
@@ -551,7 +551,7 @@ Definition transl_lparameter_specification_to_procsig
                         end ;
          AST.sig_res := None ; (* procedure: no return type *)
          AST.sig_cc := default_calling_convention
-       |}, lvl).
+       |}.
 
 
 Fixpoint transl_paramexprlist (stbl: symboltable) (CE: compilenv) (el: list expression)
@@ -585,13 +585,15 @@ Definition transl_params (stbl:symboltable) (pnum:procnum) (CE: compilenv)
     | Some (lvl , pdecl) => transl_paramexprlist stbl CE el (procedure_parameter_profile pdecl)
   end.
 
-
+(* FIXME, return lvl directly instead of counting on transl_lparameter_specification_to_procsig *)
 Definition transl_procsig (stbl:symboltable) (pnum:procnum)
   : res (AST.signature * Symbol_Table_Module.level) :=
   match fetch_proc pnum stbl with
       | None => Error (msg "Unkonwn procedure")
-      | Some (lvl , pdecl) => transl_lparameter_specification_to_procsig
-                                stbl lvl (procedure_parameter_profile pdecl)
+      | Some (lvl , pdecl) =>
+        do sig <- transl_lparameter_specification_to_procsig
+           stbl lvl (procedure_parameter_profile pdecl);
+          OK (sig,lvl)
   end.
 
 (* We don't want to change procedure names so we probably need to
@@ -715,14 +717,41 @@ Fixpoint build_frame_decl (stbl:symboltable) (fram_sz:localframe * Z)
   end.
 
 
+(* [build_proc_decl stbl (fram,sz) decl] experimenting a way to translate
+   procedure one by one instead of recursively. *)
+Fixpoint build_proc_decl (lvl:Symbol_Table_Module.level)
+         (stbl:symboltable) (decl:declaration): list procedure_body :=
+  match decl with
+    | D_Null_Declaration => []
+    | D_Seq_Declaration _ decl1 decl2 =>
+      let l1 := build_proc_decl (S lvl) stbl decl1 in
+      let l2 := build_proc_decl (S lvl) stbl decl2 in
+      l1 ++ l2
+    | D_Object_Declaration _ objdecl => []
+    | D_Type_Declaration _ typdcl => []
+    | D_Procedure_Body _ pbdy => pbdy::build_proc_decl (S lvl) stbl (procedure_declarative_part pbdy)
+  end.
 
 (* [build_compilenv stbl enclosingCE pbdy] returns the new compilation
    environment built from the one of the enclosing procedure
    [enclosingCE] and the list of parameters [lparams] and local
-   variables [decl]. It attributes an offset to each of these
-   variable names. One of the things to note here is that it adds a
-   variable at offset 0 which contains the address of the frame of the
-   enclosing procedure, for chaining. Procedures are ignored. *)
+   variables [decl]. It attributes an offset to each of these variable
+   names.
+
+   - One of the things to note here is that it adds a variable at
+     offset 0 which contains the address of the frame of the enclosing
+     procedure, for chaining. Procedures are ignored.
+
+   - Another thing is that we use the same compilenv for all
+     procedures of one declaration bloc. Strictly speaking this means
+     that all variables are reachable by all porcedures. In spark only
+     variables declared before a procedure can be reached. Since
+
+     1) This restriction is verified at typing/well-formedness
+     checking anyway and
+     2) All variables have unique names,
+
+    this is correct. *)
 Fixpoint build_compilenv (stbl:symboltable) (enclosingCE:compilenv) (lvl:Symbol_Table_Module.level)
          (lparams:list parameter_specification) (decl:declaration) : res (compilenv*Z) :=
   let '(init,sz) := match lvl with
@@ -834,7 +863,7 @@ Definition CMfundecls: Type := (list (AST.ident * AST.globdef fundef unit)).
     local vars. The postlude copies "Out" parameters to there destination
     variables. *)
 Fixpoint transl_procedure (stbl:symboltable) (enclosingCE:compilenv)
-         (lvl:Symbol_Table_Module.level) (pbdy:procedure_body) (lfundef:CMfundecls)
+         (lvl:Symbol_Table_Module.level) (pbdy:procedure_body)
   : res CMfundecls  :=
   match pbdy with
     | mkprocedure_body _ pnum lparams decl statm =>
@@ -844,7 +873,7 @@ Fixpoint transl_procedure (stbl:symboltable) (enclosingCE:compilenv)
         then
           (* generate nested procedures inside [decl] with CE compile
              environment with one more lvl. *)
-          do newlfundef <- transl_declaration stbl CE (S lvl) decl lfundef;
+          do newlfundef <- transl_declaration stbl CE (S lvl) decl;
           (* translate the statement of the procedure *)
           do bdy <- transl_stmt stbl CE statm ;
           (* Adding prelude: initialization of variables *)
@@ -867,7 +896,7 @@ Fixpoint transl_procedure (stbl:symboltable) (enclosingCE:compilenv)
                                       (Sseq locvarinit
                                             (Sseq bdy copyout)))) ;
 
-          do (procsig,_) <- transl_lparameter_specification_to_procsig stbl lvl lparams ;
+          do procsig <- transl_lparameter_specification_to_procsig stbl lvl lparams ;
           (** For a given "out" (or inout) argument x of type T of a procedure P:
              - transform T into T*, and change conequently the calls to P and signature of P.
              - add code to copy *x into the local stack at the
@@ -901,15 +930,15 @@ Fixpoint transl_procedure (stbl:symboltable) (enclosingCE:compilenv)
 (* FIXME: check the size needed for the declarations *)
 with transl_declaration
        (stbl:symboltable) (enclosingCE:compilenv)
-       (lvl:Symbol_Table_Module.level) (decl:declaration) (lfundef:CMfundecls)
+       (lvl:Symbol_Table_Module.level) (decl:declaration)
      : res CMfundecls :=
   match decl with
       | D_Procedure_Body _ pbdy =>
-        transl_procedure stbl enclosingCE lvl pbdy lfundef
+        transl_procedure stbl enclosingCE lvl pbdy
       | D_Seq_Declaration _ decl1 decl2 =>
-        do p1 <- transl_declaration stbl enclosingCE lvl decl1 lfundef;
-        do p2 <- transl_declaration stbl enclosingCE lvl decl2 p1;
-        OK p2
+        do p1 <- transl_declaration stbl enclosingCE lvl decl1;
+        do p2 <- transl_declaration stbl enclosingCE lvl decl2;
+        OK (p1++p2)
       | D_Object_Declaration astnum objdecl =>
         do tobjdecl <- OK (transl_paramid objdecl.(object_name),
                            AST.Gvar {| AST.gvar_info := tt;
@@ -917,11 +946,11 @@ with transl_declaration
                                        AST.gvar_readonly := false; (* FIXME? *)
                                        AST.gvar_volatile := false |} (* FIXME? *)
                           ) ; (*transl_objdecl stbl 0  ;*)
-        OK (tobjdecl :: lfundef)
+        OK [tobjdecl]
 
       | D_Type_Declaration _ _ =>
         Error (msg "transl_declaration: D_Type_Declaration not yet implemented")
-      | D_Null_Declaration => OK lfundef
+      | D_Null_Declaration => OK nil
   end.
 
 (** In Ada the main procedure is generally a procedure at toplevel
@@ -953,7 +982,7 @@ Definition transl_program (stbl:symboltable) (decl:declaration) : res (Cminor.pr
     | Some mainprocnum =>
       (* Check size returned by build_compilenv *)
       do (cenv,_) <- build_compilenv stbl nil 0%nat(*nesting lvl*) nil(*params*) decl ;
-      do lfdecl <- transl_declaration stbl cenv 0%nat(*nesting lvl*) decl nil(*empty accumlator*) ;
+      do lfdecl <- transl_declaration stbl cenv 0%nat(*nesting lvl*) decl ;
       OK (build_empty_program_with_main mainprocnum lfdecl)
   end.
 
