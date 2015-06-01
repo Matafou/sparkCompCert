@@ -2681,14 +2681,7 @@ Proof.
     !destruct h_ex.
     rename x into pb_stmt.
     rename_all_hyps.
-    specialize IHh_eval_stmt with (1:=eq_refl) (2:=h_inv_comp_CE_st) (3:=heq_transl_stmt_pb_stmt).
-    unfold transl_procsig in *.
-    unfold symboltable.fetch_proc in heq.
-    rewrite heq in heq1.
-    
-(*     assert (match_env st (f1 :: suffix_s) ). *)
-
-(*
+    (* xxx *)
     eexists.
     eexists.
     eexists.
@@ -2699,15 +2692,61 @@ Proof.
         econstructor. }
       Unfocus.
       Focus 2.
+      !assert (exists p_addr,Globalenvs.Genv.find_symbol g (transl_procid p) = Some p_addr).
+      { admit. }
+      !destruct h_ex.
+      rewrite heq2.
+      xxx
+      { destruct (Globalenvs.Genv.find_symbol g (transl_procid p));try discriminate.
+        - eassumption.
+
+
+(*     !assert (exists pb', transl_procedure st CE lvl pb CMfdecls = ). *)
+
+    specialize IHh_eval_stmt with (1:=eq_refl) (2:=h_inv_comp_CE_st) (3:=heq_transl_stmt_pb_stmt).
+    unfold transl_procsig in *.
+    unfold symboltable.fetch_proc in heq.
+    rewrite heq in heq1.
+
+    eexists.
+    eexists.
+    eexists.
+    split.
+    + econstructor.
+      Focus 1.
+      { econstructor.
+        econstructor. }
+      Unfocus.
+      Focus 2.
+
+
+      Lemma foo: forall st CE s n pb args f intact_s suffix_s m func m' sp vargs
+                        e spb ofs g locenv,
+          copy_in st s (newFrame n) (procedure_parameter_profile pb) args (Normal f)
+          -> cut_until s n intact_s suffix_s
+
+          -> Mem.alloc m 0 (fn_stackspace func) = (m', sp)
+          -> set_locals (fn_vars func) (set_params vargs (fn_params func)) = e
+
+          -> match_env st s CE (Values.Vptr spb ofs) locenv g m
+          -> match_env st (f :: suffix_s) CE (Values.Vptr sp Int.zero) locenv g m'.
+
+
       rewrite <- transl_stmt_ok in heq_transl_stmt_pb_stmt.
       functional inversion heq_transl_stmt_pb_stmt.
-      
+
 
       * econstructor.
         econstructor.
       * econstructor.
-        
         econstructor.
+
+
+
+
+
+
+
 
 (*
 Lemma foo : 
@@ -2735,7 +2774,7 @@ Lemma foo :
           injection Heqnewf_copyin.
           induction profile;simpl in *.
 *)          
-*)
+
 
 
 

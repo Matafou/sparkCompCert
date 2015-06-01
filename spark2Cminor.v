@@ -740,7 +740,7 @@ Fixpoint build_compilenv (stbl:symboltable) (enclosingCE:compilenv) (lvl:Symbol_
 Such a declaration contains other declaration, possibly declarations
 of nested procedures. *)
 
-(** [store_params lparams statm] adds a prelude to statement [statm]
+(** [store_params lparams] returns a prelude
     which effect is to store all parameters values listed in [lparams]
     into local (non temporary) variables. This is needed by nested
     procedure who need a way to read and write the parameters.
@@ -758,14 +758,14 @@ of nested procedures. *)
     temporary variables and the one that cannot really be "lifted" to
     temporary (because their address is needed) are copied in the
     stack by the generated prelude of the procedure. *)
-Fixpoint store_params stbl (CE:compilenv) (lparams:list parameter_specification) (statm:stmt)
+Fixpoint store_params stbl (CE:compilenv) (lparams:list parameter_specification)
          {struct lparams} : res stmt :=
   match lparams with
-    | nil => OK statm
+    | nil => OK Sskip
     | cons prm lparams' =>
       let id := transl_paramid prm.(parameter_name) in
       do chnk <- compute_chnk stbl (E_Identifier 0%nat (prm.(parameter_name))) ;
-      do recres <- store_params stbl CE lparams' statm ;
+      do recres <- store_params stbl CE lparams' ;
       do lexp <- transl_name stbl CE (E_Identifier 0%nat (prm.(parameter_name))) ;
       let rexp := (* Should I do nothing for in (except in_out) params? *)
           match prm.(parameter_mode) with
@@ -776,15 +776,14 @@ Fixpoint store_params stbl (CE:compilenv) (lparams:list parameter_specification)
   end.
 
 
-Fixpoint copy_out_params stbl (CE:compilenv)
-         (lparams:list parameter_specification) (statm:stmt)
+Fixpoint copy_out_params stbl (CE:compilenv) (lparams:list parameter_specification)
          {struct lparams} : res stmt :=
   match lparams with
-    | nil => OK statm
+    | nil => OK Sskip
     | cons prm lparams' =>
       let id := transl_paramid prm.(parameter_name) in
       do chnk <- compute_chnk stbl (E_Identifier 0%nat (prm.(parameter_name))) ;
-        do recres <- copy_out_params stbl CE lparams' statm ;
+        do recres <- copy_out_params stbl CE lparams' ;
         do rexp <- transl_name stbl CE (E_Identifier 0%nat (prm.(parameter_name))) ;
         match prm.(parameter_mode) with
           | In => OK recres
@@ -799,28 +798,29 @@ Fixpoint copy_out_params stbl (CE:compilenv)
   end.
 
 
-(* [init_locals stbl CE decl statm] adds a prelude to statement
+(* [init_locals stbl CE decl] adds a prelude to statement
    [statm] which effect is to initialize variables according to
    intialzation expressions in [decl]. Variables declared in decl are
    supposed to already be added to compilenv [CE] (by
    [build_compilenv] above).*)
-Fixpoint init_locals (stbl:symboltable) (CE:compilenv) (decl:declaration) (statm:stmt)
+Fixpoint init_locals (stbl:symboltable) (CE:compilenv) (decl:declaration)
   : res stmt :=
   match decl with
-    | D_Null_Declaration => OK statm
+    | D_Null_Declaration => OK Sskip
     | D_Seq_Declaration _ decl1 decl2 =>
-      do stmt1 <- init_locals stbl CE decl2 statm ;
-      init_locals stbl CE decl1 stmt1
+      do s1 <- init_locals stbl CE decl1 ;
+      do s2 <- init_locals stbl CE decl2 ;
+      OK (Sseq s1 s2)
     | D_Object_Declaration _ objdecl =>
       match objdecl.(initialization_expression) with
-        | None => OK statm
+        | None => OK Sskip
         | Some e =>
           do chnk <- compute_chnk stbl (E_Identifier 0%nat objdecl.(object_name)) ;
           do exprinit <- transl_expr stbl CE e;
           do lexp <- transl_name stbl CE (E_Identifier 0%nat objdecl.(object_name)) ;
-          OK (Sseq (Sstore chnk lexp exprinit) statm)
+          OK (Sstore chnk lexp exprinit)
       end
-    | _ => OK statm
+    | _ => OK Sskip
   end.
 
 Definition CMfundecls: Type := (list (AST.ident * AST.globdef fundef unit)).
@@ -848,20 +848,25 @@ Fixpoint transl_procedure (stbl:symboltable) (enclosingCE:compilenv)
           (* translate the statement of the procedure *)
           do bdy <- transl_stmt stbl CE statm ;
           (* Adding prelude: initialization of variables *)
-          do bdy_with_init <- init_locals stbl CE decl bdy ;
+          do locvarinit <- init_locals stbl CE decl;
           (* Adding prelude: copying parameters into frame *)
-          do bdy_with_init_params <- store_params stbl CE lparams bdy_with_init ;
+          do initparams <- store_params stbl CE lparams;
+
           (* Adding prelude: copying chaining parameter into frame *)
-          do bdy_with_init_params_chain <-
-             match lvl with
-               | O => OK bdy_with_init_params (* no chain fof global procedures *)
-               | _ => OK (Sseq (Sstore AST.Mint32 ((Econst (Oaddrstack (Integers.Int.zero))))
-                                       (Evar chaining_param))
-                               bdy_with_init_params)
-             end ;
+          do chain_param <- match lvl with
+                            | O => OK Sskip (* no chain for global procedures *)
+                            | _ => OK (Sstore AST.Mint32
+                                              ((Econst (Oaddrstack (Integers.Int.zero))))
+                                              (Evar chaining_param))
+                            end ;
+
           (* Adding postlude: copying back out params *)
-          do bdy_with_init_params_chain_copyout <-
-             copy_out_params stbl CE lparams bdy_with_init_params_chain ;
+          do copyout <- copy_out_params stbl CE lparams ;
+          do proc_t <- OK (Sseq chain_param
+                                (Sseq initparams
+                                      (Sseq locvarinit
+                                            (Sseq bdy copyout)))) ;
+
           do (procsig,_) <- transl_lparameter_specification_to_procsig stbl lvl lparams ;
           (** For a given "out" (or inout) argument x of type T of a procedure P:
              - transform T into T*, and change conequently the calls to P and signature of P.
@@ -887,7 +892,7 @@ Fixpoint transl_procedure (stbl:symboltable) (enclosingCE:compilenv)
                               transl_decl_to_lident stbl decl
                               ;
                             fn_stackspace:= stcksize%Z;
-                            fn_body:= bdy_with_init_params_chain_copyout
+                            fn_body:= proc_t
                           |})) in
           OK (newGfun :: newlfundef)
         else Error(msg "spark2Cminor: too many local variables, stack size exceeded")
