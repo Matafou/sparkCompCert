@@ -1,4 +1,6 @@
 
+# ../.config should conatin at least a line:
+# SIREUM=/home/foo/bat/Sireum
 include ../.config
 
 FLAGS=-S
@@ -6,7 +8,7 @@ CPP=cpp -P
 AS=$(CASM)
 CFLAGS=-g
 ASFLAGS=
-COQTAGS= -R ../../ia32 compcert.ia32 -R ../../lib compcert.lib -R ../../common compcert.common -R ../../backend compcert.backend -R ../../cfrontend compcert.cfrontend -R ../../driver compcert.driver -R ../../flocq compcert.flocq -R ../../exportclight compcert.exportclight -R ../../cparser compcert.cparser -I ../spark
+COQTAGS= -R ../../ia32 compcert.ia32 -R ../../lib compcert.lib -R ../../common compcert.common -R ../../backend compcert.backend -R ../../cfrontend compcert.cfrontend -R ../../driver compcert.driver -R ../../flocq compcert.flocq -R ../../exportclight compcert.exportclight -R ../../cparser compcert.cparser -R ../../spark spark  -R ../../sparkfrontend sparkfrontend
 CC=../../ccomp -stdlib ../../runtime -lm -dasm -dcminor -g -sdump
 
 
