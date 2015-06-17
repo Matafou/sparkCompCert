@@ -2675,17 +2675,148 @@ Proof.
     rename x0 into p_sign.
     subst x3.
     subst current_lvl.
+    rename n into pb_lvl.
     eq_same_clear.
+
+
+    (* IDEA: prove a similar lemma simultaneaously on funcall, with a different invariant. *)
+
+    (* On Cminor side, the function to be called is an expression that
+       evaluates correctly to something. Consequence of Well-typedness+invariant? *)
+    assert (h_ex_paddr:exists paddr,
+               Cminor.eval_expr g (Values.Vptr spb ofs) locenv m
+                                (Econst (Oaddrsymbol (transl_procid p) (Int.repr 0))) paddr).
+    { admit. }
+    destruct h_ex_paddr as [paddr hpaddr].
+    (* The value obtained for the function to call is indeed the
+    address of a function. Well-typedness+invariant? *)
+    assert (h:exists fction , Globalenvs.Genv.find_funct g paddr = Some fction).
+    { admit. }
+    destruct h as [fction hfction].
+    (* translate_procedure should not fail on pb since compilation of the
+       whole should not have fail (we have to state that, how?). Moreover
+       the currently proved property holds for the translation of pb. *)
+    assert ((do p_t <- transl_procedure st CE lvl_p pb ;
+              match List.hd_error p_t with
+                Some (_,@AST.Gfun _ _ f) => OK f
+              | _ => Error (msg "procedure not translated (??)")
+              end) = OK fction).
+    { admit. } 
+    destruct (transl_procedure st CE lvl_p pb) eqn:h;try discriminate.
+    autorename h.
+    simpl in H.
+    destruct (hd_error c) as [ [v w] v' |] eqn:h;simpl in H; autorename h.
+    + destruct w.
+      * inversion H; clear H.
+        subst.
+        destruct pb.
+        simpl in heq2.
+        (* Core of the proof, link the different phase of
+           execution with the pieces of code built by transl_procedure. *)
+        destruct (build_compilenv st CE lvl_p procedure_parameter_profile procedure_declarative_part) as [ [CE' stcksize]|] eqn:heq_bldCE.
+        -- simpl in heq2. 
+           destruct (Coqlib.zle stcksize Int.max_unsigned).
+           ++ repeat match type of heq2 with
+                       @eq _ (bind ?y ?x) _ =>
+                       let heqq := fresh "heq" in (* TODO: feed autorename *)
+                       destruct y eqn:heqq; [ autorename heqq; simpl in heq2 | discriminate]
+                     end.
+              rename c0 into newlfundef, s0 into bdy, s1 into locvarinit, s2 into initparams, s3 into chain_param, s4 into copyout.
+              !invclear heq2.
+              simpl in *.
+              !invclear heq3.
+              assert (h_invCE':invariant_compile CE' st).
+              { admit. }
+             remember {|
+                 fn_sig := s5;
+                 fn_params := match lvl_p with
+                              | 0%nat => transl_lparameter_specification_to_lident st procedure_parameter_profile
+                              | S _ => chaining_param :: transl_lparameter_specification_to_lident st procedure_parameter_profile
+                              end;
+                 fn_vars := transl_decl_to_lident st procedure_declarative_part;
+                 fn_stackspace := stcksize;
+                 fn_body := Sseq (Sseq chain_param (Sseq initparams (Sseq locvarinit Sskip)))
+                                 (Sseq bdy copyout) |} as proc.
+
+             destruct (Mem.alloc m 0 stcksize) as [m_f spb_f] eqn:heq_spboff.
+             specialize (IHh_eval_stmt ((pb_lvl, locals_section ++ params_section)::suffix_s') eq_refl CE'
+                                       bdy h_invCE' heq_transl_stmt_procedure_statements_s0 spb_f Int.zero proc).
+(*              (Sseq chain_param (Sseq initparams locvarinit)) *)
+             
+
+
+xxxxxx
+             
+    eexists.
+    eexists.
+    eexists.
+    split.
+    econstructor.
+              ** eassumption.
+              ** 
+    Focus 5.
+    econstructor 1.
+             
+             
+
+
+           ++ discriminate.
+        -- simpl in heq2.
+           discriminate.
+      * discriminate.
+    + discriminate.
+xxxxxxxxx
+      assert (invariant_compile ).
+
+    
+     set (m1sp := Mem.alloc m 0 (fn_stackspace ???)). 
+     destruct m1sp as [spb' ofs'].
+
+(* xxxx *)
+    eexists.
+    eexists.
+    eexists.
+    split.
+    econstructor.
+xxxx
+
+    (* Proof scheme:
+       - prove existence of 
+
+ *)
+    (* ?spb and ?ofs are the new stack pointer after Cminor function call.
+       ?locenv is the new locenv of the funcall
+       ?g is the global env (unchanged? =g?)
+       ?m is the Cminor memory after executing locvarinit and initparams of the procedure. *)
+    assert (match_env st (f1 :: suffix_s) (Values.Vptr spb' ofs') ?locenv ?g ?m).
+
+
+    destruct (transl_procedure st CE (*fixme*) lvl_p pb) as [pstmt_t|err] eqn:heq_transl_p_stmt .
+    2:exfalso;admit.
+    destruct pb.
+    simpl in heq_transl_p_stmt.
+    
+
+
+    Focus 2.
+    { exfalso. admit. }
+
+
+
+
+
+xxxxxxxx
     destruct (transl_stmt st CE (procedure_statements pb)) as [pstmt_t|err] eqn:heq_transl_p_stmt .
     Focus 2.
     { exfalso. admit. }
     Unfocus.
     specialize (IHh_eval_stmt _ eq_refl _ _ h_inv_comp_CE_st heq_transl_p_stmt).
 
-    (* the Cminor function called is an expression that evaluates correctly to something. *)
-    assert (h_ex_paddr:exists vf,
+    (* On Cminor side, the function to be called is an expression that
+       evaluates correctly to something. *)
+    assert (h_ex_paddr:exists paddr,
                Cminor.eval_expr g (Values.Vptr spb ofs) locenv m
-                                (Econst (Oaddrsymbol (transl_procid p) (Int.repr 0))) vf).
+                                (Econst (Oaddrsymbol (transl_procid p) (Int.repr 0))) paddr).
     { admit. }
     destruct h_ex_paddr as [paddr hpaddr].
     eexists.
@@ -2694,16 +2825,45 @@ Proof.
     split.
     + eapply exec_Scall with (vf:=paddr).
       * assumption.
-      * 
+      * unfold transl_params in heq0.
+        unfold symboltable.fetch_proc in heq.
+        rewrite heq in heq0.
+
+        (* Property linking spark args expr list , spark args value
+           list , Cminor args expr list and Cminor args value list. We
+           need to talk a bout expressions because Out and InOut
+           parameters are translated into names (and not expressions)
+           in order to be able to have there cminor address. Once the
+           prelude of the function is executed, all variables are in
+           the stack as standard variables. *)
+
+        Inductive is_copy_in (stbl : symboltable) (CE : compilenv):
+          (el : list expression) -> list parameter_specification -> list value -> list Values.val -> Prop :=
+        | Is_copy_in_nil: is_copy_in nil nil nil
+        | Is_copy_in_In: ∀ prm lprm v lv v_t lv_t,
+            parameter_mode prm = In ->
+            transl_value v v_t ->
+            is_copy_in lprm lv lv_t -> 
+            is_copy_in (prm::lprm) (v :: lv) (v_t::lv_t)
+        | Is_copy_in_In_Out: ∀ prm lprm nme lv nme_t lv_t,
+            parameter_mode prm = In_Out ->
+            transl_name v v_t ->
+            is_copy_in lprm lv lv_t -> 
+            is_copy_in (prm::lprm) (Undefined :: lv) (v_t::lv_t)
+        | Is_copy_in_In_Out: ∀ prm lprm v lv v_t lv_t,
+            parameter_mode prm = Out ->
+            is_copy_in lprm lv lv_t -> 
+            is_copy_in (prm::lprm) (Undefined :: lv) (v_t::lv_t).
+
         assert ((copy_in st s (newFrame n) (procedure_parameter_profile pb) args (Normal f))
-         -> transl_params st p CE args =: args_t
-         -> exists sto,
-xxx             (*transl_value is a predicate, need transl_listvalue here*)
-             transl_list_value (List.map snd (store_of f)) sto
-              -> eval_exprlist g (Values.Vptr spb ofs) locenv m
-                               (build_loads_ (Datatypes.length CE - 1 - lvl_p) :: args_t) sto).
+         -> transl_paramexprlist st CE args (procedure_parameter_profile pb) =: args_t
+         -> exists chain_addr sto,
+             eval_exprlist g (Values.Vptr spb ofs) locenv m
+                           (build_loads_ (Datatypes.length CE - 1 - lvl_p) :: args_t) (chain_addr::sto)
+             ∧ is_copy_in (procedure_parameter_profile pb) f sto).
         (* copy_in performes the eval_expr on arguments *)
 
+             (*transl_value is a predicate, need transl_listvalue here*)
 
     assert (
                exists vf fdecl fid intact_CE suffix_CE,

@@ -232,6 +232,8 @@ Ltac rename_all_hyps :=
   let hyps := all_hyps in
   map_hyps renam hyps.
 
+Ltac autorename H := rename_if_not_old (I) H.
+
 Tactic Notation "!!" tactic3(Tac) := (rename_new_hyps Tac).
 Tactic Notation "!!" tactic3(Tac) constr(h) :=
   (rename_new_hyps (Tac h)).

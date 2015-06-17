@@ -269,7 +269,7 @@ Function transl_variable (stbl:symboltable) (CE:compilenv) astnum (nme:idnum) : 
   match (CompilEnv.fetchG nme CE) with
     | None =>  Error (MSG "transl_variable: no such idnum." :: error_msg_with_loc stbl astnum nme)
     | Some n =>
-      match (CompilEnv.frameG nme CE) with
+      match CompilEnv.frameG nme CE with
         | None =>  Error (msg "assert false.")
         | Some (m,_) =>
           match CompilEnv.level_of_top CE with
@@ -891,10 +891,11 @@ Fixpoint transl_procedure (stbl:symboltable) (enclosingCE:compilenv)
 
           (* Adding postlude: copying back out params *)
           do copyout <- copy_out_params stbl CE lparams ;
-          do proc_t <- OK (Sseq chain_param
-                                (Sseq initparams
-                                      (Sseq locvarinit
-                                            (Sseq bdy copyout)))) ;
+          (* we formulate the sequence as Sseq (initializing, Sseq (bdy copyout)) to ease proofs. *)
+          do proc_t <- OK (Sseq (Sseq chain_param
+                                      (Sseq initparams
+                                            (Sseq locvarinit Sskip)))
+                                (Sseq bdy copyout)) ;
 
           do procsig <- transl_lparameter_specification_to_procsig stbl lvl lparams ;
           (** For a given "out" (or inout) argument x of type T of a procedure P:
