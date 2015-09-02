@@ -537,6 +537,7 @@ Fixpoint transl_decl_to_lident (stbl:symboltable) (decl:declaration): list AST.i
 
 
 Definition default_calling_convention := {| AST.cc_vararg := true;
+                                            AST.cc_unproto := true;
                                             AST.cc_structret := true |}.
 
 Definition transl_lparameter_specification_to_procsig
