@@ -108,73 +108,6 @@ Ltac my_rename_hyp h th :=
 Ltac rename_hyp ::= my_rename_hyp.>> *)
 
 Ltac rename_hyp h ht := fail.
-(*
-(** "marks" hypothesis h of the current goal by putting id(..) on top
-   of there types. *)
-Ltac id_ify h := let th := type of h in change (id th) in h.
-
-(** Unmarking one hyp. *)
-Ltac unid H :=
-  match type of H with
-    | id ?th => change th in H
-  end.
-
-(** Unmarking all hyps *)
-Ltac unidall :=
-  repeat match goal with
-    | H: id ?th |- _ => change th in H
-  end.
-
-(** Rename (and mark) all hypothesis using the current rename_hyp
-    tactic. It does not rename hypothesis already marked (i.e. of type
-    (id _)). *)
-Ltac rename_norm :=
-  repeat match reverse goal with
-           | H:_ |- _ =>
-             match type of H with
-               | id _ => fail 1 (** This hyp is marked, chose another one *)
-               | ?th => 
-                 let dummy_name := fresh "dummy" in
-                 rename H into dummy_name; (* this renaming makes the renaming more or 
-                                              less idempotent, it is backtracked if the
-                                              rename_hyp below fails. *)
-                 let newname := rename_hyp dummy_name th in
-                 rename dummy_name into newname;
-                 change (id th) in newname
-               (* If the custom renaming tactic failed, then try the fallback one *)
-               | ?th =>
-                 let dummy_name := fresh "dummy" in
-                 rename H into dummy_name;
-                 let newname := fallback_rename_hyp dummy_name th in
-                 rename dummy_name into newname;
-                 change (id th) in newname
-             end
-         end.
-*)
-(*
-
-(* Mark all current hypothesis of the goal to prevent re-renaming hyps
-   when calling renaming tactics multiple times.
-
-   Typical use: mark all hyps but the one we want to destruct (say h),
-   destruct h; rename all unmarked hyps except h, unmark all hyps.
-
-   That is:
-
-   idall ; unid h; destruct h; try id_ify h; rename_norm; unidall. *)
-Ltac idall :=
-  repeat match goal with
-           | H:_ |- _ =>
-             match type of H with
-               | id _ => fail 1
-               | ?th => change (id th) in H
-             end
-         end.
-
-(** This renames all hypothesis. This tactic should be idempotent in
-    most cases. *)
-Ltac rename_hyps := rename_norm ; unidall.
-*)
 
 (* Credit for the harvesting of hypothesis: Jonathan Leivant *)
 Ltac harvest_hyps harvester := constr:($(harvester; constructor)$ : True).
@@ -204,16 +137,16 @@ Ltac rename_if_not_old old_hyps H :=
     match type of H with
     | ?th => 
       let dummy_name := fresh "dummy" in
-      rename H into dummy_name; (* this renaming makes the renaming more or 
-                                          less idempotent, it is backtracked if the
-                                          rename_hyp below fails. *)
+      rename H into dummy_name; (* this renaming makes the renaming more or less
+                                   idempotent, it is backtracked if the
+                                   rename_hyp below fails. *)
         let newname := rename_hyp dummy_name th in
         rename dummy_name into newname
     | ?th => 
       let dummy_name := fresh "dummy" in
-      rename H into dummy_name; (* this renaming makes the renaming more or 
-                                          less idempotent, it is backtracked if the
-                                          rename_hyp below fails. *)
+      rename H into dummy_name; (* this renaming makes the renaming more or less
+                                   idempotent, it is backtracked if the
+                                   rename_hyp below fails. *)
         let newname := fallback_rename_hyp dummy_name th in
         rename dummy_name into newname
     | _ => idtac (* "no renaming pattern for " H *)
@@ -237,6 +170,32 @@ Ltac autorename H := rename_if_not_old (I) H.
 Tactic Notation "!!" tactic3(Tac) := (rename_new_hyps Tac).
 Tactic Notation "!!" tactic3(Tac) constr(h) :=
   (rename_new_hyps (Tac h)).
+
+Ltac subst_if_not_old old_hyps H :=
+  match old_hyps with
+  | context [H] => idtac
+  | _ => 
+    match type of H with
+    | ?x = ?y => subst x
+    | ?x = ?y => subst y
+    | _ => idtac
+    end
+  end.
+
+Ltac subst_new_hyps tac :=
+  let old_hyps := all_hyps in
+  let substnew H := subst_if_not_old old_hyps H in
+  tac
+  ; let new_hyps := all_hyps in
+    map_hyps substnew new_hyps.
+
+(* do we need a syntax for this. *)
+(* Tactic Notation "" tactic3(Tac) := subst_new_hyps Tac. *)
+
+(* !!! tac performs tac, then subst with new hypothesis, then rename
+remaining new hyps. *)
+Tactic Notation "!!!" tactic3(Tac) := !! (subst_new_hyps Tac).
+
 
 (** ** Renaming Tacticals *)
 
@@ -274,36 +233,14 @@ Tactic Notation "!functional" "induction" constr(h) :=
 Tactic Notation "!functional" "inversion" constr(h) :=
   !! (functional inversion h).
 Tactic Notation "!destruct" constr(h) := !! (destruct h).
-Tactic Notation "!inversion" hyp(h) := !! (inversion h;subst).
-Tactic Notation "!invclear" hyp(h) := !! (inversion h;clear h;subst).
+
+Tactic Notation "!destruct" constr(h) "!eqn:" ident(id) :=
+  (!!(destruct h eqn:id; revert id));intro id.
+Tactic Notation "!destruct" constr(h) "!eqn:?" := (!!(destruct h eqn:?)).
+
+Tactic Notation "!inversion" hyp(h) := !!! (inversion h).
+Tactic Notation "!invclear" hyp(h) := !!! (inversion h;clear h).
 Tactic Notation "!assert" constr(h) := !! (assert h).
-(*
-Tactic Notation "!intros" := idall;intros;rename_hyps.
-
-Tactic Notation "!intro" := idall;intro;rename_hyps.
-
-Tactic Notation "!intros" "until" ident(id)
-  := idall;intros until id;rename_hyps.
-
-Tactic Notation "!intros" simple_intropattern(id1)
-  := intro id1;idall; id_ify id1; intros;rename_hyps.
-Tactic Notation "!intros" ident(id1) ident(id2)
-  := idall;intros id1 id2; id_ify id1; id_ify id2; intros;rename_hyps.
-Tactic Notation "!intros" ident(id1) ident(id2) ident(id3)
-  := idall;intros id1 id2 id3; id_ify id1; id_ify id2;
-     id_ify id3; intros;rename_hyps.
-Tactic Notation "!intros" ident(id1) ident(id2) ident(id3) ident(id4)
-  := idall;intros id1 id2 id3 id4; id_ify id1; id_ify id2;
-     id_ify id3; id_ify id4; intros;rename_hyps.
-Tactic Notation "!intros" ident(id1) ident(id2) ident(id3) ident(id4) ident(id5)
-  := idall;intros id1 id2 id3 id4 id5; id_ify id1; id_ify id2;
-     id_ify id3; id_ify id4; id_ify id5;intros;rename_hyps.
-Tactic Notation "!intros" ident(id1) ident(id2) ident(id3) ident(id4) ident(id5) ident(id6)
-  := idall;intros id1 id2 id3 id4 id5 id6; id_ify id1; id_ify id2;
-     id_ify id3; id_ify id4; id_ify id5; id_ify id6 ;intros;rename_hyps.
-
-*)
-
 
 Tactic Notation "!intros" := !!intros.
 
@@ -326,3 +263,15 @@ Tactic Notation "!intros" ident(id1) ident(id2) ident(id3) ident(id4) ident(id5)
   := intros id1 id2 id3 id4 id5; !!intros.
 Tactic Notation "!intros" ident(id1) ident(id2) ident(id3) ident(id4) ident(id5) ident(id6)
   := intros id1 id2 id3 id4 id5 id6; !!intros.
+
+
+(** Some more tactic not specially dedicated to renaming. *)
+
+(* This performs the map from "top" to "bottom" (from older to younger hyps). *)
+Ltac map_hyps_rev tac hs :=
+  idtac;
+  let rec step H hs := tac H ; next_hyp hs step idtac in
+  next_hyp hs step idtac.
+
+Ltac map_all_hyps tac := map_hyps tac all_hyps.
+Ltac map_all_hyps_rev tac := map_hyps_rev tac all_hyps.

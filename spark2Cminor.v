@@ -1,6 +1,3 @@
-
-
-
 Require Import LibHypsNaming.
 Require Import Errors.
 (* Require Import language. *)
@@ -753,16 +750,16 @@ Fixpoint build_proc_decl (lvl:Symbol_Table_Module.level)
      2) All variables have unique names,
 
     this is correct. *)
-Fixpoint build_compilenv (stbl:symboltable) (enclosingCE:compilenv) (lvl:Symbol_Table_Module.level)
+Definition build_compilenv (stbl:symboltable) (enclosingCE:compilenv) (lvl:Symbol_Table_Module.level)
          (lparams:list parameter_specification) (decl:declaration) : res (compilenv*Z) :=
-  let '(init,sz) := match lvl with
+  let stoszchainparam := match lvl with
                 | O => (nil,0%Z) (* no chaining for global procedures *)
                 | _ => (((0%nat,0%Z) :: nil),4%Z)
               end in
-  do stosz <- build_frame_lparams stbl (init, sz) lparams ;
-  do (sto2,sz2) <- build_frame_decl stbl stosz decl ;
+  do stoszparam <- build_frame_lparams stbl stoszchainparam lparams ;
+  do (stolocals,szlocals) <- build_frame_decl stbl stoszparam decl ;
   let scope_lvl := List.length enclosingCE in
-  OK (((scope_lvl,sto2)::enclosingCE),sz2).
+  OK (((scope_lvl,stolocals)::enclosingCE),szlocals).
 
 
 (** * Translating a procedure declaration
@@ -855,7 +852,6 @@ Fixpoint init_locals (stbl:symboltable) (CE:compilenv) (decl:declaration)
 
 Definition CMfundecls: Type := (list (AST.ident * AST.globdef fundef unit)).
 
-
 (** Translating a procedure definition. First computes the compilenv
     from previous enclosing compilenv and local parameters and
     variables and then add a prelude (and a postlude) to the statement
@@ -870,7 +866,7 @@ Fixpoint transl_procedure (stbl:symboltable) (enclosingCE:compilenv)
     | mkprocedure_body _ pnum lparams decl statm =>
         (* setup frame chain *)
         do (CE,stcksize) <- build_compilenv stbl enclosingCE lvl lparams decl ;
-        if Coqlib.zle stcksize Integers.Int.max_unsigned
+        if Z.leb stcksize Integers.Int.max_unsigned
         then
           (* generate nested procedures inside [decl] with CE compile
              environment with one more lvl. *)
@@ -883,21 +879,21 @@ Fixpoint transl_procedure (stbl:symboltable) (enclosingCE:compilenv)
           do initparams <- store_params stbl CE lparams;
 
           (* Adding prelude: copying chaining parameter into frame *)
-          do chain_param <- match lvl with
-                            | O => OK Sskip (* no chain for global procedures *)
-                            | _ => OK (Sstore AST.Mint32
-                                              ((Econst (Oaddrstack (Integers.Int.zero))))
-                                              (Evar chaining_param))
-                            end ;
+          let chain_param := match lvl with
+                            | O => Sskip (* no chain for global procedures *)
+                            | _ => Sstore AST.Mint32
+                                          ((Econst (Oaddrstack (Integers.Int.zero))))
+                                          (Evar chaining_param)
+                            end in
 
           (* Adding postlude: copying back out params *)
           do copyout <- copy_out_params stbl CE lparams ;
           (* we formulate the sequence as Sseq (initializing, Sseq (bdy copyout)) to ease proofs. *)
-          do proc_t <- OK (Sseq (Sseq chain_param
-                                      (Sseq initparams
-                                            (Sseq locvarinit Sskip)))
-                                (Sseq bdy copyout)) ;
-
+          let proc_t := Sseq (Sseq chain_param
+                                   (Sseq initparams
+                                         (Sseq locvarinit Sskip)))
+                             (Sseq bdy copyout) in
+                
           do procsig <- transl_lparameter_specification_to_procsig stbl lvl lparams ;
           (** For a given "out" (or inout) argument x of type T of a procedure P:
              - transform T into T*, and change conequently the calls to P and signature of P.
@@ -910,21 +906,22 @@ Fixpoint transl_procedure (stbl:symboltable) (enclosingCE:compilenv)
           let tlparams := transl_lparameter_specification_to_lident stbl lparams in
           let newGfun :=
               (transl_paramid pnum,
-              AST.Gfun (AST.Internal {|
-                            fn_sig:= procsig;
-                            (** list of idents of parameters (including the chaining one) *)
-                            fn_params :=
-                              match lvl with
-                                | O => tlparams (* no chaining for global procedures *)
-                                | _ => chaining_param :: tlparams
-                              end;
-                            (* list ident of local vars, including copy of parameters and chaining parameter *)
-                            fn_vars:=
-                              transl_decl_to_lident stbl decl
-                              ;
-                            fn_stackspace:= stcksize%Z;
-                            fn_body:= proc_t
-                          |})) in
+              AST.Gfun (* (AST.fundef function) unit *)
+                (AST.Internal {|
+                     fn_sig:= procsig;
+                     (** list of idents of parameters (including the chaining one) *)
+                     fn_params :=
+                       match lvl with
+                       | O => tlparams (* no chaining for global procedures *)
+                       | _ => chaining_param :: tlparams
+                       end;
+                     (* list ident of local vars, including copy of parameters and chaining parameter *)
+                     fn_vars:=
+                       transl_decl_to_lident stbl decl
+                     ;
+                     fn_stackspace:= stcksize%Z;
+                     fn_body:= proc_t
+                   |})) in
           OK (newGfun :: newlfundef)
         else Error(msg "spark2Cminor: too many local variables, stack size exceeded")
   end
@@ -942,14 +939,13 @@ with transl_declaration
         do p2 <- transl_declaration stbl enclosingCE lvl decl2;
         OK (p1++p2)
       | D_Object_Declaration astnum objdecl =>
-        do tobjdecl <- OK (transl_paramid objdecl.(object_name),
+        OK [
+            (transl_paramid objdecl.(object_name),
                            AST.Gvar {| AST.gvar_info := tt;
                                        AST.gvar_init := nil; (* TODO list AST.init_data*)
                                        AST.gvar_readonly := false; (* FIXME? *)
                                        AST.gvar_volatile := false |} (* FIXME? *)
-                          ) ; (*transl_objdecl stbl 0  ;*)
-        OK [tobjdecl]
-
+                          ) ] (*transl_objdecl stbl 0  ;*)
       | D_Type_Declaration _ _ =>
         Error (msg "transl_declaration: D_Type_Declaration not yet implemented")
       | D_Null_Declaration => OK nil
@@ -1109,6 +1105,39 @@ Ltac rename_hyp1 h th :=
     | transl_type _ _ = _ => fresh "heq_transl_type"
     | transl_basetype _ _ = Error _ => fresh "heq_transl_basetype_RE"
     | transl_basetype _ _ = _ => fresh "heq_transl_basetype"
+
+    | transl_params _ _ _ _ = Error _ => fresh "heq_transl_params_ERR"
+    | transl_params _ ?p _ _ = (OK ?r) => fresh "heq_transl_params_" p "_" r
+    | transl_params _ ?p _ _ = ?r => fresh "heq_transl_params_" p "_" r
+    | transl_params _ ?p _ _ = _ => fresh "heq_transl_params_" p
+    | transl_params _ _ _ _ = _ => fresh "heq_transl_params"
+
+    | transl_procsig _ _ = Error _ => fresh "heq_transl_procsig_ERR"
+    | transl_procsig _ ?p = (OK ?r) => fresh "heq_transl_procsig_" p "_" r
+    | transl_procsig _ ?p = ?r => fresh "heq_transl_procsig_" p "_" r
+    | transl_procsig _ ?p = _ => fresh "heq_transl_procsig_" p
+    | transl_procsig _ _ = _ => fresh "heq_transl_procsig"
+
+    | transl_procedure _ _ _ _ = Error _ => fresh "heq_transl_proc_ERR"
+    | transl_procedure _ _ _ ?p = (OK ?r) => fresh "heq_transl_proc_" p "_" r
+    | transl_procedure _ _ _ ?p = ?r => fresh "heq_transl_proc_" p "_" r
+    | transl_procedure _ _ _ ?p = _ => fresh "heq_transl_proc_" p
+    | transl_procedure _ _ _ _ = _ => fresh "heq_transl_proc"
+
+    | transl_declaration _ _ _ _ = Error _ => fresh "heq_transl_decl_ERR"
+    | transl_declaration _ _ _ ?p = (OK ?r) => fresh "heq_transl_decl_" p "_" r
+    | transl_declaration _ _ _ ?p = ?r => fresh "heq_transl_decl_" p "_" r
+    | transl_declaration _ _ _ ?p = _ => fresh "heq_transl_decl_" p
+    | transl_declaration _ _ _ _ = _ => fresh "heq_transl_decl"
+
+    | transl_lparameter_specification_to_procsig _ _ _ _ = Error _ => fresh "heq_transl_lprm_spec_ERR"
+    | transl_lparameter_specification_to_procsig _ _ _ ?p = (OK ?r) => fresh "heq_transl_lprm_spec_" p "_" r
+    | transl_lparameter_specification_to_procsig _ _ _ ?p = ?r => fresh "heq_transl_lprm_spec_" p "_" r
+    | transl_lparameter_specification_to_procsig _ _ _ ?p = _ => fresh "heq_transl_lprm_spec_" p
+    | transl_lparameter_specification_to_procsig _ _ _ _ = _ => fresh "heq_transl_lprm_spec"
+
+
+
     | build_loads ?n ?z = _ => fresh "heq_build_loads_" n "_" z
     | build_loads _ _ = _ => fresh "heq_build_loads"
     | make_load _ _ = Error _ => fresh "heq_make_load_RE"
@@ -1144,6 +1173,24 @@ Ltac rename_hyp1 h th :=
     | transl_expr ?stbl ?CE ?e = Error => fresh "heq_tr_expr_none"
     | transl_expr ?stbl ?CE ?e = OK ?r => fresh "heq_tr_expr_" e
     | transl_expr ?stbl ?CE ?e = ?r => fresh "heq_tr_expr"
+
+    | init_locals ?stbl ?CE ?declpart = Error => fresh "heq_init_lcl_ERR_" declpart
+    | init_locals ?stbl ?CE ?declpart = Error => fresh "heq_init_lcl_ERR"
+    | init_locals ?stbl ?CE ?declpart = Some ?r => fresh "heq_init_lcl_" declpart "_"r
+    | init_locals ?stbl ?CE ?declpart = ?r => fresh "heq_init_lcl"
+
+    | store_params ?stbl ?CE ?declpart = Error => fresh "heq_store_prms_ERR_" declpart
+    | store_params ?stbl ?CE ?declpart = Error => fresh "heq_store_prms_ERR"
+    | store_params ?stbl ?CE ?declpart = Some ?r => fresh "heq_store_prms_" declpart "_"r
+    | store_params ?stbl ?CE ?declpart = ?r => fresh "heq_store_prms"
+
+    | copy_out ?stbl ?CE ?declpart = Error => fresh "heq_cpy_out_ERR_" declpart
+    | copy_out ?stbl ?CE ?declpart = Error => fresh "heq_cpy_out_ERR"
+    | copy_out ?stbl ?CE ?declpart = Some ?r => fresh "heq_cpy_out_" declpart "_"r
+    | copy_out ?stbl ?CE ?declpart = ?r => fresh "heq_cpy_out"
+
+
+
 end.
 
 

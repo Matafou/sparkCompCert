@@ -494,6 +494,35 @@ Proof.
   reflexivity.
 Qed.
 
+(* Definition build_compilenv:= Eval lazy beta iota delta [build_compilenv bind bind2] in build_compilenv. *)
+(* using the explicit version because of a bug in Function. *)
+Function build_compilenv (stbl : Symbol_Table_Module.symboltable) (enclosingCE : compilenv) (lvl : Symbol_Table_Module.level)
+         (lparams : list parameter_specification) (decl : declaration) :=
+let stoszchainparam :=
+  match lvl return (prod (list (prod nat Z)) Z) with
+  | O => @pair (list (prod nat Z)) Z (@nil (prod nat Z)) Z0
+  | S _ => @pair (list (prod nat Z)) Z (@cons (prod nat Z) (@pair nat Z O Z0) (@nil (prod nat Z))) (Zpos (xO (xO xH)))
+  end in
+match build_frame_lparams stbl stoszchainparam lparams return (res (prod (list (prod nat CompilEnv.store)) Z)) with
+| OK x =>
+    match build_frame_decl stbl x decl return (res (prod (list (prod nat CompilEnv.store)) Z)) with
+    | OK p =>
+        match p return (res (prod (list (prod nat CompilEnv.store)) Z)) with
+        | pair x0 y =>
+            @OK (prod (list (prod nat CompilEnv.store)) Z)
+              (@pair (list (prod nat CompilEnv.store)) Z
+                 (@cons (prod nat CompilEnv.store) (@pair nat CompilEnv.store (@Datatypes.length CompilEnv.frame enclosingCE) x0)
+                    enclosingCE) y)
+        end
+    | Error msg => @Error (prod (list (prod nat CompilEnv.store)) Z) msg
+    end
+| Error msg => @Error (prod (list (prod nat CompilEnv.store)) Z) msg
+end.
+
+Lemma build_compilenv_ok : build_compilenv = spark2Cminor.build_compilenv.
+Proof.
+  reflexivity.
+Qed.
 
 
 (* Definition foo_compute_chk:= Eval lazy beta iota delta [compute_chnk compute_chnk_id compute_chnk_astnum compute_chnk_of_type bind] in compute_chnk. *)
@@ -538,3 +567,12 @@ Lemma compute_chnk_ok : forall x y, spark2Cminor.compute_chnk x y = compute_chnk
 Proof.
   reflexivity.
 Qed.
+
+
+(* Function bug prevents me to do this *)
+(* Definition transl_procedure := Eval cbv beta delta [bind bind2 transl_procedure] in transl_procedure. *)
+
+(* Add implicit args to Gfun "(AST.fundef function) unit" to work
+   around a limitation of Function *)
+
+

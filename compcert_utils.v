@@ -40,11 +40,10 @@ Lemma repr_inj:
     Integers.Int.repr v1 = Integers.Int.repr v2 ->
     v1 = v2.
 Proof.
-  intros v1 v2 hinbound1 hinboun2.
-  !intros.
+  intros v1 v2 hinbound1 hinboun2 heq_repr.
   assert (h: Integers.Int.signed(Integers.Int.repr v1)
              = Integers.Int.signed(Integers.Int.repr v2)).
-  { rewrite heq. reflexivity. }
+  { rewrite heq_repr. reflexivity. }
   rewrite Integers.Int.signed_repr in h;auto.
   rewrite Integers.Int.signed_repr in h;auto.
 Qed.

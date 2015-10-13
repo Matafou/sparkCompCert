@@ -100,6 +100,13 @@ Ltac rename_hyp1 h th :=
     | cut_until ?st ?s ?fr ?paramsprf ?args ?fr' => fresh "h_cut_until_" fr "_" fr'
     | cut_until ?st ?s ?fr ?paramsprf ?args _ => fresh "h_cut_until_" fr
     | cut_until ?st ?s ?fr ?paramsprf ?args _ => fresh "h_cut_until"
+
+    | symboltable.fetch_proc ?p _ = None => fresh "h_fetch_proc_None_" p
+    | symboltable.fetch_proc _ _ = None => fresh "h_fetch_proc_None"
+    | symboltable.fetch_proc ?p _ = Some ?r => fresh "h_fetch_proc_" p "_" r
+    | symboltable.fetch_proc ?p _ = ?r => fresh "h_fetch_proc_" p "_" r
+    | symboltable.fetch_proc ?p _ = _ => fresh "h_fetch_proc_" p
+    | symboltable.fetch_proc _ _ = _ => fresh "h_fetch_proc"
   end.
 
 Ltac rename_hyp ::= rename_hyp1.
@@ -380,9 +387,9 @@ Lemma arrayUpdate_id_ok_others: forall arr k v arr',
     arrayUpdate (ArrayV arr) k v = Some (ArrayV arr')
     -> forall k', k<>k' -> array_select arr' k' = array_select arr k'.
 Proof.
-  !intros.
+  intros arr k v arr' heq_arrayUpdate k'.
   simpl in *.
-  !invclear heq.
+  !invclear heq_arrayUpdate.
   eapply updateIndexedComp_id_ok_others;eauto.
 Qed.
 
