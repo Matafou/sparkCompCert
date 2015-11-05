@@ -2492,6 +2492,157 @@ Proof.
 Qed.
 
 
+Lemma all_addr_no_overflow_fetch_OK :
+  forall sto CE,
+    (forall δ id, CompilEnv.fetch id sto = Some δ → 0 <= δ ∧ δ < Int.modulus)
+    -> all_addr_no_overflow CE -> all_addr_no_overflow (sto :: CE).
+Proof.
+  intros sto CE H H0.
+  red.
+  !intros.
+  cbn in heq_CEfetchG_id.
+  !destruct (CompilEnv.fetch id sto) !eqn:?.
+  - !invclear heq_CEfetchG_id.
+    eapply H;eauto.
+  - eapply H0;eauto.
+Qed.
+
+
+
+Definition all_addr_no_overflow_localframe lvl l := 
+  ∀ (id : idnum) (δ : CompilEnv.V),CompilEnv.fetch id (lvl,l) = Some δ → 0 <= δ ∧ δ < Int.modulus.
+
+
+(* Definition build_frame_lparams_2 := Eval lazy beta iota delta [build_frame_lparams bind] in build_frame_lparams. *)
+Function build_frame_lparams_2 (stbl : symboltable) (fram_sz : localframe * Z) (lparam : list parameter_specification) {struct lparam} :
+  res (localframe * Z) :=
+  match lparam with
+  | [ ] => OK fram_sz
+  | {| parameter_name := nme; parameter_subtype_mark := subtyp_mrk |} :: lparam' =>
+      match add_to_frame stbl fram_sz nme subtyp_mrk with
+      | OK x => build_frame_lparams_2 stbl x lparam'
+      | Error msg => Error msg
+      end
+  end.
+
+Lemma build_frame_lparams_ok : build_frame_lparams_2 = spark2Cminor.build_frame_lparams.
+Proof.
+  reflexivity.
+Qed.
+
+(* Definition add_to_frame_2 := Eval lazy beta iota delta [add_to_frame bind bind2] in add_to_frame. *)
+Function add_to_frame_2 (stbl : symboltable) (cenv_sz : localframe * Z) (nme : idnum) (subtyp_mrk : type) :=
+  let (cenv, sz) := cenv_sz in
+  match compute_size stbl subtyp_mrk with
+  | OK x => let new_size := sz + x in let new_cenv := (nme, sz) :: cenv in OK (new_cenv, new_size)
+  | Error msg => Error msg
+  end.
+
+Lemma add_to_frame_ok : add_to_frame_2 = spark2Cminor.add_to_frame.
+Proof.
+  reflexivity.
+Qed.
+
+
+
+Lemma build_frame_lparams_preserve_no_overflow: ∀ st prmprof l sz lvl l' sz',
+    build_frame_lparams st (l,sz) prmprof =: (l',sz')
+    -> all_addr_no_overflow_localframe lvl l
+    -> all_addr_no_overflow_localframe lvl l'.
+Proof.
+  intros until sz.
+  remember (l, sz) as locfrmZ. 
+  revert l sz HeqlocfrmZ .
+  rewrite <- build_frame_lparams_ok.
+  functional induction (build_frame_lparams_2 st locfrmZ prmprof);!intros;subst;try discriminate.
+  - !invclear heq.
+    assumption.
+  - rewrite -> build_frame_lparams_ok in *.
+    rewrite <- add_to_frame_ok in *.
+    functional inversion e0;subst.
+    rewrite -> add_to_frame_ok in *.
+    eapply IHr;eauto.
+    subst new_cenv.
+    red.
+    !!intros.
+    cbn in heq_CEfetch_id.
+    !destruct (id =? nme)%nat !eqn:?.
+    + apply beq_nat_true in hbeqnat_true.
+      subst.
+      !invclear heq_CEfetch_id.
+      admit. (* todo: change build_frame_lparams to make this true. *)
+    + apply beq_nat_false in hbeqnat_false.
+      eapply H0;eauto.
+xxx.
+
+Lemma build_compilenv_preserve_invariant_compile:
+  forall st CE pb_lvl prmprof pdeclpart CE' stcksize,
+    build_compilenv st CE pb_lvl prmprof pdeclpart =: (CE', stcksize)
+    -> invariant_compile CE st
+    -> invariant_compile CE' st.
+Proof.
+  !!(intros until 1).
+  rewrite <- build_compilenv_ok in heq.
+  !functional inversion heq;subst;intro; rewrite -> ?build_compilenv_ok in *;clear heq.
+  - split.
+    + admit. (* TODO: replace increasing_order by a more precise property:
+                each element has exactly the number corresponding to its height in the stack *)
+    + admit. (* idem *)
+    + apply all_addr_no_overflow_fetch_OK;auto.
+(* (∀ (δ : CompilEnv.V) (id : idnum),CompilEnv.fetch id ([ ], 0) δ → 0 <= δ ∧ δ < Int.modulus) ->  *)
+      * assert (∀ (δ : CompilEnv.V) (id : idnum),CompilEnv.fetch id (Datatypes.length CE, []) = Some δ → 0 <= δ ∧ δ < Int.modulus).
+        { cbn.
+          intros δ id H0.
+          discriminate. }
+
+
+        Lemma xxx: ∀ st stoszchainparam prmprof x sz,
+            (∀ (δ : CompilEnv.V) (id : idnum),CompilEnv.fetch id (lvl,x) = Some δ → 0 <= δ ∧ δ < Int.modulus)
+            -> build_frame_lparams st stoszchainparam prmprof =: x
+            -> (∀ (δ : CompilEnv.V) (id : idnum),CompilEnv.fetch id (lvl, x') = Some δ → 0 <= δ ∧ δ < Int.modulus)
+.
+
+        
+        assert (
+          ∀ stoszchainparam,
+            
+            -> (∀ (δ : CompilEnv.V) (id : idnum), CompilEnv.fetch id (Datatypes.length CE, ) = Some δ → 0 <= δ ∧ δ < Int.modulus)
+          -> ∀ (δ : CompilEnv.V) (id : idnum), CompilEnv.fetch id (Datatypes.length CE, fst x) = Some δ → 0 <= δ ∧ δ < Int.modulus
+        ).
+        { clear heq1 heq.
+          !induction prmprof;simpl in *;!intros. 
+          - !invclear heq0;subst.
+            cbn in *;discriminate.
+          - destruct a eqn:heq_a;cbn in *.
+            unfold build_compilenv in heq;cbn in heq.
+            rewrite ?heq0, ?heq1 in *.
+            simpl in *.
+            rewrite ?heq0, ?heq1 in *.
+            simpl in *.
+            clear 
+
+            rewrite <- ?heq_a in *.
+            
+        }
+        
+        
+        intros δ id H0.
+        assert ().
+        
+
+        induction 
+      * apply (ci_no_overflow H).
+
+      
+      
+      red;!intros.
+      simpl in heq_CEfetchG_id.
+  
+
+
+
+Qed.
+
 Ltac rename_transl_exprlist h th :=
   match th with
   | transl_exprlist _ _ ?x = Error _ => fresh "h_trans_exprl_Err_" x

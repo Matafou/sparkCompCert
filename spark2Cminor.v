@@ -678,8 +678,10 @@ Definition add_to_frame stbl (cenv_sz:localframe*Z) nme subtyp_mrk: res (localfr
   let (cenv,sz) := cenv_sz in
   do size <- compute_size stbl subtyp_mrk ;
   let new_size := (sz+size)%Z in
-  let new_cenv := (nme,sz) :: cenv in
-  OK (new_cenv,new_size).
+  if (new_size >=? Integers.Int.modulus) then Error (msg "add_to_frame: memory would overflow")
+  else
+    let new_cenv := (nme,sz) :: cenv in
+    OK (new_cenv,new_size).
 
 (* [build_frame_lparams stbl (fram,sz) lparam] uses fram as an
    accumulator to build a frame env for lparam. It also compute
