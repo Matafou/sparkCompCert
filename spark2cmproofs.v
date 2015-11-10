@@ -1803,7 +1803,7 @@ Lemma wf_chain_load'2:forall g locenv stkptr chk m m' b ofs e_t_v vaddr,
         -> Cminor.eval_expr g stkptr locenv m load_id vaddr.
 Proof.
   !intros.
-  rename H1 into h_ofs_non_zero.
+  rename h_le into h_ofs_non_zero.
   simpl in *.
   subst load_id.
   generalize dependent load_id_v.
@@ -1846,7 +1846,7 @@ Lemma wf_chain_load'3:forall g locenv stkptr chk m m' b ofs e_t_v vaddr,
         -> Cminor.eval_expr g stkptr locenv m' load_id vaddr.
 Proof.
   !intros.
-  rename H1 into h_ofs_non_zero.
+  rename h_le into h_ofs_non_zero.
   simpl in *.
   subst load_id.
   generalize dependent load_id_v.
@@ -1904,7 +1904,7 @@ Lemma wf_chain_load':forall g locenv stkptr chk m m' b ofs e_t_v vaddr,
         -> Cminor.eval_expr g stkptr locenv m' load_id vaddr.
 Proof.
   !intros.
-  rename H1 into h_ofs_non_zero.
+  rename h_le into h_ofs_non_zero.
   simpl in *.
   unfold build_loads in *.
   !invclear h_CM_eval_expr_load_id_load_id_v.
@@ -1930,7 +1930,7 @@ Lemma wf_chain_load'_2:forall g locenv stkptr chk m m' b ofs e_t_v vaddr,
         -> Cminor.eval_expr g stkptr locenv m load_id vaddr.
 Proof.
   !intros.
-  rename H1 into h_ofs_non_zero.
+  rename h_le into h_ofs_non_zero.
   simpl in *.
   unfold build_loads in *.
   !invclear h_CM_eval_expr_load_id_load_id_v.
@@ -1956,7 +1956,7 @@ Lemma wf_chain_load_var:
     -> Cminor.eval_expr g stkptr locenv m' load_id vaddr.
 Proof.
   !intros.
-  rename H1 into h_ofs_non_zero.
+  rename h_le into h_ofs_non_zero.
   simpl in *.
   !functional inversion heq_transl_variable;subst;clear heq_transl_variable.
   rename m'0 into max_lvl.
@@ -1979,7 +1979,7 @@ Lemma wf_chain_load_var':
     -> Cminor.eval_expr g stkptr locenv m load_id vaddr.
 Proof.
   !intros.
-  rename H1 into h_ofs_non_zero.
+  rename h_le into h_ofs_non_zero.
   simpl in *.
   !functional inversion heq_transl_variable;subst;clear heq_transl_variable.
   rename m'0 into max_lvl.
@@ -1998,7 +1998,7 @@ Lemma wf_chain_load_aligned:forall g locenv chk m m' b ofs e_t_v,
 Proof.
   unfold stack_localstack_aligned at 2.
   !intros.
-  revert g locenv chk m m' b ofs e_t_v heq_storev_e_t_v_m' H0 h_aligned_g_m b0 v h_CM_eval_expr_v.
+  revert g locenv chk m m' b ofs e_t_v heq_storev_e_t_v_m' h_le h_aligned_g_m b0 v h_CM_eval_expr_v.
   destruct δ_lvl;simpl;!intros.
   - edestruct (h_aligned_g_m b0 O v).
     + simpl.
@@ -2492,9 +2492,20 @@ Proof.
 Qed.
 
 
+Definition all_addr_no_overflow_localframe sto := 
+  ∀ (id : idnum) (δ : CompilEnv.V),CompilEnv.fetch id sto = Some δ → 0 <= δ ∧ δ < Int.modulus.
+
+Ltac rename_hyp_overf h th :=
+  match th with
+    all_addr_no_overflow_localframe _ => fresh "h_no_overf_localf"
+  | _ => rename_hyp_incro h th
+  end.
+
+Ltac rename_hyp ::= rename_hyp_overf.
+
 Lemma all_addr_no_overflow_fetch_OK :
   forall sto CE,
-    (forall δ id, CompilEnv.fetch id sto = Some δ → 0 <= δ ∧ δ < Int.modulus)
+    all_addr_no_overflow_localframe sto
     -> all_addr_no_overflow CE -> all_addr_no_overflow (sto :: CE).
 Proof.
   intros sto CE H H0.
@@ -2509,8 +2520,7 @@ Qed.
 
 
 
-Definition all_addr_no_overflow_localframe lvl l := 
-  ∀ (id : idnum) (δ : CompilEnv.V),CompilEnv.fetch id (lvl,l) = Some δ → 0 <= δ ∧ δ < Int.modulus.
+
 
 
 (* Definition build_frame_lparams_2 := Eval lazy beta iota delta [build_frame_lparams bind] in build_frame_lparams. *)
@@ -2534,7 +2544,11 @@ Qed.
 Function add_to_frame_2 (stbl : symboltable) (cenv_sz : localframe * Z) (nme : idnum) (subtyp_mrk : type) :=
   let (cenv, sz) := cenv_sz in
   match compute_size stbl subtyp_mrk with
-  | OK x => let new_size := sz + x in let new_cenv := (nme, sz) :: cenv in OK (new_cenv, new_size)
+  | OK x =>
+    let new_size := sz + x in
+    if new_size >=? Int.modulus
+    then Error (msg "add_to_frame: memory would overflow")
+    else let new_cenv := (nme, sz) :: cenv in OK (new_cenv, new_size)
   | Error msg => Error msg
   end.
 
@@ -2544,36 +2558,192 @@ Proof.
 Qed.
 
 
+(* Definition build_frame_decl_2 := Eval lazy beta iota delta [build_frame_decl bind] in build_frame_decl. *)
 
-Lemma build_frame_lparams_preserve_no_overflow: ∀ st prmprof l sz lvl l' sz',
-    build_frame_lparams st (l,sz) prmprof =: (l',sz')
-    -> all_addr_no_overflow_localframe lvl l
-    -> all_addr_no_overflow_localframe lvl l'.
+Function build_frame_decl_2 (stbl : symboltable) (fram_sz : localframe * Z) 
+         (decl : declaration) {struct decl} : res (localframe * Z) :=
+  let (fram, sz) := fram_sz in
+  match decl with
+  | D_Null_Declaration => OK fram_sz
+  | D_Type_Declaration _ _ => Error (msg "build_frame_decl: type decl no implemented yet")
+  | D_Object_Declaration _ objdecl =>
+      match compute_size stbl (object_nominal_subtype objdecl) with
+      | OK x =>
+          let new_size := sz + x in
+          if new_size >=? Int.modulus
+          then Error (msg "build_frame_decl: memory would overflow")
+          else OK ((object_name objdecl, sz) :: fram, new_size)
+      | Error msg => Error msg
+      end
+  | D_Procedure_Body _ _ => Error (msg "build_frame_decl: proc decl no implemented yet")
+  | D_Seq_Declaration _ decl1 decl2 =>
+      match build_frame_decl_2 stbl fram_sz decl1 with
+      | OK x => build_frame_decl_2 stbl x decl2
+      | Error msg => Error msg
+      end
+  end.
+
+
+Lemma build_frame_decl_ok : build_frame_decl_2 = build_frame_decl.
+Proof.
+  reflexivity.
+Qed.
+
+
+
+Lemma build_frame_lparams_preserve_no_overflow_pos_addr: ∀ st prmprof l sz lvl l' sz',
+    sz >= 0
+    -> build_frame_lparams st (l,sz) prmprof =: (l',sz')
+    -> all_addr_no_overflow_localframe (lvl, l)
+    -> all_addr_no_overflow_localframe (lvl, l') ∧ sz' >= 0.
 Proof.
   intros until sz.
   remember (l, sz) as locfrmZ. 
   revert l sz HeqlocfrmZ .
   rewrite <- build_frame_lparams_ok.
-  functional induction (build_frame_lparams_2 st locfrmZ prmprof);!intros;subst;try discriminate.
+  !functional induction (build_frame_lparams_2 st locfrmZ prmprof);!intros;subst;try discriminate.
   - !invclear heq.
-    assumption.
+    split;assumption.
   - rewrite -> build_frame_lparams_ok in *.
-    rewrite <- add_to_frame_ok in *.
-    functional inversion e0;subst.
+    rewrite <- add_to_frame_ok in heq_add_to_fr_nme.
+    !functional inversion heq_add_to_fr_nme;subst.
     rewrite -> add_to_frame_ok in *.
-    eapply IHr;eauto.
-    subst new_cenv.
+    assert (x0 > 0).
+    { unfold compute_size in heq_cmpt_size_subtyp_mrk.
+      destruct compute_chnk_of_type;try discriminate.
+      cbn in heq_cmpt_size_subtyp_mrk.
+      inversion heq_cmpt_size_subtyp_mrk.
+      apply size_chunk_pos;assumption. }
+    unfold new_size, new_cenv in *.
+    eapply IHr;eauto;try omega.
     red.
     !!intros.
     cbn in heq_CEfetch_id.
-    !destruct (id =? nme)%nat !eqn:?.
-    + apply beq_nat_true in hbeqnat_true.
-      subst.
-      !invclear heq_CEfetch_id.
-      admit. (* todo: change build_frame_lparams to make this true. *)
-    + apply beq_nat_false in hbeqnat_false.
-      eapply H0;eauto.
-xxx.
+    !destruct (id =? nme)%nat.
+    + !invclear heq_CEfetch_id.
+      generalize (Zge_cases (δ + x0)  Int.modulus).
+      intro h_ge.
+      rewrite heq_bool_false in h_ge.
+      split.
+      * omega.
+      * omega.
+    + unfold all_addr_no_overflow_localframe in h_no_overf_localf.
+      eapply h_no_overf_localf.
+      eassumption.
+Qed.
+
+Lemma build_frame_lparams_preserve_no_overflow: ∀ st prmprof l sz lvl l' sz',
+    sz >= 0
+    -> build_frame_lparams st (l,sz) prmprof =: (l',sz')
+    -> all_addr_no_overflow_localframe (lvl, l)
+    -> all_addr_no_overflow_localframe (lvl, l').
+Proof.
+  intros st prmprof l sz lvl l' sz' H H0 H1.
+  edestruct build_frame_lparams_preserve_no_overflow_pos_addr;eauto.
+Qed.
+
+Lemma build_frame_lparams_preserve_pos_addr: ∀ st prmprof l sz lvl l' sz',
+    sz >= 0
+    -> build_frame_lparams st (l,sz) prmprof =: (l',sz')
+    -> all_addr_no_overflow_localframe (lvl, l)
+    -> sz' >= 0.
+  intros st prmprof l sz lvl l' sz' H H0 H1.
+  edestruct build_frame_lparams_preserve_no_overflow_pos_addr;eauto.
+Qed.
+
+
+Lemma build_frame_decl_preserve_no_overflow_pos_addr: ∀ st decl l sz lvl l' sz',
+    sz >= 0
+    -> build_frame_decl st (l,sz) decl =: (l',sz')
+    -> all_addr_no_overflow_localframe (lvl, l)
+    -> all_addr_no_overflow_localframe (lvl, l') ∧ sz' >= 0.
+Proof.
+  intros until sz.
+  remember (l, sz) as locfrmZ.
+  revert l sz HeqlocfrmZ .
+  rewrite <- build_frame_decl_ok.
+  !functional induction (build_frame_decl_2 st locfrmZ decl);!intros;subst;try discriminate
+  ; try rewrite -> build_frame_decl_ok in *.
+  - split.
+    + !invclear heq.
+      !invclear heq0.
+      assumption.
+    + !invclear heq0.
+      !invclear heq.
+      assumption.
+  - rename x into size.
+    !invclear heq.
+    !invclear heq0.
+    assert (size > 0).
+    { unfold compute_size in heq_cmpt_size.
+      destruct compute_chnk_of_type;try discriminate.
+      cbn in heq_cmpt_size.
+      inversion heq_cmpt_size.
+      apply size_chunk_pos;assumption. }
+
+    split.
+    + unfold all_addr_no_overflow_localframe.
+      !intros.
+      cbn in heq_CEfetch_id.
+      
+      !destruct (id =? (object_name objdecl))%nat.
+      * !invclear heq_CEfetch_id.
+        generalize (Zge_cases (δ + size)  Int.modulus).
+        intro h_ge.
+        rewrite heq_bool_false in h_ge.
+        split.
+        -- omega.
+        -- omega.
+      * unfold all_addr_no_overflow_localframe in h_no_overf_localf.
+        eapply h_no_overf_localf.
+        eassumption.
+    + omega.
+  - rename x into size.
+    up_type.
+    !invclear heq0.
+    destruct size.
+    specialize (IHr _ _ eq_refl lvl s z h_ge_sz0 heq h_no_overf_localf).
+    split.
+    + destruct IHr as [IHr1 IHr2].
+      eapply IHr0;eauto.
+    + destruct IHr as [IHr1 IHr2].
+      eapply IHr0;eauto.
+Qed.
+
+Lemma build_frame_decl_preserve_no_overflow: ∀ st decl l sz lvl l' sz',
+    sz >= 0
+    -> build_frame_decl st (l,sz) decl =: (l',sz')
+    -> all_addr_no_overflow_localframe (lvl, l)
+    -> all_addr_no_overflow_localframe (lvl, l').
+Proof.
+  intros st decl l sz lvl l' sz' H H0 H1.
+  edestruct build_frame_decl_preserve_no_overflow_pos_addr;eauto.
+Qed.
+
+Lemma build_frame_decl_preserve_pos_addr: ∀ st decl l sz lvl l' sz',
+    sz >= 0
+    -> build_frame_decl st (l,sz) decl =: (l',sz')
+    -> all_addr_no_overflow_localframe (lvl, l)
+    -> sz >= 0.
+Proof.
+  intros st decl l sz lvl l' sz' H H0 H1.
+  edestruct build_frame_decl_preserve_no_overflow_pos_addr;eauto.
+Qed.
+(*
+Lemma build_frame_decl_preserve_no_overflow_pos_addr: ∀ st decl l sz lvl l' sz',
+    sz >= 0
+    -> build_frame_decl st (l,sz) decl =: (l',sz')
+    -> all_addr_no_overflow_localframe (lvl, l)
+    -> all_addr_no_overflow_localframe (lvl, l') ∧ sz' >= 0.
+Proof.
+  intros until sz.
+  remember (l, sz) as locfrmZ.
+  revert l sz HeqlocfrmZ .
+  rewrite <- build_frame_decl_ok.
+  !functional induction (build_frame_decl_2 st locfrmZ decl);!intros;subst;try discriminate
+  ; try rewrite -> build_frame_decl_ok in *.
+*)
+
 
 Lemma build_compilenv_preserve_invariant_compile:
   forall st CE pb_lvl prmprof pdeclpart CE' stcksize,
@@ -2584,23 +2754,66 @@ Proof.
   !!(intros until 1).
   rewrite <- build_compilenv_ok in heq.
   !functional inversion heq;subst;intro; rewrite -> ?build_compilenv_ok in *;clear heq.
-  - split.
+  - split;eauto.
     + admit. (* TODO: replace increasing_order by a more precise property:
                 each element has exactly the number corresponding to its height in the stack *)
     + admit. (* idem *)
-    + apply all_addr_no_overflow_fetch_OK;auto.
+    + apply all_addr_no_overflow_fetch_OK;eauto.
+      destruct x;unfold stoszchainparam in *.
+      eapply (build_frame_decl_preserve_no_overflow st pdeclpart s z (Datatypes.length CE) x0 stcksize).
+      -- eapply (build_frame_lparams_preserve_pos_addr st prmprof);eauto; try omega.
+         red. cbn. discriminate.
+      -- assumption.
+      -- eapply (build_frame_lparams_preserve_no_overflow st prmprof);eauto; try omega.
+         red. cbn. intro. discriminate.
+  - split;eauto.
+    + admit. (* TODO: replace increasing_order by a more precise property:
+                each element has exactly the number corresponding to its height in the stack *)
+    + admit. (* idem *)
+    + apply all_addr_no_overflow_fetch_OK;eauto.
+      destruct x;unfold stoszchainparam in *.
+      eapply (build_frame_decl_preserve_no_overflow st pdeclpart s z (Datatypes.length CE) x0 stcksize).
+      -- eapply (build_frame_lparams_preserve_pos_addr st prmprof);eauto; try omega.
+         red. cbn in *. !intros.
+         !destruct id;cbn in *.
+         ++ !invclear heq;split;auto with zarith.
+            generalize Int.modulus_pos;intro ;omega.
+         ++ discriminate.
+      -- assumption.
+      -- eapply (build_frame_lparams_preserve_no_overflow st prmprof);eauto; try omega.
+         red. cbn. !intros.
+         !destruct id ;cbn in *.
+         ++ !invclear heq;split;auto with zarith.
+            generalize Int.modulus_pos;intro ;omega.
+         ++ discriminate.
+Qed.
+
+ intro. discriminate.
+  - split;eauto.
+
+
+ _no_overflow with (sz:=0) (sz':=z) (st:=st) (l:=[]) (prmprof:=prmprof).
+
+        apply build_frame_lparams_preserve_no_overflow with (sz:=0) (sz':=z) (st:=st) (l:=[]) (prmprof:=prmprof).
+        -- omega.
+        -- 
+        ; try omega; cbn in *; auto.
+        -- functional inversion heq_bld_frm_prmprof.
+          eapply build_frame_lparams_preserve_pos_addr;eauto; try omega.
+        -- eassumption.
+        admit.
+      * apply (ci_no_overflow H).
+
+
+*****************
+
+
 (* (∀ (δ : CompilEnv.V) (id : idnum),CompilEnv.fetch id ([ ], 0) δ → 0 <= δ ∧ δ < Int.modulus) ->  *)
       * assert (∀ (δ : CompilEnv.V) (id : idnum),CompilEnv.fetch id (Datatypes.length CE, []) = Some δ → 0 <= δ ∧ δ < Int.modulus).
         { cbn.
           intros δ id H0.
           discriminate. }
-
-
-        Lemma xxx: ∀ st stoszchainparam prmprof x sz,
-            (∀ (δ : CompilEnv.V) (id : idnum),CompilEnv.fetch id (lvl,x) = Some δ → 0 <= δ ∧ δ < Int.modulus)
-            -> build_frame_lparams st stoszchainparam prmprof =: x
-            -> (∀ (δ : CompilEnv.V) (id : idnum),CompilEnv.fetch id (lvl, x') = Some δ → 0 <= δ ∧ δ < Int.modulus)
-.
+        
 
         
         assert (

@@ -709,6 +709,8 @@ Fixpoint build_frame_decl (stbl:symboltable) (fram_sz:localframe * Z)
     | D_Object_Declaration _ objdecl =>
       do size <- compute_size stbl (objdecl.(object_nominal_subtype)) ;
       let new_size := (sz+size)%Z in
+      if (new_size >=? Integers.Int.modulus) then Error (msg "build_frame_decl: memory would overflow")
+      else
       OK (((objdecl.(object_name),sz)::fram) ,new_size)
     | D_Type_Declaration _ typdcl =>
       Error (msg "build_frame_decl: type decl no implemented yet")
@@ -1191,7 +1193,21 @@ Ltac rename_hyp1 h th :=
     | copy_out ?stbl ?CE ?declpart = Some ?r => fresh "heq_cpy_out_" declpart "_"r
     | copy_out ?stbl ?CE ?declpart = ?r => fresh "heq_cpy_out"
 
+    | compute_size _ ?subtype = Some ?sz => fresh "heq_cmpt_size_" subtype "_" sz
+    | compute_size _ ?subtype = Error => fresh "heq_cmpt_size_ERR_" subtype
+    | compute_size _ _ = Error => fresh "heq_cmpt_size_ERR"
+    | compute_size _ ?subtype = _ => fresh "heq_cmpt_size_" subtype
+    | compute_size _ _ = _ => fresh "heq_cmpt_size"
 
+    | build_frame_lparams _ _ ?lprm = Error _ => fresh "heq_bld_frm_ERR_" lprm
+    | build_frame_lparams _ _ _ = Error _ => fresh "heq_bld_frm_ERR"
+    | build_frame_lparams _ _ ?lprm = _ => fresh "heq_bld_frm_" lprm
+    | build_frame_lparams _ _ _ = _ => fresh "heq_bld_frm"
+
+    | add_to_frame _ _ ?typ _ = Error _ => fresh "heq_add_to_fr_ERR_" typ
+    | add_to_frame _ _ _ _ = Error _ => fresh "heq_add_to_fr_ERR" 
+    | add_to_frame _ _ ?typ _ = _ => fresh "heq_add_to_fr_" typ 
+    | add_to_frame _ _ _ _ = _ => fresh "heq_add_to_fr" 
 
 end.
 

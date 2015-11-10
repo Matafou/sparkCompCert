@@ -68,6 +68,19 @@ Ltac fallback_rename_hyp h th :=
     | ?x >= ?y => fresh "h_ge_" x "_" y
     | ?x >= _ => fresh "h_ge_" x
     | _ >= _ => fresh "h_ge"
+
+    | (?x < ?y)%Z => fresh "h_lt_" x "_" y
+    | (?x < _)%Z => fresh "h_lt_" x
+    | (_ < _)%Z => fresh "h_lt"
+    | (?x <= ?y)%Z => fresh "h_le_" x "_" y
+    | (?x <= _)%Z => fresh "h_le_" x
+    | (_ <= _)%Z => fresh "h_le"
+    | (?x > ?y)%Z => fresh "h_gt_" x "_" y
+    | (?x > _)%Z => fresh "h_gt_" x
+    | (_ > _)%Z => fresh "h_gt"
+    | (?x >= ?y)%Z => fresh "h_ge_" x "_" y
+    | (?x >= _)%Z => fresh "h_ge_" x
+    | (_ >= _)%Z => fresh "h_ge"
   end.
 
 (** ** The custom renaming tactic
