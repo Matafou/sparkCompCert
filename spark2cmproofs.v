@@ -940,19 +940,27 @@ Definition stack_freeable st CE sp g locenv m :=
 Definition ord_snd (x y:(idnum * CompilEnv.V)) := snd y < snd x.
 Definition ord_fst (x y:(CompilEnv.scope_level * localframe)) := (fst y < fst x)%nat.
 
+(* Local frames are ordered in the sense that they are stored by increasing offests. *)
 Definition increasing_order: localframe -> Prop :=
   StronglySorted ord_snd.
 
 Definition increasing_order_fr (f:CompilEnv.frame) :=
   increasing_order(CompilEnv.store_of f).
 
-Definition increasing_orderG (stk: CompilEnv.stack): Prop :=
-  StronglySorted ord_fst stk.
-
 Definition all_frm_increasing CE := Forall increasing_order_fr CE.
 
 Definition all_addr_no_overflow CE := forall id δ,
     CompilEnv.fetchG id CE = Some δ -> 0 <= δ < Integers.Int.modulus.
+
+(** levels in the global stack match exactly their nesting levels. *)
+Inductive exact_levelG:  CompilEnv.stack -> Prop :=
+  | exact_levelG_nil: exact_levelG nil
+  | exact_levelG_cons: ∀ stk fr,
+      exact_levelG stk -> exact_levelG ((List.length stk, fr)::stk).
+
+(* the global stack is in incresing level. *)
+(* Lemma exact_level_increasing_orderG: ∀ stk: CompilEnv.stack, *)
+(*     exact_levelG stk -> StronglySorted ord_fst stk. *)
 
 Definition stbl_var_types_ok st :=
   ∀ nme t, type_of_name st nme = OK t ->
@@ -1001,7 +1009,7 @@ Arguments me_stack_complete : default implicits.
  - In each frame variables are numbered in increasing order
  - variable addresses do not overflow. *)
 Record invariant_compile CE stbl :=
-  { ci_increasing_lvls: increasing_orderG CE ;
+  { ci_exact_lvls: exact_levelG CE ;
     ci_increasing_ids: all_frm_increasing CE ;
     ci_no_overflow: all_addr_no_overflow CE ;
     ci_stbl_var_types_ok: stbl_var_types_ok stbl }.
@@ -1010,7 +1018,7 @@ Arguments ci_increasing_ids : default implicits.
 Arguments ci_no_overflow : default implicits.
 Arguments ci_stbl_var_types_ok : default implicits.
 
-Hint Resolve ci_increasing_lvls ci_increasing_ids ci_no_overflow ci_stbl_var_types_ok.
+Hint Resolve ci_exact_lvls ci_increasing_ids ci_no_overflow ci_stbl_var_types_ok.
 Hint Resolve me_stack_match me_stack_match_functions me_stack_complete me_stack_separate me_stack_localstack_aligned me_stack_no_null_offset me_overflow.
 
 
@@ -1496,8 +1504,8 @@ Ltac rename_hyp_incro h th :=
   | increasing_order_fr _ => fresh "h_incr_order_fr"
   | increasing_order ?x => fresh "h_incr_order_" x
   | increasing_order _ => fresh "h_incr_order"
-  | increasing_orderG ?x => fresh "h_incr_orderG_" x
-  | increasing_orderG _ => fresh "h_incr_orderG"
+  | exact_levelG ?x => fresh "h_exact_lvlG_" x
+  | exact_levelG _ => fresh "h_exact_lvlG"
   | Forall ?P ?x => fresh "h_forall_" P "_" x
   | Forall _ ?x => fresh "h_forall_" x
   | Forall ?P _ => fresh "h_forall_" P
@@ -1511,31 +1519,49 @@ Ltac rename_hyp_incro h th :=
 Ltac rename_hyp ::= rename_hyp_incro.
 
 
+Lemma exact_level_top_lvl: forall CE s3,
+    exact_levelG CE ->
+    CompilEnv.level_of_top CE = Some s3 ->
+    List.length CE = S s3.
+Proof.
+  !intros.
+  inversion h_exact_lvlG_CE;subst;cbn in *;try discriminate.
+  inversion heq_lvloftop_CE_s3.
+  reflexivity.
+Qed.
+
+
 Lemma increase_order_level_of_top_ge: forall CE id s s0 s3,
-    increasing_orderG CE ->
+    exact_levelG CE ->
     CompilEnv.frameG id CE = Some (s, s0) ->
     CompilEnv.level_of_top CE = Some s3 ->
     (s3 >= s)%nat.
 Proof.
-  !intros.
-  unfold increasing_orderG in *.
-  !destruct CE;!intros.
-  - simpl in *;try discriminate.
-  - specialize (increasing_order_In _ _ _ _ h_incr_orderG_CE).
-    !intro.
-    rewrite Forall_forall in h_forall.
-    apply Nat.lt_eq_cases.
-    unfold CompilEnv.level_of in *.
-    apply frameG_In in heq_CEframeG_id_CE.
-    specialize (h_forall _ heq_CEframeG_id_CE).
-    !destruct f.
-    unfold CompilEnv.level_of_top in heq_lvloftop_CE_s3.
-    simpl in *.
-    !invclear heq_lvloftop_CE_s3.
-    !destruct h_forall;auto.
-    inject heq;auto.
+  !!intros until 1.
+  revert id s s0 s3.
+  !induction h_exact_lvlG_CE;cbn.
+  - discriminate.
+  - !intros.
+    destruct (CompilEnv.resides id fr) eqn:heq_resides.
+    + !invclear heq0.
+      !invclear heq.
+      auto.
+    + !invclear heq0.
+      destruct (CompilEnv.level_of_top stk) eqn:heq_lvltop.
+      * specialize(IHh_exact_lvlG_CE id s s0 s1).
+        specialize (exact_level_top_lvl _ _ h_exact_lvlG_CE heq_lvltop).
+        !intro.
+        red.
+        apply Nat.le_trans with s1.
+        -- apply IHh_exact_lvlG_CE;auto.
+        -- omega.
+      * destruct stk.
+        -- cbn in heq.
+           discriminate.
+        -- cbn in heq_lvltop.
+           destruct f.
+           discriminate.
 Qed.
-
 
 Lemma CEfetches_inj : forall id₁ id₂ (lf:localframe) δ₁ δ₂,
     increasing_order lf ->
@@ -1614,8 +1640,25 @@ Proof.
   assumption.
 Qed.
 
+
+Lemma exact_levelG_lgth: forall stk id lvl_id fr_id,
+    exact_levelG stk
+    -> CompilEnv.frameG id stk = Some (lvl_id, fr_id)
+    -> (lvl_id < Datatypes.length stk)%nat.
+Proof.
+  red.
+  induction 1.
+  - cbn. intro abs;discriminate.
+  - cbn. intro.
+    !destruct (CompilEnv.resides id fr).
+    + !invclear H0.
+      auto.
+    + specialize (IHexact_levelG H0).
+      omega.
+Qed.
+
 Lemma CEfetchG_inj : forall CE id₁ id₂,
-    increasing_orderG CE ->
+    exact_levelG CE ->
     all_frm_increasing CE ->
     forall  δ₁ δ₂ k₁ k₂ frm₁ frm₂,
       CompilEnv.fetchG id₁ CE = Some δ₁ ->
@@ -1627,10 +1670,11 @@ Lemma CEfetchG_inj : forall CE id₁ id₂,
 Proof.
   intros until 0.
   !intro.
-  !induction h_incr_orderG_CE;!intros;simpl in *;try discriminate.
+
+  !induction h_exact_lvlG_CE;!intros;simpl in *;try discriminate.
   unfold CompilEnv.level_of in *.
-  destruct (CompilEnv.fetch id₁ a) eqn:heq_fetch_id₁;
-    destruct (CompilEnv.fetch id₂ a) eqn:heq_fetch_id₂;
+  destruct (CompilEnv.fetch id₁ (Datatypes.length stk, fr)) eqn:heq_fetch_id₁;
+    destruct (CompilEnv.fetch id₂ (Datatypes.length stk, fr)) eqn:heq_fetch_id₂;
     eq_same_clear;subst;simpl in *;try discriminate.
   - right.
     eapply CEfetch_inj;eauto.
@@ -1644,22 +1688,21 @@ Proof.
     apply CEfetch_reside_true in heq_fetch_id₁.
     rewrite heq_fetch_id₂,heq_fetch_id₁ in *;simpl in *.
     !invclear heq_CEframeG_id₁;simpl in *.
-    eapply increasing_order_frameG;eauto.
+    eapply exact_levelG_lgth;eauto.
   - left.
     apply Nat.lt_neq.
     apply CEfetch_reside_true in heq_fetch_id₂.
     apply CEfetch_reside_false in heq_fetch_id₁.
     rewrite heq_fetch_id₂,heq_fetch_id₁ in *;simpl in *.
     !invclear heq_CEframeG_id₂;simpl in *.
-    eapply increasing_order_frameG;eauto.
+    eapply exact_levelG_lgth;eauto.
   - apply CEfetch_reside_false in heq_fetch_id₁.
     apply CEfetch_reside_false in heq_fetch_id₂.
     rewrite heq_fetch_id₁,heq_fetch_id₂ in *.
-    eapply IHh_incr_orderG_CE ;eauto.
+    eapply IHh_exact_lvlG_CE ;eauto.
     inversion h_allincr.
     assumption.
 Qed.
-
 
 Lemma minus_same_eq : forall s3 s s1,
     s ≤ s3 ->
@@ -1701,7 +1744,7 @@ Qed.
 
 Lemma transl_variable_inj : forall CE stbl a₁ a₂ id₁ id₂ k₁ k₂ δ₁ δ₂,
     (* Frame are numbered with different (increasing) numers *)
-    increasing_orderG CE ->
+    exact_levelG CE ->
     (* In each frame, stacks are also numbered with (increasing) numbers *)
     all_frm_increasing CE ->
     all_addr_no_overflow CE ->
@@ -1720,7 +1763,7 @@ Proof.
   destruct (CompilEnv.frameG id₂ CE) eqn:h₂';simpl in *;try discriminate.
   destruct f.
   destruct f0.
-  assert (hh:=CEfetchG_inj _ _ _ h_incr_orderG_CE h_allincr_CE _ _ _ _ _ _  h₁ h₂ h₁' h₂' hneq).
+  assert (hh:=CEfetchG_inj _ _ _ h_exact_lvlG_CE h_allincr_CE _ _ _ _ _ _  h₁ h₂ h₁' h₂' hneq).
   destruct (CompilEnv.level_of_top CE) eqn:hlvlofCE.
   - (* remember here refrain inversion to bizarrely unfold too much. *)
     remember (build_loads (s3 - s1) t0) as fooo.
@@ -2029,7 +2072,7 @@ Qed.
 
 Lemma assignment_preserve_stack_match :
   forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
-    increasing_orderG CE ->
+    exact_levelG CE ->
     all_frm_increasing CE ->
     (* translating the variabe to a Cminor load address *)
     transl_variable stbl CE a id = OK id_t ->
@@ -2215,7 +2258,7 @@ Qed.
 
 Lemma assignment_preserve_stack_match_function :
   forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
-    increasing_orderG CE ->
+    exact_levelG CE ->
     all_frm_increasing CE ->
     (* translating the variabe to a Cminor load address *)
     transl_variable stbl CE a id = OK id_t ->
@@ -2745,6 +2788,59 @@ Proof.
 *)
 
 
+
+Lemma build_frame_lparams_preserve_increasing_order:
+  forall st init prmprof lvl fr z,
+    build_frame_lparams st (init,z) prmprof =: (fr,lvl)
+    -> (forall nme, Forall (ord_snd (nme, z)) init)
+    -> increasing_order init
+    -> (increasing_order fr ∧ (forall nme, Forall (ord_snd (nme, lvl)) fr)).
+Proof.
+  !!intros until 0.
+  remember (init,z) as initz.
+  revert init z Heqinitz.
+  rewrite <- build_frame_lparams_ok.
+  !functional induction (build_frame_lparams_2 st initz prmprof);!intros;subst;try discriminate.
+  - inversion heq;subst;auto.
+  - rewrite <- add_to_frame_ok in heq_add_to_fr_nme.
+    !functional inversion heq_add_to_fr_nme;subst.
+    rewrite -> add_to_frame_ok in *.
+    unfold new_cenv,new_size in *.
+    clear new_cenv new_size.
+    specialize (IHr _ _ eq_refl).
+    apply IHr.
+    + assumption.
+    + !assert (x0>0).
+      { destruct subtyp_mrk;cbn in heq_cmpt_size_subtyp_mrk;inversion heq_cmpt_size_subtyp_mrk;omega.  }
+      constructor;auto.
+      * unfold ord_snd;cbn;omega.
+      * specialize (H0 nme0).
+        eapply Forall_impl with (P:= ord_snd (nme0, z));auto.
+        !intros.
+        unfold ord_snd in *;cbn in *.
+        omega.
+    + constructor;auto.
+Qed.
+
+Lemma build_frame_decl_preserve_increasing_order:
+  forall st init decl lvl fr z,
+    build_frame_decl st (init,z) decl =: (fr,lvl)
+    -> (forall nme, Forall (ord_snd (nme, z)) init)
+    -> increasing_order init
+    -> increasing_order fr ∧ (forall nme, Forall (ord_snd (nme, lvl)) fr).
+Proof.
+  !!intros until 0.
+  remember (init,z) as initz.
+  revert init z Heqinitz.
+  rewrite <- build_frame_decl_ok.
+  !functional induction (build_frame_decl_2 st initz decl);!intros;subst;try discriminate.
+  - inversion heq;subst;auto.
+    inversion heq0;subst;auto.
+  -xxx
+    
+
+Admitted.
+
 Lemma build_compilenv_preserve_invariant_compile:
   forall st CE pb_lvl prmprof pdeclpart CE' stcksize,
     build_compilenv st CE pb_lvl prmprof pdeclpart =: (CE', stcksize)
@@ -2755,9 +2851,18 @@ Proof.
   rewrite <- build_compilenv_ok in heq.
   !functional inversion heq;subst;intro; rewrite -> ?build_compilenv_ok in *;clear heq.
   - split;eauto.
-    + admit. (* TODO: replace increasing_order by a more precise property:
-                each element has exactly the number corresponding to its height in the stack *)
-    + admit. (* idem *)
+    + constructor.
+      eauto.
+    + constructor.
+      * red.
+        cbn.
+        destruct x.
+        destruct (build_frame_decl_preserve_increasing_order _ _ _ _ _ _ heq0);auto.
+        -- destruct (build_frame_lparams_preserve_increasing_order _ _ _ _ _ _ heq_bld_frm_prmprof);auto.
+           constructor.
+        -- destruct (build_frame_lparams_preserve_increasing_order _ _ _ _ _ _ heq_bld_frm_prmprof);auto.
+           constructor.
+      * apply (ci_increasing_ids H).
     + apply all_addr_no_overflow_fetch_OK;eauto.
       destruct x;unfold stoszchainparam in *.
       eapply (build_frame_decl_preserve_no_overflow st pdeclpart s z (Datatypes.length CE) x0 stcksize).
@@ -2767,9 +2872,30 @@ Proof.
       -- eapply (build_frame_lparams_preserve_no_overflow st prmprof);eauto; try omega.
          red. cbn. intro. discriminate.
   - split;eauto.
-    + admit. (* TODO: replace increasing_order by a more precise property:
-                each element has exactly the number corresponding to its height in the stack *)
-    + admit. (* idem *)
+    + constructor.
+      eauto.
+    + constructor.
+      * red.
+        cbn.
+        destruct x.
+        destruct (build_frame_decl_preserve_increasing_order _ _ _ _ _ _ heq0);auto.
+        -- destruct (build_frame_lparams_preserve_increasing_order _ _ _ _ _ _ heq_bld_frm_prmprof);auto.
+           ++ constructor;cbn in *;auto.
+              unfold ord_snd.
+              cbn.
+              omega.
+           ++ constructor;cbn in *;auto.
+              constructor.
+        -- destruct (build_frame_lparams_preserve_increasing_order _ _ _ _ _ _ heq_bld_frm_prmprof);auto.
+           ++ intros nme.
+              constructor;cbn in *;auto.
+              unfold ord_snd.
+              cbn.
+              omega.
+           ++ constructor.
+              ** constructor.
+              ** constructor.
+      * eapply (ci_increasing_ids H).
     + apply all_addr_no_overflow_fetch_OK;eauto.
       destruct x;unfold stoszchainparam in *.
       eapply (build_frame_decl_preserve_no_overflow st pdeclpart s z (Datatypes.length CE) x0 stcksize).
@@ -2786,74 +2912,6 @@ Proof.
          ++ !invclear heq;split;auto with zarith.
             generalize Int.modulus_pos;intro ;omega.
          ++ discriminate.
-Qed.
-
- intro. discriminate.
-  - split;eauto.
-
-
- _no_overflow with (sz:=0) (sz':=z) (st:=st) (l:=[]) (prmprof:=prmprof).
-
-        apply build_frame_lparams_preserve_no_overflow with (sz:=0) (sz':=z) (st:=st) (l:=[]) (prmprof:=prmprof).
-        -- omega.
-        -- 
-        ; try omega; cbn in *; auto.
-        -- functional inversion heq_bld_frm_prmprof.
-          eapply build_frame_lparams_preserve_pos_addr;eauto; try omega.
-        -- eassumption.
-        admit.
-      * apply (ci_no_overflow H).
-
-
-*****************
-
-
-(* (∀ (δ : CompilEnv.V) (id : idnum),CompilEnv.fetch id ([ ], 0) δ → 0 <= δ ∧ δ < Int.modulus) ->  *)
-      * assert (∀ (δ : CompilEnv.V) (id : idnum),CompilEnv.fetch id (Datatypes.length CE, []) = Some δ → 0 <= δ ∧ δ < Int.modulus).
-        { cbn.
-          intros δ id H0.
-          discriminate. }
-        
-
-        
-        assert (
-          ∀ stoszchainparam,
-            
-            -> (∀ (δ : CompilEnv.V) (id : idnum), CompilEnv.fetch id (Datatypes.length CE, ) = Some δ → 0 <= δ ∧ δ < Int.modulus)
-          -> ∀ (δ : CompilEnv.V) (id : idnum), CompilEnv.fetch id (Datatypes.length CE, fst x) = Some δ → 0 <= δ ∧ δ < Int.modulus
-        ).
-        { clear heq1 heq.
-          !induction prmprof;simpl in *;!intros. 
-          - !invclear heq0;subst.
-            cbn in *;discriminate.
-          - destruct a eqn:heq_a;cbn in *.
-            unfold build_compilenv in heq;cbn in heq.
-            rewrite ?heq0, ?heq1 in *.
-            simpl in *.
-            rewrite ?heq0, ?heq1 in *.
-            simpl in *.
-            clear 
-
-            rewrite <- ?heq_a in *.
-            
-        }
-        
-        
-        intros δ id H0.
-        assert ().
-        
-
-        induction 
-      * apply (ci_no_overflow H).
-
-      
-      
-      red;!intros.
-      simpl in heq_CEfetchG_id.
-  
-
-
-
 Qed.
 
 Ltac rename_transl_exprlist h th :=
