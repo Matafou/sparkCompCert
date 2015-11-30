@@ -12,13 +12,13 @@ Open Scope Z_scope.
 (* stdlib unicode binders are not boxed correctly imho. *)
 Notation "∀ x .. y , P" := (forall x, .. (forall y, P) ..)
   (at level 200, x binder, y binder, right associativity,
-  format "'[' ∀  x  ..  y , '/' P ']'") : type_scope.
+  format "'[' ∀  x  ..  y ,  '/' P ']'") : type_scope.
 Notation "∃ x .. y , P" := (exists x, .. (exists y, P) ..)
   (at level 200, x binder, y binder, right associativity,
-   format "'[' ∃  '[ ' x  '/' ..  '/' y , ']' '/' P ']'") : type_scope.
+   format "'[' ∃  '[ ' x  '/' ..  '/' y ,  ']' '/' P ']'") : type_scope.
 Notation "'λ' x .. y , P" := (fun x => .. (fun y => P) ..)
   (at level 200, x binder, y binder, right associativity,
-   format "'[' λ  '[ ' x  '/' ..  '/' y , ']' '/' P ']'") : type_scope.
+   format "'[' λ  '[ ' x  '/' ..  '/' y ,  ']' '/' P ']'") : type_scope.
 Notation "x ∨ y" := (x \/ y)
   (at level 85, right associativity,
    format "'[hv' x  '/' ∨  y ']'") : type_scope.
@@ -1200,8 +1200,6 @@ Proof.
       unfold Values.Val.of_bool.
       reflexivity.
 Qed.
-
-  
 
   
 
@@ -2822,6 +2820,16 @@ Proof.
     + constructor;auto.
 Qed.
 
+
+Lemma compute_size_pos stbl t : forall x, compute_size stbl t =: x -> x > 0.
+Proof.
+  !intros.
+  unfold compute_size in *.
+  (* functional inbversion would be better *)
+  destruct (compute_chnk_of_type stbl t); cbv in  *;try discriminate.
+  destruct m;cbv in *;try inversion heq_cmpt_size_t;auto.
+Qed.
+
 Lemma build_frame_decl_preserve_increasing_order:
   forall st init decl lvl fr z,
     build_frame_decl st (init,z) decl =: (fr,lvl)
@@ -2831,15 +2839,35 @@ Lemma build_frame_decl_preserve_increasing_order:
 Proof.
   !!intros until 0.
   remember (init,z) as initz.
-  revert init z Heqinitz.
+  revert init z Heqinitz lvl fr.
   rewrite <- build_frame_decl_ok.
   !functional induction (build_frame_decl_2 st initz decl);!intros;subst;try discriminate.
   - inversion heq;subst;auto.
     inversion heq0;subst;auto.
-  -xxx
-    
-
-Admitted.
+  - !invclear heq;subst.
+    !invclear heq0;subst.
+    split.
+    + constructor.
+      * assumption.
+      * apply H0.
+    + intros nme.
+      constructor.
+      * unfold ord_snd;cbn.
+        assert (h:=compute_size_pos _ _ _ heq_cmpt_size).
+        omega.
+      * specialize (H0 nme).
+        apply Forall_forall.
+        !intros.
+        eapply Forall_forall in H0;eauto.
+        unfold ord_snd;simpl.
+        unfold ord_snd in H0;simpl in H0.
+        assert (h:=compute_size_pos _ _ _ heq_cmpt_size).
+        omega.        
+  - destruct x.
+    destruct (IHr init z heq0 _ _ heq H0 h_incr_order_init); clear IHr.
+    destruct (IHr0 s z0 eq_refl _ _ heq1 H1 H).
+    split;assumption.
+Qed.
 
 Lemma build_compilenv_preserve_invariant_compile:
   forall st CE pb_lvl prmprof pdeclpart CE' stcksize,
@@ -2866,7 +2894,8 @@ Proof.
     + apply all_addr_no_overflow_fetch_OK;eauto.
       destruct x;unfold stoszchainparam in *.
       eapply (build_frame_decl_preserve_no_overflow st pdeclpart s z (Datatypes.length CE) x0 stcksize).
-      -- eapply (build_frame_lparams_preserve_pos_addr st prmprof);eauto; try omega.
+      -- eapply (build_frame_lparams_preserve_pos_addr st prmprof) ; eauto; try omega.
+         instantiate (lvl:=0%nat). (* otherwise it goes shelved. *)
          red. cbn. discriminate.
       -- assumption.
       -- eapply (build_frame_lparams_preserve_no_overflow st prmprof);eauto; try omega.
@@ -2900,6 +2929,7 @@ Proof.
       destruct x;unfold stoszchainparam in *.
       eapply (build_frame_decl_preserve_no_overflow st pdeclpart s z (Datatypes.length CE) x0 stcksize).
       -- eapply (build_frame_lparams_preserve_pos_addr st prmprof);eauto; try omega.
+         instantiate (lvl:=0%nat). (* otherwise it goes shelved. *)
          red. cbn in *. !intros.
          !destruct id;cbn in *.
          ++ !invclear heq;split;auto with zarith.
@@ -2913,6 +2943,46 @@ Proof.
             generalize Int.modulus_pos;intro ;omega.
          ++ discriminate.
 Qed.
+
+(* We probably need to generalize this first, as copy_in is written in CPS. *)
+(*Lemma copy_in_spec:
+  forall st s CE spb ofs locenv g m sto pb_lvl prms_profile args args_t f,
+    match_env st s CE (Values.Vptr spb ofs) locenv g m
+    -> transl_paramexprlist st CE args prms_profile =: args_t
+    -> copy_in st s (pb_lvl,sto) prms_profile args (Normal f)
+    -> exists lval, eval_exprlist g (Values.Vptr spb ofs) locenv m args_t lval
+                    ∧ f = List.app lval (List.map snd sto).
+Admitted.
+*)
+(* We probably need to generalize this first, as copy_in is written in CPS. *)
+(* Should be something like this. *)
+Lemma copy_in_spec_from_empty:
+  forall st s CE CE' spb ofs locenv g m pb_lvl prms_profile decl stcksze
+ args args_t f,
+    match_env st s CE (Values.Vptr spb ofs) locenv g m
+    -> build_compilenv st CE pb_lvl prms_profile decl  =: (CE',stcksze)
+    -> transl_paramexprlist st CE args prms_profile =: args_t
+    -> copy_in st s (newFrame pb_lvl) prms_profile args (Normal f)
+    -> exists lval, eval_exprlist g (Values.Vptr spb ofs) locenv m args_t lval
+                    ∧ (forall x v x_t v_t astnum,
+                          fetch x f = Some v
+                          -> transl_value v v_t 
+                          -> transl_variable st CE' astnum x = OK x_t
+                             ∧ Cminor.eval_expr g (Values.Vptr spb ofs) locenv m x_t v_t).
+    xxx 
+.
+Admitted.
+
+
+Lemma copy_in_spec_from_empty_aux:
+  forall st s CE spb ofs locenv g m pb_lvl prms_profile args args_t f,
+    match_env st s CE (Values.Vptr spb ofs) locenv g m
+    -> transl_paramexprlist st CE args prms_profile =: args_t
+    -> copy_in st s (newFrame pb_lvl) prms_profile args (Normal f)
+    -> exists lval, eval_exprlist g (Values.Vptr spb ofs) locenv m args_t lval.
+Admitted.
+
+
 
 Ltac rename_transl_exprlist h th :=
   match th with
@@ -3296,24 +3366,39 @@ Proof.
                 invariant_compile CE st -> 
                 build_compilenv st CE pb_lvl prmprof pdeclpart =: (CE', stcksize)
                 -> invariant_compile CE' st).
-    { admit. (* TODO as a lemma. Only about CE stbl and CE'. *) }
+    { !intros.
+      eapply build_compilenv_preserve_invariant_compile;eauto. }
     specialize (IHh_eval_stmt (h_inv_CE' _ _ _ _ _ h_inv_comp_CE_st heq_bldCE) eq_refl).
 
     (* rewrite <- build_compilenv_ok in heq_bldCE.
        functional inversion heq_bldCE;subst;try discriminate. *)
 
-
     destruct (Mem.alloc m 0 stcksize) as [m_alloc_p spb_alloc_p] eqn:h_alloc .
     specialize (IHh_eval_stmt spb_alloc_p Int.zero the_proc); up_type.
-
     edestruct IHh_eval_stmt as [TR [LOCENV' [M' [IH1 IH2]]]];clear IHh_eval_stmt.
     + shelve.
     + exists TR.
       exists LOCENV'.
       exists M'.
       split.
-      * eapply exec_Scall;try now (try eassumption;simpl;reflexivity).
-        -- admit. (* property of eval_exprlist vs transl_params vs transl_expr_ok *)
+      * (* let us build the result of copy_in before doing eapply here,
+           to avoid problems later. *)
+        unfold transl_params in heq_transl_params_p_x.
+        unfold symboltable.fetch_proc in h_fetch_proc_p.
+        rewrite h_fetch_proc_p in heq_transl_params_p_x.
+        rewrite heq_pb in heq_transl_params_p_x.
+        simpl in heq_transl_params_p_x.
+
+
+        !!destruct (copy_in_spec_from_empty_aux
+                     _ _ _ _ _ _ _ _ _ _ _ _ _
+                     h_match_env heq_transl_params_p_x h_copy_in)
+          as [l_v_args ? ].
+
+        eapply exec_Scall;try now (try eassumption;simpl;reflexivity).
+        -- constructor.
+          ++ admit. (* build_loads (...) is always ok, add this to the invariant? *)
+          ++ eapply h_eval_exprlist.
         -- simpl.
            unfold transl_procsig in heq_transl_procsig_p.
            unfold symboltable.fetch_proc in h_fetch_proc_p.
@@ -3327,7 +3412,7 @@ Proof.
            inversion heq2;auto.
         -- eapply eval_funcall_internal;cbn.
           ++ eassumption.
-          ++ shelve.
+          ++ admit.
           ++ econstructor. (* Sseq init_part (rest) *)
              ** admit. (* lemma over intialization *)
              ** econstructor. (* rest ) Sseq bdy copyout *)
