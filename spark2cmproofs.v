@@ -2944,6 +2944,18 @@ Proof.
          ++ discriminate.
 Qed.
 
+
+
+
+Lemma copy_in_spec_from_empty_aux:
+  forall st s CE spb ofs locenv g m pb_lvl prms_profile args args_t f,
+    match_env st s CE (Values.Vptr spb ofs) locenv g m
+    -> transl_paramexprlist st CE args prms_profile =: args_t
+    -> copy_in st s (newFrame pb_lvl) prms_profile args (Normal f)
+    -> exists lval, eval_exprlist g (Values.Vptr spb ofs) locenv m args_t lval.
+Proof.
+Admitted.
+
 (* We probably need to generalize this first, as copy_in is written in CPS. *)
 (*Lemma copy_in_spec:
   forall st s CE spb ofs locenv g m sto pb_lvl prms_profile args args_t f,
@@ -2957,30 +2969,58 @@ Admitted.
 (* We probably need to generalize this first, as copy_in is written in CPS. *)
 (* Should be something like this. *)
 Lemma copy_in_spec_from_empty:
-  forall st s CE CE' spb ofs locenv g m pb_lvl prms_profile decl stcksze
- args args_t f,
+  forall st s CE CE' spb ofs locenv g m pb_lvl args prms_profile decl stcksze
+ args_t f sto lval l_argname f_env,
     match_env st s CE (Values.Vptr spb ofs) locenv g m
-    -> build_compilenv st CE pb_lvl prms_profile decl  =: (CE',stcksze)
+    -> build_compilenv st CE pb_lvl prms_profile decl  =: (((pb_lvl,sto)::CE),stcksze)
     -> transl_paramexprlist st CE args prms_profile =: args_t
     -> copy_in st s (newFrame pb_lvl) prms_profile args (Normal f)
-    -> exists lval, eval_exprlist g (Values.Vptr spb ofs) locenv m args_t lval
-                    ∧ (forall x v x_t v_t astnum,
-                          fetch x f = Some v
-                          -> transl_value v v_t 
-                          -> transl_variable st CE' astnum x = OK x_t
-                             ∧ Cminor.eval_expr g (Values.Vptr spb ofs) locenv m x_t v_t).
-    xxx 
-.
+    -> eval_exprlist g (Values.Vptr spb ofs) locenv m args_t lval
+    -> List.map (fun x => transl_paramid (parameter_name x)) prms_profile = l_argname
+    -> set_params lval l_argname = f_env
+    -> (forall x v x_t v_t astnum,
+           fetch x f = Some v
+           -> transl_value v v_t 
+           -> transl_variable st CE' astnum x = OK x_t
+           ->  Cminor.eval_expr g (Values.Vptr spb ofs) f_env m x_t v_t).
+Proof.
+  !!intros until args.
+  !induction args;simpl;!intros.
+  - subst.
+    (* functional inversion would be better here *)
+    destruct prms_profile; try (cbn in heq0;discriminate).
+    inversion heq0;subst. clear heq0.
+    destruct lval;simpl in H3;try now inversion H3.
+    inversion h_copy_in;subst.
+    unfold newFrame in heq_fetch_x_f.
+    cbn in heq_fetch_x_f.
+    discriminate.
+  - !destruct prms_profile; try (cbn in heq0;discriminate).
+    !destruct (parameter_mode p) !eqn:heq_mode;try discriminate.
+    + (* In *)
+      !destruct (transl_expr st CE e) !eqn:heq_e_t;try discriminate.
+      cbn in heq0.
+      !destruct (transl_paramexprlist st CE args prms_profile) !eqn:heq_t_profs;try discriminate.
+      cbn in heq0.
+      !invclear heq0. (* CPS! *)
+      inversion h_copy_in;
+        try match goal with
+            | H: parameter_mode p = _ , H':parameter_mode p = _ |-_ => try now (rewrite H in H'; discriminate)
+            end;subst.
+      * (* constrainted = false *)
+        simpl.
+        !invclear H3;subst.
+        !functional inversion heq_transl_variable;subst.
+        
+      
+      specialize (IHargs)
+      
+    inversion heq0;subst. clear heq0.
+    
+    (*     xxx  *)
+
 Admitted.
 
-
-Lemma copy_in_spec_from_empty_aux:
-  forall st s CE spb ofs locenv g m pb_lvl prms_profile args args_t f,
-    match_env st s CE (Values.Vptr spb ofs) locenv g m
-    -> transl_paramexprlist st CE args prms_profile =: args_t
-    -> copy_in st s (newFrame pb_lvl) prms_profile args (Normal f)
-    -> exists lval, eval_exprlist g (Values.Vptr spb ofs) locenv m args_t lval.
-Admitted.
 
 
 
