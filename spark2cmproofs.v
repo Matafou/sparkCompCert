@@ -2945,8 +2945,6 @@ Proof.
 Qed.
 
 
-
-
 Lemma copy_in_spec_from_empty_aux:
   forall st s CE spb ofs locenv g m pb_lvl prms_profile args args_t f,
     match_env st s CE (Values.Vptr spb ofs) locenv g m
@@ -2969,8 +2967,8 @@ Admitted.
 (* We probably need to generalize this first, as copy_in is written in CPS. *)
 (* Should be something like this. *)
 Lemma copy_in_spec_from_empty:
-  forall st s CE CE' spb ofs locenv g m pb_lvl args prms_profile decl stcksze
- args_t f sto lval l_argname f_env,
+  forall st s CE spb ofs locenv g m pb_lvl args prms_profile decl stcksze
+         args_t f sto lval l_argname f_env,
     match_env st s CE (Values.Vptr spb ofs) locenv g m
     -> build_compilenv st CE pb_lvl prms_profile decl  =: (((pb_lvl,sto)::CE),stcksze)
     -> transl_paramexprlist st CE args prms_profile =: args_t
@@ -2978,12 +2976,23 @@ Lemma copy_in_spec_from_empty:
     -> eval_exprlist g (Values.Vptr spb ofs) locenv m args_t lval
     -> List.map (fun x => transl_paramid (parameter_name x)) prms_profile = l_argname
     -> set_params lval l_argname = f_env
-    -> (forall x v x_t v_t astnum,
-           fetch x f = Some v
-           -> transl_value v v_t 
-           -> transl_variable st CE' astnum x = OK x_t
-           ->  Cminor.eval_expr g (Values.Vptr spb ofs) f_env m x_t v_t).
+    -> forall x v x_t v_t astnum,
+        fetch x f = Some v
+        -> transl_value v v_t 
+        -> transl_variable st ((pb_lvl,sto)::CE) astnum x = OK x_t
+        -> Cminor.eval_expr g (Values.Vptr spb ofs) f_env m x_t v_t.
 Proof.
+  !intros.
+  unfold transl_variable in heq_transl_variable.
+  assert (exists n, CompilEnv.fetchG x ((pb_lvl, sto) :: CE) = Some n).
+  { admit. (* because fetch x f = Some v  and  copy_in st s (newFrame pb_lvl) prms_profile args (Normal f)*) }
+  assert (CompilEnv.frameG x ((pb_lvl,sto)::CE) = Some (pb_lvl,sto)).
+  { admit. (* because fetch x f = Some v  and  copy_in st s (newFrame pb_lvl) prms_profile args (Normal f)*) }
+  destruct H as [id H ].
+  rewrite H,H0 in heq_transl_variable.
+  simpl in heq_transl_variable.
+  
+xxx
   !!intros until args.
   !induction args;simpl;!intros.
   - subst.
@@ -2997,23 +3006,39 @@ Proof.
     discriminate.
   - !destruct prms_profile; try (cbn in heq0;discriminate).
     !destruct (parameter_mode p) !eqn:heq_mode;try discriminate.
-    + (* In *)
+    + (* In mode *)
       !destruct (transl_expr st CE e) !eqn:heq_e_t;try discriminate.
       cbn in heq0.
       !destruct (transl_paramexprlist st CE args prms_profile) !eqn:heq_t_profs;try discriminate.
       cbn in heq0.
       !invclear heq0. (* CPS! *)
-      inversion h_copy_in;
+      !inversion h_copy_in;
         try match goal with
             | H: parameter_mode p = _ , H':parameter_mode p = _ |-_ => try now (rewrite H in H'; discriminate)
             end;subst.
       * (* constrainted = false *)
         simpl.
         !invclear H3;subst.
+        
+
+
         !functional inversion heq_transl_variable;subst.
         
-      
-      specialize (IHargs)
+        destruct ((m' - lvl_x)%nat) eqn:heq_n_indirection.
+        -- unfold build_loads;simpl.
+           econstructor.
+           ++ constructor.
+              econstructor.
+           ++ constructor.
+              constructor.
+           ++ simpl.
+              h_match_env
+              econstructor.
+        specialize (IHargs (p :: prms_profile) decl stcksze l f sto vl
+                           (map (λ x0 : parameter_specification, transl_paramid (parameter_name x0)) (p :: prms_profile))
+                           (set_params vl (map (λ x0 : parameter_specification, transl_paramid (parameter_name x0)) (p :: prms_profile)))).
+        generalize $(refine (IHargs _ _ _);try auto)$.
+        specialize (IHargs _).
       
     inversion heq0;subst. clear heq0.
     
