@@ -123,7 +123,7 @@ Ltac rename_hyp ::= my_rename_hyp.>> *)
 Ltac rename_hyp h ht := fail.
 
 (* Credit for the harvesting of hypothesis: Jonathan Leivant *)
-Ltac harvest_hyps harvester := constr:($(harvester; constructor)$ : True).
+Ltac harvest_hyps harvester := constr:(ltac:(harvester; constructor) : True).
 
 Ltac revert_clearbody_all := 
   repeat lazymatch goal with H:_ |- _ => try clearbody H; revert H end.
