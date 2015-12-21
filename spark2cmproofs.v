@@ -2945,6 +2945,53 @@ Proof.
 Qed.
 
 
+Inductive Decl_atomic : declaration -> Prop :=
+  | Decl_atom_type: forall a t, Decl_atomic(D_Type_Declaration a t)
+  | Decl_atom_Object: forall a o, Decl_atomic(D_Object_Declaration a o)
+  | Decl_atom_proc: forall a p, Decl_atomic(D_Procedure_Body a p).
+
+Inductive Decl_list_form : declaration  -> Prop:=
+| Decl_nil: Decl_list_form D_Null_Declaration
+| Decl_cons: forall a d D, Decl_list_form D
+                           -> Decl_atomic d
+                           -> Decl_list_form (D_Seq_Declaration a d D).
+
+
+Fixpoint measure_decl (d:declaration):nat :=
+  match d with
+  | D_Null_Declaration => 0%nat
+  | D_Type_Declaration x x0 => 1%nat
+  | D_Object_Declaration x x0 => 1%nat
+  | D_Procedure_Body x x0 => 1%nat
+  | D_Seq_Declaration x x0 x1 => measure_decl x0 + measure_decl x1
+  end.
+
+Definition measure_copy_in (pd: list parameter_specification * declaration) :=
+  let '(p,d) := pd in
+  (List.length p + measure_decl d)%nat.
+
+Definition lt_copy_in d1 d2 := (measure_copy_in d1 < measure_copy_in d2)%nat.
+
+Lemma wf_measure_decl : well_founded lt_copy_in.
+Proof.
+  eapply well_founded_lt_compat with (f:= measure_copy_in).
+  intros x y H.
+  assumption.
+Qed.
+
+Ltac rename_hyp_decl h th :=
+  match th with
+    | Decl_list_form ?d => fresh "h_decl_list_" d
+    | Decl_list_form _ => fresh "h_decl_list"
+    | Decl_atomic ?d => fresh "h_decl_atom_" d
+    | Decl_atomic _ => fresh "h_decl_atom"
+    | _ => rename_hyp_overf h th
+  end.
+
+Ltac rename_hyp ::= rename_hyp_decl.
+
+Ltac spec H := repeat (specialize (H ltac:(assumption))).
+
 Lemma copy_in_spec_from_empty_aux:
   forall st s CE spb ofs locenv g m pb_lvl prms_profile args args_t f,
     match_env st s CE (Values.Vptr spb ofs) locenv g m
@@ -2967,23 +3014,194 @@ Admitted.
 (* We probably need to generalize this first, as copy_in is written in CPS. *)
 (* Should be something like this. *)
 Lemma copy_in_spec_from_empty:
-  forall st s CE spb ofs locenv g m pb_lvl args prms_profile decl stcksze
-         args_t f sto lval l_argname f_env,
-    match_env st s CE (Values.Vptr spb ofs) locenv g m
-    -> build_compilenv st CE pb_lvl prms_profile decl  =: (((pb_lvl,sto)::CE),stcksze)
-    -> transl_paramexprlist st CE args prms_profile =: args_t
-    -> copy_in st s (newFrame pb_lvl) prms_profile args (Normal f)
-    -> eval_exprlist g (Values.Vptr spb ofs) locenv m args_t lval
-    -> List.map (fun x => transl_paramid (parameter_name x)) prms_profile = l_argname
-    -> set_params lval l_argname = f_env
-    -> forall x v x_t v_t astnum,
-        fetch x f = Some v
-        -> transl_value v v_t 
-        -> transl_variable st ((pb_lvl,sto)::CE) astnum x = OK x_t
-        -> Cminor.eval_expr g (Values.Vptr spb ofs) f_env m x_t v_t.
+  forall x,
+    let '(prms_profile, decl) := x in
+    forall st s CE spb ofs locenv g m pb_lvl args stcksze
+           args_t f sto lval l_argname f_env,
+      (*     Decl_list_form decl (* Getting a list structure from declarations *) *)
+      match_env st s CE (Values.Vptr spb ofs) locenv g m
+      -> build_compilenv st CE pb_lvl prms_profile decl  =: (((pb_lvl,sto)::CE),stcksze)
+      -> transl_paramexprlist st CE args prms_profile =: args_t
+      -> copy_in st s (newFrame pb_lvl) prms_profile args (Normal f)
+      -> eval_exprlist g (Values.Vptr spb ofs) locenv m args_t lval
+      -> List.map (fun x => transl_paramid (parameter_name x)) prms_profile = l_argname
+      -> set_params lval l_argname = f_env
+      -> forall x v x_t v_t astnum,
+          fetch x f = Some v
+          -> transl_value v v_t 
+          -> transl_variable st ((pb_lvl,sto)::CE) astnum x = OK x_t
+          -> Cminor.eval_expr g (Values.Vptr spb ofs) f_env m x_t v_t.
 Proof.
+  intro x.
+  pattern x.
+  !!apply well_founded_induction with (R:=lt_copy_in);[|clear x;intros x IH].
+  { apply wf_measure_decl. }
+  destruct x as [prms_profile decl].
   !intros.
+  up_type.
+  !destruct prms_profile.
+  -  subst;simpl in *;subst.
+     !destruct decl;simpl in *.
+    + (* Empty params, empty decl *)
+      admit.
+      (* !destruct pb_lvl;cbn in *.
+      * assert (h_me:=(me_stack_match h_match_env)).
+        unfold stack_match in h_me.
+        edestruct h_me as [? [? ?]].
+        Focus 6.
+        rewrite (transl_value_det _ _ _ heq_transl_value_v_v_t H0).
+        eassumption. *)
+    + (* empty params, (D_Type_Declaration a t)*)
+      admit.
+    + (* empty params, (D_Object_Declaration a o)*)
+      admit.
+    + (* empty params, (D_Procedure_Body a p)*)
+      admit.
+    + (* empty params, (D_Seq a decl1 decl2)*)
+      admit.
+  - (* params = p::prms_profile *)
+    subst;simpl in *;subst.
+    destruct args;try now (cbv in heq0; discriminate).
+    destruct args_t;try now (cbv in heq0; discriminate).
+    {  simpl in heq0.
+       destruct (parameter_mode p).
+       - repeat match type of heq0 with
+                | OK (?x :: ?l) =: [] => discriminate heq0
+                | (bind2 ?x _) = _  => destruct x as  [ [CE' stcksize]|] eqn:heq_bldCE; simpl in h_tr_proc; try discriminate
+                | context [ ?x <=? ?y ]  => let heqq := fresh "heq" in destruct (Z.leb x y) eqn:heqq; try discriminate
+                | (bind ?y ?x) = _ =>
+                  let heqq := fresh "heq" in !destruct y !eqn:heqq; [ 
+                      autorename heqq; simpl in heq0
+                    | try discriminate]
+                end.
+       - destruct e; try discriminate.
+         repeat match type of heq0 with
+                | OK (?x :: ?l) =: [] => discriminate heq0
+                | (bind2 ?x _) = _  => destruct x as  [ [CE' stcksize]|] eqn:heq_bldCE; simpl in h_tr_proc; try discriminate
+                | context [ ?x <=? ?y ]  => let heqq := fresh "heq" in destruct (Z.leb x y) eqn:heqq; try discriminate
+                | (bind ?y ?x) = _ =>
+                  let heqq := fresh "heq" in !destruct y !eqn:heqq; [ 
+                      autorename heqq; simpl in heq0
+                    | try discriminate]
+                end.
+       - destruct e; try discriminate.
+         repeat match type of heq0 with
+                | OK (?x :: ?l) =: [] => discriminate heq0
+                | (bind2 ?x _) = _  => destruct x as  [ [CE' stcksize]|] eqn:heq_bldCE; simpl in h_tr_proc; try discriminate
+                | context [ ?x <=? ?y ]  => let heqq := fresh "heq" in destruct (Z.leb x y) eqn:heqq; try discriminate
+                | (bind ?y ?x) = _ =>
+                  let heqq := fresh "heq" in !destruct y !eqn:heqq; [ 
+                      autorename heqq; simpl in heq0
+                    | try discriminate]
+                end. }
+    inversion h_CM_eval_exprl_args_t_lval;subst.
+    xxx
+      - destruct 
+    unfold transl_paramexprlist in heq0.
+    simpl in heq0.
+    unfold build_compilenv in heq.
+    specialize (IH (prms_profile, decl)).
+    simpl in IH.
+    assert (h_lt:lt_copy_in (prms_profile, decl) (p :: prms_profile, decl)).
+    { red. simpl. omega. }
+    specialize (IH h_lt).
+    specialize (IH st s ).
+    specialize (IH st (map (λ x0 : parameter_specification, transl_paramid (parameter_name x0)) prms_profile)
+                   (set_params lval (map (λ x0 : parameter_specification, transl_paramid (parameter_name x0)) prms_profile))).
+    repeat spec IH.
+    assert ().
+    
+    admit.
+Qed.
+
+
+  !induction args;simpl;!intros;up_type.
+  - subst.
+    (* functional inversion would be better here *)
+    destruct prms_profile; try (cbn in heq0;discriminate).
+    inversion heq0;subst. clear heq0.
+    destruct lval;simpl in h_CM_eval_exprl_args_t_lval;try now inversion h_CM_eval_exprl_args_t_lval.
+    inversion h_copy_in;subst.
+    unfold newFrame in heq_fetch_x_f.
+    cbn in heq_fetch_x_f.
+    discriminate.
+  - !destruct prms_profile; try (cbn in heq0;discriminate).
+    !destruct (parameter_mode p) !eqn:heq_mode;try discriminate.
+    + (* In mode *)
+      !destruct (transl_expr st CE e) !eqn:heq_e_t;try discriminate.
+      cbn in heq0.
+      !destruct (transl_paramexprlist st CE args prms_profile) !eqn:heq_t_profs;try discriminate.
+      cbn in heq0.
+      !invclear heq0. (* CPS! *)
+      !inversion h_copy_in;
+        try match goal with
+            | H: parameter_mode p = _ , H':parameter_mode p = _ |-_ => try now (rewrite H in H'; discriminate)
+            end;subst.
+      * (* constrainted = false *)
+        rewrite <- build_compilenv_ok in heq.
+        !functional inversion heq;subst;rewrite -> ?build_compilenv_ok in *;subst stoszchainparam;move IHargs after astnum;up_type.
+        -- admit.
+        --
+          unfold build_frame_lparams in heq_bld_frm.
+          destruct p eqn:heq_p in.
+          rewrite heq_p in  heq_bld_frm.
+          fold build_frame_lparams in heq_bld_frm.
+          !!destruct (add_to_frame st ([(0%nat, 0)], 4) parameter_name parameter_subtype_mark) eqn:?;try discriminate.
+          simpl in heq_bld_frm.
+          
+          assert (build_compilenv st CE (S _x) prms_profile decl =: ((S _x, sto) :: CE, z)). 
+           { unfold build_compilenv.
+             rewrite 
+           }
+
+          
+          !invclear h_CM_eval_exprl_args_t_lval;subst.
+           
+           !!destruct (add_to_frame st ([(0%nat, 0)], 4) parameter_name parameter_subtype_mark) eqn:?;try discriminate.
+           simpl in heq_bld_frm.
+           destruct p0.
+
+           !!destruct (add_to_frame st ([(0%nat, 0)], 4) parameter_name parameter_subtype_mark) eqn:?;try discriminate.
+           simpl in heq_bld_frm.
+
+           fold build_frame_lparams in heq_bld_frm.
+           destruct p0.
+           specialize (IHargs prms_profile decl z l f sto vl).
+
+                              (map (λ x0 : parameter_specification, transl_paramid (parameter_name x0)) prms_profile)
+                              (set_params vl (map (λ x0 : parameter_specification, transl_paramid (parameter_name x0)) prms_profile))).
+        
+           repeat spec IHargs.
+        
+        fold build_frame_lparams in heq_bld_frm.
+        simpl in *.
+
+
+        
+        spec IHargs.
+
+        specialize (IHargs ltac:(fillme)).
+        rewrite <- build_compilenv_ok in heq.
+        !functional inversion heq;subst;rewrite -> ?build_compilenv_ok in *.
+        -- admit.
+        -- specialize (IHargs prms_profile decl).
+
+        !invclear H3;subst.
+        simpl.
+
+        
+
+
+
   unfold transl_variable in heq_transl_variable.
+
+  !!destruct (CompilEnv.fetchG x ((pb_lvl, sto) :: CE)) eqn:?;try now discriminate.
+  !!destruct (CompilEnv.frameG x ((pb_lvl, sto) :: CE)) eqn:?;try now discriminate.
+  !!destruct f0;try now discriminate;subst.
+  !!destruct (CompilEnv.level_of_top ((pb_lvl, sto) :: CE)) eqn:?;try now discriminate.
+  !invclear heq_transl_variable.
+  up_type.
+
   assert (exists n, CompilEnv.fetchG x ((pb_lvl, sto) :: CE) = Some n).
   { admit. (* because fetch x f = Some v  and  copy_in st s (newFrame pb_lvl) prms_profile args (Normal f)*) }
   assert (CompilEnv.frameG x ((pb_lvl,sto)::CE) = Some (pb_lvl,sto)).
@@ -2991,6 +3209,8 @@ Proof.
   destruct H as [id H ].
   rewrite H,H0 in heq_transl_variable.
   simpl in heq_transl_variable.
+
+
   
 xxx
   !!intros until args.

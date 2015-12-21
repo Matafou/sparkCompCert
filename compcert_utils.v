@@ -19,6 +19,12 @@ Ltac rename_hyp1 h th :=
     | Cminor.eval_expr _ _ _ _ ?x _ => fresh "h_CM_eval_expr_" x
     | Cminor.eval_expr _ _ _ _ _ ?y => fresh "h_CM_eval_expr_" y
     | Cminor.eval_expr _ _ _ _ _ _ => fresh "h_CM_eval_expr"
+
+    | Cminor.eval_exprlist _ _ _ _ ?x ?y => fresh "h_CM_eval_exprl_" x "_" y
+    | Cminor.eval_exprlist _ _ _ _ ?x _ => fresh "h_CM_eval_exprl_" x
+    | Cminor.eval_exprlist _ _ _ _ _ ?y => fresh "h_CM_eval_exprl_" y
+    | Cminor.eval_exprlist _ _ _ _ _ _ => fresh "h_CM_eval_exprl"
+
     | Mem.store ?chk ?m ?blk ?n ?v = None => fresh "heq_store_" v "_none"
     | Mem.store ?chk ?m ?blk ?n ?v = Some ?m2 => fresh "heq_store_" v "_" m2
     | Mem.store ?chk ?m ?blk ?n ?v = ?m2 => fresh "heq_store_" v "_" m2
