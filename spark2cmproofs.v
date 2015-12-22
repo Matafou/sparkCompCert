@@ -2561,77 +2561,6 @@ Qed.
 
 
 
-
-
-
-(* Definition build_frame_lparams_2 := Eval lazy beta iota delta [build_frame_lparams bind] in build_frame_lparams. *)
-Function build_frame_lparams_2 (stbl : symboltable) (fram_sz : localframe * Z) (lparam : list parameter_specification) {struct lparam} :
-  res (localframe * Z) :=
-  match lparam with
-  | [ ] => OK fram_sz
-  | {| parameter_name := nme; parameter_subtype_mark := subtyp_mrk |} :: lparam' =>
-      match add_to_frame stbl fram_sz nme subtyp_mrk with
-      | OK x => build_frame_lparams_2 stbl x lparam'
-      | Error msg => Error msg
-      end
-  end.
-
-Lemma build_frame_lparams_ok : build_frame_lparams_2 = spark2Cminor.build_frame_lparams.
-Proof.
-  reflexivity.
-Qed.
-
-(* Definition add_to_frame_2 := Eval lazy beta iota delta [add_to_frame bind bind2] in add_to_frame. *)
-Function add_to_frame_2 (stbl : symboltable) (cenv_sz : localframe * Z) (nme : idnum) (subtyp_mrk : type) :=
-  let (cenv, sz) := cenv_sz in
-  match compute_size stbl subtyp_mrk with
-  | OK x =>
-    let new_size := sz + x in
-    if new_size >=? Int.modulus
-    then Error (msg "add_to_frame: memory would overflow")
-    else let new_cenv := (nme, sz) :: cenv in OK (new_cenv, new_size)
-  | Error msg => Error msg
-  end.
-
-Lemma add_to_frame_ok : add_to_frame_2 = spark2Cminor.add_to_frame.
-Proof.
-  reflexivity.
-Qed.
-
-
-(* Definition build_frame_decl_2 := Eval lazy beta iota delta [build_frame_decl bind] in build_frame_decl. *)
-
-Function build_frame_decl_2 (stbl : symboltable) (fram_sz : localframe * Z) 
-         (decl : declaration) {struct decl} : res (localframe * Z) :=
-  let (fram, sz) := fram_sz in
-  match decl with
-  | D_Null_Declaration => OK fram_sz
-  | D_Type_Declaration _ _ => Error (msg "build_frame_decl: type decl no implemented yet")
-  | D_Object_Declaration _ objdecl =>
-      match compute_size stbl (object_nominal_subtype objdecl) with
-      | OK x =>
-          let new_size := sz + x in
-          if new_size >=? Int.modulus
-          then Error (msg "build_frame_decl: memory would overflow")
-          else OK ((object_name objdecl, sz) :: fram, new_size)
-      | Error msg => Error msg
-      end
-  | D_Procedure_Body _ _ => Error (msg "build_frame_decl: proc decl no implemented yet")
-  | D_Seq_Declaration _ decl1 decl2 =>
-      match build_frame_decl_2 stbl fram_sz decl1 with
-      | OK x => build_frame_decl_2 stbl x decl2
-      | Error msg => Error msg
-      end
-  end.
-
-
-Lemma build_frame_decl_ok : build_frame_decl_2 = build_frame_decl.
-Proof.
-  reflexivity.
-Qed.
-
-
-
 Lemma build_frame_lparams_preserve_no_overflow_pos_addr: ∀ st prmprof l sz lvl l' sz',
     sz >= 0
     -> build_frame_lparams st (l,sz) prmprof =: (l',sz')
@@ -2641,14 +2570,14 @@ Proof.
   intros until sz.
   remember (l, sz) as locfrmZ. 
   revert l sz HeqlocfrmZ .
-  rewrite <- build_frame_lparams_ok.
-  !functional induction (build_frame_lparams_2 st locfrmZ prmprof);!intros;subst;try discriminate.
+  rewrite build_frame_lparams_ok.
+  !functional induction (function_utils.build_frame_lparams st locfrmZ prmprof);!intros;subst;try discriminate.
   - !invclear heq.
     split;assumption.
-  - rewrite -> build_frame_lparams_ok in *.
-    rewrite <- add_to_frame_ok in heq_add_to_fr_nme.
+  - rewrite <- build_frame_lparams_ok in *.
+    rewrite add_to_frame_ok in heq_add_to_fr_nme.
     !functional inversion heq_add_to_fr_nme;subst.
-    rewrite -> add_to_frame_ok in *.
+    rewrite <- add_to_frame_ok in *.
     assert (x0 > 0).
     { unfold compute_size in heq_cmpt_size_subtyp_mrk.
       destruct compute_chnk_of_type;try discriminate.
@@ -2702,9 +2631,9 @@ Proof.
   intros until sz.
   remember (l, sz) as locfrmZ.
   revert l sz HeqlocfrmZ .
-  rewrite <- build_frame_decl_ok.
-  !functional induction (build_frame_decl_2 st locfrmZ decl);!intros;subst;try discriminate
-  ; try rewrite -> build_frame_decl_ok in *.
+  rewrite build_frame_decl_ok.
+  !functional induction (function_utils.build_frame_decl st locfrmZ decl);!intros;subst;try discriminate
+  ; try rewrite <- build_frame_decl_ok in *.
   - split.
     + !invclear heq.
       !invclear heq0.
@@ -2797,12 +2726,12 @@ Proof.
   !!intros until 0.
   remember (init,z) as initz.
   revert init z Heqinitz.
-  rewrite <- build_frame_lparams_ok.
-  !functional induction (build_frame_lparams_2 st initz prmprof);!intros;subst;try discriminate.
+  rewrite build_frame_lparams_ok.
+  !functional induction (function_utils.build_frame_lparams st initz prmprof);!intros;subst;try discriminate.
   - inversion heq;subst;auto.
-  - rewrite <- add_to_frame_ok in heq_add_to_fr_nme.
+  - rewrite add_to_frame_ok in heq_add_to_fr_nme.
     !functional inversion heq_add_to_fr_nme;subst.
-    rewrite -> add_to_frame_ok in *.
+    rewrite <- add_to_frame_ok in *.
     unfold new_cenv,new_size in *.
     clear new_cenv new_size.
     specialize (IHr _ _ eq_refl).
@@ -2840,8 +2769,8 @@ Proof.
   !!intros until 0.
   remember (init,z) as initz.
   revert init z Heqinitz lvl fr.
-  rewrite <- build_frame_decl_ok.
-  !functional induction (build_frame_decl_2 st initz decl);!intros;subst;try discriminate.
+  rewrite build_frame_decl_ok.
+  !functional induction (function_utils.build_frame_decl st initz decl);!intros;subst;try discriminate.
   - inversion heq;subst;auto.
     inversion heq0;subst;auto.
   - !invclear heq;subst.
@@ -2945,6 +2874,184 @@ Proof.
 Qed.
 
 
+(* 
+Fixpoint build_frame_lparams (stbl:symboltable) (fram_sz:localframe * Z)
+         (lparam:list parameter_specification): res (localframe*Z) :=
+  match lparam with
+    | nil => OK fram_sz
+    | mkparameter_specification _ nme subtyp_mrk mde :: lparam' =>
+      do new_fram_sz <- add_to_frame stbl fram_sz nme subtyp_mrk ;
+      build_frame_lparams stbl new_fram_sz lparam'
+  end.
+ *)
+
+Lemma add_to_frame_correct: forall stbl fram_sz parameter_name parameter_subtype_mark p x,
+    add_to_frame stbl fram_sz parameter_name parameter_subtype_mark =: p
+    -> CompilEnv.resides (language.parameter_name x) (fst fram_sz) = true
+    -> CompilEnv.resides (language.parameter_name x) (fst p) = true.
+Proof.
+  !!intros until 1.
+  rewrite add_to_frame_ok in heq_add_to_fr_parameter_name.
+  functional inversion heq_add_to_fr_parameter_name
+  ;rewrite <- ?add_to_frame_ok in *
+  ;subst;!intros.
+  subst new_size.
+  subst new_cenv.
+  simpl.
+  destruct (language.parameter_name x =? parameter_name)%nat eqn:heq;auto.
+Qed.
+
+Lemma add_to_frame_correct2: forall stbl fram_sz parameter_name parameter_subtype_mark p,
+    add_to_frame stbl fram_sz parameter_name parameter_subtype_mark =: p
+    -> CompilEnv.resides parameter_name (fst p) = true.
+Proof.
+  !!intros until 1.
+  rewrite add_to_frame_ok in heq_add_to_fr_parameter_name.
+  functional inversion heq_add_to_fr_parameter_name
+  ;rewrite <- ?add_to_frame_ok in *
+  ;subst;!intros.
+  subst new_size.
+  subst new_cenv.
+  simpl.
+  now rewrite <- beq_nat_refl.
+Qed.
+
+
+Lemma build_frame_lparams_correct: forall lparam stbl fram_sz res,
+    build_frame_lparams stbl fram_sz lparam  =: res
+    -> forall x, (List.In x lparam ∨ CompilEnv.resides (parameter_name x) (fst fram_sz) = true)
+                 -> CompilEnv.resides (parameter_name x) (fst res) = true.
+Proof.
+  !!intros until res.
+  rewrite function_utils.build_frame_lparams_ok.
+  !!functional induction (function_utils.build_frame_lparams stbl fram_sz lparam); try discriminate;
+    try rewrite <- function_utils.build_frame_lparams_ok;intros.
+  - destruct H0.
+    + inversion H0.
+    + simpl in *.
+      !invclear H.
+      assumption.
+  - remember {| parameter_astnum := _x; parameter_name := nme; parameter_subtype_mark := subtyp_mrk; parameter_mode := _x0 |}  as p.
+    decomp H0.
+    + destruct H1.
+      * subst.
+        eapply IHr;eauto.
+        right.
+        subst x0;simpl.
+        eapply add_to_frame_correct2;eauto.
+      * eapply IHr;eauto.
+    + eapply IHr;eauto.
+      right.
+      eapply add_to_frame_correct;eauto.
+Qed.
+
+
+Lemma add_to_frame_correct3: forall stbl fram_sz parameter_name parameter_subtype_mark new_fr new_sz x e,
+    increasing_order (fst fram_sz)
+    -> (forall nme nme_ofs, CompilEnv.fetches nme (fst fram_sz) = Some nme_ofs -> Zlt nme_ofs (snd fram_sz))
+         
+(*     -> Forall (fun x => Zlt (snd x) (snd fram_sz)) (fst fram_sz) -> *)
+    -> CompilEnv.fetches parameter_name (fst fram_sz) = None
+    -> add_to_frame stbl fram_sz parameter_name parameter_subtype_mark =: (new_fr, new_sz)
+    -> CompilEnv.fetches x (fst fram_sz) = Some e
+    -> CompilEnv.fetches x new_fr = Some e ∧
+       (forall nme nme_ofs, CompilEnv.fetches nme new_fr = Some nme_ofs -> Zlt nme_ofs new_sz).
+Proof.
+  !!intros.
+  rewrite add_to_frame_ok in heq_add_to_fr_parameter_name.
+  functional inversion heq_add_to_fr_parameter_name
+  ;rewrite <- ?add_to_frame_ok in *
+  ;subst;!intros.
+  subst.
+  simpl.
+  destruct (x =? parameter_name)%nat eqn:heq'.
+  - apply beq_nat_true in heq'.
+    subst.
+    rewrite heq0 in heq;discriminate.
+  - split.
+    + auto.
+    + intros nme nme_ofs H.
+      assert (x0>0) by (eapply compute_size_pos;eauto).
+      destruct (nme =? parameter_name)%nat.
+      * inversion H;subst.
+        omega.
+      * specialize (H0 _ _ H).
+        simpl in H0.
+        omega.
+Qed.
+
+Lemma add_to_frame_correct4: forall stbl fram_sz parameter_name parameter_subtype_mark new_fr new_sz,
+    CompilEnv.fetches parameter_name (fst fram_sz) = None
+    -> add_to_frame stbl fram_sz parameter_name parameter_subtype_mark =: (new_fr, new_sz)
+    -> CompilEnv.fetches parameter_name new_fr = Some (snd fram_sz).
+Proof.
+  !!intros.
+  rewrite add_to_frame_ok in heq_add_to_fr_parameter_name.
+  functional inversion heq_add_to_fr_parameter_name
+  ;rewrite <- ?add_to_frame_ok in *
+  ;subst;!intros.
+  simpl.
+  now rewrite <- beq_nat_refl.
+Qed.
+
+(* TODO: move this elsewhere *)
+Ltac rename_hyp_list h th :=
+  match th with
+    | _ ∨ _ => fresh "h_or"
+    | List.In ?e ?l => fresh "h_in_" e "_" l
+    | List.In ?e _ => fresh "h_in_" e
+    | List.In _ _ => fresh "h_in"
+    | @Forall _ _ ?l => fresh "h_all_" l
+    | @Forall _ _ _ => fresh "h_all"
+    | _ => rename_hyp_overf h th
+  end.
+
+Ltac rename_hyp ::= rename_hyp_list.
+
+
+Lemma build_frame_lparams_correct2 : forall lparam stbl fram_sz res x e,
+    (*  We need NoDupNames lparam *)
+     increasing_order (fst fram_sz)
+    -> build_frame_lparams stbl fram_sz lparam  =: res
+    -> Forall (fun prm => CompilEnv.fetches (parameter_name prm) (fst fram_sz) = None) lparam
+    -> CompilEnv.fetches (parameter_name x) (fst fram_sz) = Some e
+    -> CompilEnv.fetches (parameter_name x) (fst res) = Some e.
+Proof.
+  !intros.
+  assert (h:=build_frame_lparams_preserve_increasing_order stbl (fst fram_sz) lparam (snd res) (fst res) (snd fram_sz)).
+  replace (fst fram_sz, snd fram_sz) with fram_sz in *;[|destruct fram_sz;auto].
+  replace (fst res, snd res) with res in *;[|destruct res;auto].
+  specialize (h heq_bld_frm_lparam).
+  assert (increasing_order (fst res) ∧ (∀ nme : idnum, Forall (ord_snd (nme, snd res)) (fst res))).
+  { apply h;auto.
+    intros nme.
+    admit. (* rephrase ord_snd *) }
+  clear h.
+  !destruct H.
+  rewrite function_utils.build_frame_lparams_ok in *.
+  revert h_incr_order h_all_lparam e x res heq_bld_frm_lparam heq H H0.
+  !!(functional induction (function_utils.build_frame_lparams stbl fram_sz lparam); try discriminate;
+     try rewrite <- ?function_utils.build_frame_lparams_ok in *;intros;up_type).
+  - simpl in *.
+    !invclear heq0.
+    assumption.
+  - rename x into new_fram_sz.
+    simpl in *.
+    !invclear h_all.
+    simpl in *.
+    assert (h_incr:increasing_order (fst new_fram_sz)).
+    { admit. }
+    assert (h_disjoint:Forall (λ prm : parameter_specification, CompilEnv.fetches (parameter_name prm) (fst new_fram_sz) = None) lparam').
+    { (*TODO: a lemma needing that lparam has no duplicate arg names *)
+      admit. }
+    specialize (IHr h_incr h_disjoint).
+    eapply IHr;auto.
+    destruct (add_to_frame_correct3 stbl fram_sz nme subtyp_mrk (fst new_fram_sz) (snd new_fram_sz) (parameter_name x0) e);auto.
+    + xxx admit. (* add it in  hyp? *)
+    + destruct new_fram_sz;auto.
+Qed.
+
+
 Inductive Decl_atomic : declaration -> Prop :=
   | Decl_atom_type: forall a t, Decl_atomic(D_Type_Declaration a t)
   | Decl_atom_Object: forall a o, Decl_atomic(D_Object_Declaration a o)
@@ -2985,7 +3092,7 @@ Ltac rename_hyp_decl h th :=
     | Decl_list_form _ => fresh "h_decl_list"
     | Decl_atomic ?d => fresh "h_decl_atom_" d
     | Decl_atomic _ => fresh "h_decl_atom"
-    | _ => rename_hyp_overf h th
+    | _ => rename_hyp_list h th
   end.
 
 Ltac rename_hyp ::= rename_hyp_decl.

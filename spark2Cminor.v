@@ -749,9 +749,9 @@ Fixpoint build_proc_decl (lvl:Symbol_Table_Module.level)
      that all variables are reachable by all porcedures. In spark only
      variables declared before a procedure can be reached. Since
 
-     1) This restriction is verified at typing/well-formedness
+     (1) This restriction is verified at typing/well-formedness
      checking anyway and
-     2) All variables have unique names,
+     (2) All variables have unique names,
 
     this is correct. *)
 Definition build_compilenv (stbl:symboltable) (enclosingCE:compilenv) (lvl:Symbol_Table_Module.level)

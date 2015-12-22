@@ -569,6 +569,76 @@ Proof.
 Qed.
 
 
+(* Definition add_to_frame:= Eval lazy beta iota delta [add_to_frame bind] in add_to_frame. *)
+
+Function add_to_frame (stbl : Symbol_Table_Module.symboltable) (cenv_sz : localframe * Z) (nme : idnum) (subtyp_mrk : type) :=
+  let (cenv, sz) := cenv_sz in
+  match compute_size stbl subtyp_mrk with
+  | OK x =>
+    let new_size := sz + x in
+    if new_size >=? Integers.Int.modulus
+    then Error (msg "add_to_frame: memory would overflow")
+    else let new_cenv := (nme, sz) :: cenv in OK (new_cenv, new_size)
+  | Error msg => Error msg
+  end.
+
+Lemma add_to_frame_ok : spark2Cminor.add_to_frame = add_to_frame.
+Proof.
+  reflexivity.
+Qed.
+
+(* Definition build_frame_lparams:= Eval lazy beta iota delta [build_frame_lparams bind] in build_frame_lparams. *)
+
+Function build_frame_lparams (stbl : Symbol_Table_Module.symboltable) (fram_sz : localframe * Z) (lparam : list parameter_specification)
+                    {struct lparam} : res (localframe * Z) :=
+  match lparam with
+  | [ ] => OK fram_sz
+  | {| parameter_name := nme; parameter_subtype_mark := subtyp_mrk |} :: lparam' =>
+      match spark2Cminor.add_to_frame stbl fram_sz nme subtyp_mrk with
+      | OK x => build_frame_lparams stbl x lparam'
+      | Error msg => Error msg
+      end
+  end.
+
+
+Lemma build_frame_lparams_ok : spark2Cminor.build_frame_lparams = build_frame_lparams.
+Proof.
+  reflexivity.
+Qed.
+
+
+(* Definition build_frame_decl := Eval lazy beta iota delta [build_frame_decl bind] in build_frame_decl. *)
+
+Function build_frame_decl (stbl : symboltable) (fram_sz : localframe * Z) 
+         (decl : declaration) {struct decl} : res (localframe * Z) :=
+  let (fram, sz) := fram_sz in
+  match decl with
+  | D_Null_Declaration => OK fram_sz
+  | D_Type_Declaration _ _ => Error (msg "build_frame_decl: type decl no implemented yet")
+  | D_Object_Declaration _ objdecl =>
+      match compute_size stbl (object_nominal_subtype objdecl) with
+      | OK x =>
+          let new_size := sz + x in
+          if new_size >=? compcert.lib.Integers.Int.modulus
+          then Error (msg "build_frame_decl: memory would overflow")
+          else OK ((object_name objdecl, sz) :: fram, new_size)
+      | Error msg => Error msg
+      end
+  | D_Procedure_Body _ _ => Error (msg "build_frame_decl: proc decl no implemented yet")
+  | D_Seq_Declaration _ decl1 decl2 =>
+      match build_frame_decl stbl fram_sz decl1 with
+      | OK x => build_frame_decl stbl x decl2
+      | Error msg => Error msg
+      end
+  end.
+
+
+Lemma build_frame_decl_ok : spark2Cminor.build_frame_decl = build_frame_decl.
+Proof.
+  reflexivity.
+Qed.
+
+
 (* Function bug prevents me to do this *)
 (* Definition transl_procedure := Eval cbv beta delta [bind bind2 transl_procedure] in transl_procedure. *)
 
