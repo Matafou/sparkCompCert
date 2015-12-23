@@ -1154,17 +1154,22 @@ Ltac rename_hyp1 h th :=
     | CompilEnv.fetchG ?id ?CE = _ => fresh "heq_CEfetchG_" id "_" CE
     | CompilEnv.fetchG ?id _ = _ => fresh "heq_CEfetchG_" id
     | CompilEnv.fetchG _ _ = Some _ => fresh "heq_CEfetchG"
-    | CompilEnv.fetchG _ _ = None => fresh "heq_CMfetchG_none"
+    | CompilEnv.fetchG _ _ = None => fresh "heq_CEfetchG_none"
 
     | CompilEnv.fetch ?id ?CE = _ => fresh "heq_CEfetch_" id "_" CE
     | CompilEnv.fetch ?id _ = _ => fresh "heq_CEfetch_" id
     | CompilEnv.fetch _ _ = Some _ => fresh "heq_CEfetch"
-    | CompilEnv.fetch _ _ = None => fresh "heq_CMfetch_none"
+    | CompilEnv.fetch _ _ = None => fresh "heq_CEfetch_none"
+
+    | CompilEnv.fetches ?id ?CE = _ => fresh "heq_CEfetches_" id "_" CE
+    | CompilEnv.fetches ?id _ = _ => fresh "heq_CEfetches_" id
+    | CompilEnv.fetches _ _ = Some _ => fresh "heq_CEfetches"
+    | CompilEnv.fetches _ _ = None => fresh "heq_CEfetches_none"
 
     | CompilEnv.frameG ?id ?CE = _ => fresh "heq_CEframeG_" id "_" CE
     | CompilEnv.frameG ?id _ = _ => fresh "heq_CEframeG_" id
     | CompilEnv.frameG _ _ = Some _ => fresh "heq_CEframeG"
-    | CompilEnv.frameG _ _ = None => fresh "heq_CMframeG_none"
+    | CompilEnv.frameG _ _ = None => fresh "heq_CEframeG_none"
 
     | CompilEnv.level_of_top ?ce = None => fresh "heq_lvloftop_none_" ce
     | CompilEnv.level_of_top ?ce = None => fresh "heq_lvloftop_none"

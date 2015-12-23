@@ -1,5 +1,39 @@
 Require Import LibHypsNaming Sorted ZArith.
 
+
+Ltac assert_reduced_body n x H t :=
+  match constr:(n,t) with
+  | (0%nat,forall x1, _) =>
+    constr:(H x)
+  | (1%nat,forall x1, _) =>
+    constr:(fun x1 => H x1 x)
+  | (2%nat,forall x1 x2, _) =>
+    constr:(fun x1 x2 => H x1 x2 x)
+  | (3%nat,forall x1 x2 x3, _) =>
+    constr:(fun x1 x2 x3 => H x1 x2 x3 x)
+  | (4%nat,forall x1 x2 x3 x4, _) =>
+    constr:(fun x1 x2 x3 x4 => H x1 x2 x3 x4 x)
+  | (5%nat,forall x1 x2 x3 x4 x5, _) =>
+    constr:(fun x1 x2 x3 x4 x5 => H x1 x2 x3 x4 x5 x)
+  | (6%nat,forall x1 x2 x3 x4 x5 x6, _) =>
+    constr:(fun x1 x2 x3 x4 x5 x6 => H x1 x2 x3 x4 x5 x6 x)
+  | (7%nat,forall x1 x2 x3 x4 x5 x6 x7, _) =>
+    constr:(fun x1 x2 x3 x4 x5 x6 x7 => H x1 x2 x3 x4 x5 x6 x7 x)
+  | (8%nat,forall x1 x2 x3 x4 x5 x6 x7 x8, _) =>
+    constr:(fun x1 x2 x3 x4 x5 x6 x7 x8 => H x1 x2 x3 x4 x5 x6 x7 x8 x)
+  | (9%nat,forall x1 x2 x3 x4 x5 x6 x7 x8 x9, _) =>
+    constr:(fun x1 x2 x3 x4 x5 x6 x7 x8 x9 => H x1 x2 x3 x4 x5 x6 x7 x8 x9 x)
+  | (10%nat,forall x1 x2 x3 x4 x5 x6 x7 x8 x10, _) =>
+    constr:(fun x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 => H x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 x)
+  end.
+
+Ltac spec n H x :=
+  let t := type of H in
+  let h := fresh H in
+  let asserted := assert_reduced_body n x H t in
+  assert (h:= asserted); clear H; rename h into H.
+
+
 (* All elements of a sorted list are smaller or equal to the first
    element. If the ordering is reflexive. *)
 Lemma increasing_order_In A : forall ord (stk:list A) (hd:A),

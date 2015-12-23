@@ -937,12 +937,45 @@ Definition stack_freeable st CE sp g locenv m :=
 
 
 (* TODO: swap arguments *)
-Definition ord_snd (x y:(idnum * CompilEnv.V)) := snd y < snd x.
-Definition ord_fst (x y:(CompilEnv.scope_level * localframe)) := (fst y < fst x)%nat.
+Definition gt_snd (x y:(idnum * CompilEnv.V)) := snd y < snd x.
+Definition gt_fst (x y:(CompilEnv.scope_level * localframe)) := (fst y < fst x)%nat.
+
+Definition gt_x_fst_y x (y:(CompilEnv.scope_level * localframe)) := (fst y < x)%nat.
+Definition gt_fst_x_y (x:(CompilEnv.scope_level * localframe)) y := (y < fst x)%nat.
+Definition gt_x_snd_y x (y:(idnum * CompilEnv.V)) := snd y < x.
+Definition gt_snd_x_y (x:(idnum * CompilEnv.V)) y := y < snd x.
+
+Notation "X '1<1' Y" := (gt_fst Y X) (at level 80).
+Notation "X '2<2' Y" := (gt_snd Y X) (at level 80).
+Notation "X '<2' Y" := (gt_x_snd_y Y X) (at level 80).
+Notation "X '2<' Y" := (gt_snd_x_y Y X) (at level 80).
+
+
+Lemma gt_snd_1 x y z : gt_snd (x,y) z = gt_x_snd_y y z.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma gt_snd_2 x y z : gt_snd x (y,z) = gt_snd_x_y x z.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma gt_fst_1 x y z : gt_fst (x,y) z = gt_x_fst_y x z.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma gt_fst_2 x y z : gt_fst x (y,z) = gt_fst_x_y x y.
+Proof.
+  reflexivity.
+Qed.
+
+Hint Resolve gt_snd_1 gt_snd_2 gt_fst_1 gt_fst_2.
 
 (* Local frames are ordered in the sense that they are stored by increasing offests. *)
 Definition increasing_order: localframe -> Prop :=
-  StronglySorted ord_snd.
+  StronglySorted gt_snd.
 
 Definition increasing_order_fr (f:CompilEnv.frame) :=
   increasing_order(CompilEnv.store_of f).
@@ -960,7 +993,7 @@ Inductive exact_levelG:  CompilEnv.stack -> Prop :=
 
 (* the global stack is in incresing level. *)
 (* Lemma exact_level_increasing_orderG: ∀ stk: CompilEnv.stack, *)
-(*     exact_levelG stk -> StronglySorted ord_fst stk. *)
+(*     exact_levelG stk -> StronglySorted gt_fst stk. *)
 
 Definition stbl_var_types_ok st :=
   ∀ nme t, type_of_name st nme = OK t ->
@@ -1051,6 +1084,8 @@ Ltac rename_hyp3 h th :=
   | invariant_compile ?CE _ => fresh "h_inv_comp_" CE
   | invariant_compile _ ?stbl => fresh "h_inv_comp_" stbl
   | invariant_compile _ _ => fresh "h_inv_comp"
+  | increasing_order ?l => fresh "h_incr_gt_" l
+  | increasing_order _ => fresh "h_incr_ord"
   | _ => rename_hyp2' h th
   end.
 
@@ -1626,8 +1661,8 @@ Proof.
   apply CEfetches_inj.
 Qed.
 
-Lemma increasing_order_frameG: forall lvla lvlb fra frb l id ,
-    Forall (ord_fst (lvlb,frb)) l ->
+Lemma increasing_order_frameG: forall lvla lvlb fra l id ,
+    Forall (gt_x_fst_y lvlb) l ->
     CompilEnv.frameG id l = Some (lvla,fra) ->
     (lvla < lvlb)%nat.
 Proof.
@@ -2719,9 +2754,9 @@ Proof.
 Lemma build_frame_lparams_preserve_increasing_order:
   forall st init prmprof lvl fr z,
     build_frame_lparams st (init,z) prmprof =: (fr,lvl)
-    -> (forall nme, Forall (ord_snd (nme, z)) init)
+    -> Forall (gt_x_snd_y z) init
     -> increasing_order init
-    -> (increasing_order fr ∧ (forall nme, Forall (ord_snd (nme, lvl)) fr)).
+    -> increasing_order fr ∧ Forall (gt_x_snd_y lvl) fr.
 Proof.
   !!intros until 0.
   remember (init,z) as initz.
@@ -2740,11 +2775,10 @@ Proof.
     + !assert (x0>0).
       { destruct subtyp_mrk;cbn in heq_cmpt_size_subtyp_mrk;inversion heq_cmpt_size_subtyp_mrk;omega.  }
       constructor;auto.
-      * unfold ord_snd;cbn;omega.
-      * specialize (H0 nme0).
-        eapply Forall_impl with (P:= ord_snd (nme0, z));auto.
+      * unfold gt_x_snd_y;cbn;omega.
+      * eapply Forall_impl with (P:= gt_x_snd_y z);auto.
         !intros.
-        unfold ord_snd in *;cbn in *.
+        unfold gt_x_snd_y in *;cbn in *.
         omega.
     + constructor;auto.
 Qed.
@@ -2762,9 +2796,9 @@ Qed.
 Lemma build_frame_decl_preserve_increasing_order:
   forall st init decl lvl fr z,
     build_frame_decl st (init,z) decl =: (fr,lvl)
-    -> (forall nme, Forall (ord_snd (nme, z)) init)
+    -> Forall (gt_x_snd_y z) init
     -> increasing_order init
-    -> increasing_order fr ∧ (forall nme, Forall (ord_snd (nme, lvl)) fr).
+    -> increasing_order fr ∧ Forall (gt_x_snd_y lvl) fr.
 Proof.
   !!intros until 0.
   remember (init,z) as initz.
@@ -2778,23 +2812,25 @@ Proof.
     split.
     + constructor.
       * assumption.
-      * apply H0.
-    + intros nme.
-      constructor.
-      * unfold ord_snd;cbn.
+      * unfold gt_snd.
+        simpl.
+        change (Forall (gt_x_snd_y z) init).
+        assumption.
+    + constructor.
+      * unfold gt_snd;cbn.
         assert (h:=compute_size_pos _ _ _ heq_cmpt_size).
+        red. simpl.
         omega.
-      * specialize (H0 nme).
-        apply Forall_forall.
+      * apply Forall_forall.
         !intros.
-        eapply Forall_forall in H0;eauto.
-        unfold ord_snd;simpl.
-        unfold ord_snd in H0;simpl in H0.
+        eapply Forall_forall in h_forall_init;eauto.
+        red;simpl.
+        red in h_forall_init;simpl in *.
         assert (h:=compute_size_pos _ _ _ heq_cmpt_size).
         omega.        
   - destruct x.
-    destruct (IHr init z heq0 _ _ heq H0 h_incr_order_init); clear IHr.
-    destruct (IHr0 s z0 eq_refl _ _ heq1 H1 H).
+    destruct (IHr init z heq0 _ _ heq h_forall_init h_incr_order_init); clear IHr.
+    destruct (IHr0 s z0 eq_refl _ _ heq1 H0 H).
     split;assumption.
 Qed.
 
@@ -2839,16 +2875,14 @@ Proof.
         destruct (build_frame_decl_preserve_increasing_order _ _ _ _ _ _ heq0);auto.
         -- destruct (build_frame_lparams_preserve_increasing_order _ _ _ _ _ _ heq_bld_frm_prmprof);auto.
            ++ constructor;cbn in *;auto.
-              unfold ord_snd.
-              cbn.
+              unfold gt_snd.
+              red. cbn.
               omega.
            ++ constructor;cbn in *;auto.
               constructor.
         -- destruct (build_frame_lparams_preserve_increasing_order _ _ _ _ _ _ heq_bld_frm_prmprof);auto.
-           ++ intros nme.
-              constructor;cbn in *;auto.
-              unfold ord_snd.
-              cbn.
+           ++ constructor;cbn in *;auto.
+              red; cbn.
               omega.
            ++ constructor.
               ** constructor.
@@ -2873,41 +2907,49 @@ Proof.
          ++ discriminate.
 Qed.
 
-
-(* 
-Fixpoint build_frame_lparams (stbl:symboltable) (fram_sz:localframe * Z)
-         (lparam:list parameter_specification): res (localframe*Z) :=
-  match lparam with
-    | nil => OK fram_sz
-    | mkparameter_specification _ nme subtyp_mrk mde :: lparam' =>
-      do new_fram_sz <- add_to_frame stbl fram_sz nme subtyp_mrk ;
-      build_frame_lparams stbl new_fram_sz lparam'
-  end.
- *)
-
-Lemma add_to_frame_correct: forall stbl fram_sz parameter_name parameter_subtype_mark p x,
-    add_to_frame stbl fram_sz parameter_name parameter_subtype_mark =: p
-    -> CompilEnv.resides (language.parameter_name x) (fst fram_sz) = true
-    -> CompilEnv.resides (language.parameter_name x) (fst p) = true.
+Lemma add_to_frame_sz: forall stbl fram_sz parname parsubtype p sz,
+    add_to_frame stbl fram_sz parname parsubtype =: p
+    -> compute_size stbl parsubtype = OK sz
+    -> snd p = snd fram_sz + sz.
 Proof.
   !!intros until 1.
-  rewrite add_to_frame_ok in heq_add_to_fr_parameter_name.
-  functional inversion heq_add_to_fr_parameter_name
+  rewrite add_to_frame_ok in heq_add_to_fr_parname.
+  functional inversion heq_add_to_fr_parname
+  ;rewrite <- ?add_to_frame_ok in *
+  ;subst;!intros.
+  subst new_size.
+  subst new_cenv.
+  rewrite H1 in heq_cmpt_size_parsubtype.
+  inversion heq_cmpt_size_parsubtype.
+  subst.
+  simpl.
+  reflexivity.
+Qed.
+
+
+Lemma add_to_frame_correct: forall stbl fram_sz parname parsubtype p othername,
+    add_to_frame stbl fram_sz parname parsubtype =: p
+    -> CompilEnv.resides othername (fst fram_sz) = true
+    -> CompilEnv.resides othername (fst p) = true.
+Proof.
+  !!intros until 1.
+  rewrite add_to_frame_ok in heq_add_to_fr_parname.
+  functional inversion heq_add_to_fr_parname
   ;rewrite <- ?add_to_frame_ok in *
   ;subst;!intros.
   subst new_size.
   subst new_cenv.
   simpl.
-  destruct (language.parameter_name x =? parameter_name)%nat eqn:heq;auto.
+  destruct (othername =? parname)%nat eqn:heq;auto.
 Qed.
 
-Lemma add_to_frame_correct2: forall stbl fram_sz parameter_name parameter_subtype_mark p,
-    add_to_frame stbl fram_sz parameter_name parameter_subtype_mark =: p
-    -> CompilEnv.resides parameter_name (fst p) = true.
+Lemma add_to_frame_correct2: forall stbl fram_sz parname parsubtype p,
+    add_to_frame stbl fram_sz parname parsubtype =: p
+    -> CompilEnv.resides parname (fst p) = true.
 Proof.
   !!intros until 1.
-  rewrite add_to_frame_ok in heq_add_to_fr_parameter_name.
-  functional inversion heq_add_to_fr_parameter_name
+  rewrite add_to_frame_ok in heq_add_to_fr_parname.
+  functional inversion heq_add_to_fr_parname
   ;rewrite <- ?add_to_frame_ok in *
   ;subst;!intros.
   subst new_size.
@@ -2916,16 +2958,36 @@ Proof.
   now rewrite <- beq_nat_refl.
 Qed.
 
+Lemma add_to_frame_correct_rev: forall stbl fram_sz parname parsubtype new_fram_sz othername,
+    add_to_frame stbl fram_sz parname parsubtype =: new_fram_sz
+    -> (CompilEnv.resides othername (fst new_fram_sz) = true ∧ othername <> parname)
+    -> CompilEnv.resides othername (fst fram_sz) = true.
+Proof.
+  !!intros until 1.
+  rewrite add_to_frame_ok in heq_add_to_fr_parname.
+  functional inversion heq_add_to_fr_parname
+  ;rewrite <- ?add_to_frame_ok in *
+  ;subst;!intros.
+  subst new_size.
+  subst new_cenv.
+  simpl.
+  decomp h_and.
+  simpl in heq_bool_true.
+  rewrite <- Nat.eqb_neq in hneq.
+  rewrite hneq in heq_bool_true.
+  assumption.
+Qed.
+
 
 Lemma build_frame_lparams_correct: forall lparam stbl fram_sz res,
     build_frame_lparams stbl fram_sz lparam  =: res
     -> forall x, (List.In x lparam ∨ CompilEnv.resides (parameter_name x) (fst fram_sz) = true)
                  -> CompilEnv.resides (parameter_name x) (fst res) = true.
 Proof.
-  !!intros until res.
+  !!intros until fram_sz.
   rewrite function_utils.build_frame_lparams_ok.
   !!functional induction (function_utils.build_frame_lparams stbl fram_sz lparam); try discriminate;
-    try rewrite <- function_utils.build_frame_lparams_ok;intros.
+  try rewrite <- function_utils.build_frame_lparams_ok;intros;intros.
   - destruct H0.
     + inversion H0.
     + simpl in *.
@@ -2945,34 +3007,62 @@ Proof.
       eapply add_to_frame_correct;eauto.
 Qed.
 
+Lemma build_frame_lparams_correct_rev: forall lparam stbl fram_sz res,
+    build_frame_lparams stbl fram_sz lparam  =: res
+    -> forall nme, CompilEnv.resides nme (fst res) = true
+                 -> ((exists x,List.In x lparam ∧ (parameter_name x) = nme)
+                     ∨ CompilEnv.resides nme (fst fram_sz) = true).
+Proof.
+  !!intros until fram_sz.
+  rewrite function_utils.build_frame_lparams_ok.
+  !!(functional induction (function_utils.build_frame_lparams stbl fram_sz lparam); try discriminate;
+  try rewrite <- ?function_utils.build_frame_lparams_ok in *;intros).
+  - inversion heq. 
+    right;assumption.
+  - up_type.
+    remember {| parameter_astnum := _x; parameter_name := nme; parameter_subtype_mark := subtyp_mrk; parameter_mode := _x0 |}  as p.
+    specialize (IHr _ heq_bld_frm_lparam' _ heq_bool_true).
+    !!decompose [ex or and] IHr.
+    + left.
+      exists x0;split;auto.
+      right;assumption.
+    + destruct (Nat.eq_dec nme0 nme).
+      * subst nme0.
+        left.
+        exists p.
+        split.
+        -- left;auto.
+        -- subst;reflexivity.
+      * right.
+        eapply add_to_frame_correct_rev;eauto.
+Qed.
 
-Lemma add_to_frame_correct3: forall stbl fram_sz parameter_name parameter_subtype_mark new_fr new_sz x e,
+
+Lemma add_to_frame_correct3: forall stbl fram_sz parname parsubtype new_fr new_sz othername e,
     increasing_order (fst fram_sz)
     -> (forall nme nme_ofs, CompilEnv.fetches nme (fst fram_sz) = Some nme_ofs -> Zlt nme_ofs (snd fram_sz))
-         
-(*     -> Forall (fun x => Zlt (snd x) (snd fram_sz)) (fst fram_sz) -> *)
-    -> CompilEnv.fetches parameter_name (fst fram_sz) = None
-    -> add_to_frame stbl fram_sz parameter_name parameter_subtype_mark =: (new_fr, new_sz)
-    -> CompilEnv.fetches x (fst fram_sz) = Some e
-    -> CompilEnv.fetches x new_fr = Some e ∧
+    -> CompilEnv.fetches parname (fst fram_sz) = None
+    -> add_to_frame stbl fram_sz parname parsubtype =: (new_fr, new_sz)
+    -> CompilEnv.fetches othername (fst fram_sz) = Some e
+    -> CompilEnv.fetches othername new_fr = Some e ∧
        (forall nme nme_ofs, CompilEnv.fetches nme new_fr = Some nme_ofs -> Zlt nme_ofs new_sz).
 Proof.
   !!intros.
-  rewrite add_to_frame_ok in heq_add_to_fr_parameter_name.
-  functional inversion heq_add_to_fr_parameter_name
+  rewrite add_to_frame_ok in heq_add_to_fr_parname.
+  functional inversion heq_add_to_fr_parname
   ;rewrite <- ?add_to_frame_ok in *
   ;subst;!intros.
   subst.
   simpl.
-  destruct (x =? parameter_name)%nat eqn:heq'.
+  destruct (othername =? parname)%nat eqn:heq'.
   - apply beq_nat_true in heq'.
     subst.
-    rewrite heq0 in heq;discriminate.
+    rewrite heq_CEfetches_parname in heq_CEfetches_othername;discriminate.
   - split.
     + auto.
     + intros nme nme_ofs H.
-      assert (x0>0) by (eapply compute_size_pos;eauto).
-      destruct (nme =? parameter_name)%nat.
+      assert (x>0) by (eapply compute_size_pos;eauto).
+      destruct (nme =? parname)%nat.
       * inversion H;subst.
         omega.
       * specialize (H0 _ _ H).
@@ -2980,9 +3070,9 @@ Proof.
         omega.
 Qed.
 
-Lemma add_to_frame_correct4: forall stbl fram_sz parameter_name parameter_subtype_mark new_fr new_sz,
+Lemma add_to_frame_correct4: forall stbl fram_sz parameter_name parsubtype new_fr new_sz,
     CompilEnv.fetches parameter_name (fst fram_sz) = None
-    -> add_to_frame stbl fram_sz parameter_name parameter_subtype_mark =: (new_fr, new_sz)
+    -> add_to_frame stbl fram_sz parameter_name parsubtype =: (new_fr, new_sz)
     -> CompilEnv.fetches parameter_name new_fr = Some (snd fram_sz).
 Proof.
   !!intros.
@@ -2994,10 +3084,29 @@ Proof.
   now rewrite <- beq_nat_refl.
 Qed.
 
+
+Lemma add_to_frame_correct_rev2: forall stbl fram_sz parameter_name parsubtype new_fr new_sz othername e,
+    add_to_frame stbl fram_sz parameter_name parsubtype =: (new_fr, new_sz)
+    -> CompilEnv.fetches othername new_fr = Some e ∧ othername <> parameter_name
+    -> CompilEnv.fetches othername (fst fram_sz) = Some e.
+Proof.
+  !!intros.
+  rewrite add_to_frame_ok in heq_add_to_fr_parameter_name.
+  functional inversion heq_add_to_fr_parameter_name
+  ;rewrite <- ?add_to_frame_ok in *
+  ;subst;!intros.
+  simpl.
+  subst.
+  decomp h_and.
+  simpl in heq_CEfetches_othername.
+  rewrite <- Nat.eqb_neq in hneq.
+  rewrite hneq in heq_CEfetches_othername.
+  assumption.  
+Qed.
+
 (* TODO: move this elsewhere *)
 Ltac rename_hyp_list h th :=
   match th with
-    | _ ∨ _ => fresh "h_or"
     | List.In ?e ?l => fresh "h_in_" e "_" l
     | List.In ?e _ => fresh "h_in_" e
     | List.In _ _ => fresh "h_in"
@@ -3009,46 +3118,61 @@ Ltac rename_hyp_list h th :=
 Ltac rename_hyp ::= rename_hyp_list.
 
 
-Lemma build_frame_lparams_correct2 : forall lparam stbl fram_sz res x e,
+Lemma build_frame_lparams_correct2 : forall lparam stbl fram_sz res,
     (*  We need NoDupNames lparam *)
      increasing_order (fst fram_sz)
+    -> (forall nme nme_ofs, CompilEnv.fetches nme (fst fram_sz) = Some nme_ofs -> Zlt nme_ofs (snd fram_sz))
     -> build_frame_lparams stbl fram_sz lparam  =: res
     -> Forall (fun prm => CompilEnv.fetches (parameter_name prm) (fst fram_sz) = None) lparam
-    -> CompilEnv.fetches (parameter_name x) (fst fram_sz) = Some e
-    -> CompilEnv.fetches (parameter_name x) (fst res) = Some e.
+    -> forall e x, CompilEnv.fetches x (fst fram_sz) = Some e
+    -> CompilEnv.fetches x (fst res) = Some e.
 Proof.
-  !intros.
+  !!intros until 2.
+  rename H0 into h_all_lt.
+  !!intros.  
   assert (h:=build_frame_lparams_preserve_increasing_order stbl (fst fram_sz) lparam (snd res) (fst res) (snd fram_sz)).
   replace (fst fram_sz, snd fram_sz) with fram_sz in *;[|destruct fram_sz;auto].
   replace (fst res, snd res) with res in *;[|destruct res;auto].
   specialize (h heq_bld_frm_lparam).
-  assert (increasing_order (fst res) ∧ (∀ nme : idnum, Forall (ord_snd (nme, snd res)) (fst res))).
+  !assert (increasing_order (fst res) ∧ Forall (gt_x_snd_y (snd res)) (fst res)).
   { apply h;auto.
-    intros nme.
-    admit. (* rephrase ord_snd *) }
+    admit. (*consequence of h_all_lt + h_incr_order*) }
   clear h.
-  !destruct H.
+  !!(assert (h_and':=h_and);destruct h_and as [? h_forall_ord]);clear h_and.
   rewrite function_utils.build_frame_lparams_ok in *.
-  revert h_incr_order h_all_lparam e x res heq_bld_frm_lparam heq H H0.
+  revert h_incr_order h_all_lparam res heq_bld_frm_lparam e x heq_CEfetches_x h_incr_order0  h_all h_all_lt.
   !!(functional induction (function_utils.build_frame_lparams stbl fram_sz lparam); try discriminate;
      try rewrite <- ?function_utils.build_frame_lparams_ok in *;intros;up_type).
   - simpl in *.
-    !invclear heq0.
+    !invclear heq.
     assumption.
   - rename x into new_fram_sz.
-    simpl in *.
-    !invclear h_all.
+    !invclear h_all0.
     simpl in *.
     assert (h_incr:increasing_order (fst new_fram_sz)).
     { admit. }
-    assert (h_disjoint:Forall (λ prm : parameter_specification, CompilEnv.fetches (parameter_name prm) (fst new_fram_sz) = None) lparam').
-    { (*TODO: a lemma needing that lparam has no duplicate arg names *)
+    assert (h_disjoint:Forall
+                         (λ prm : parameter_specification, CompilEnv.fetches (parameter_name prm) (fst new_fram_sz) = None)
+                         lparam').
+    { (* TODO: a lemma needing that lparam has no duplicate arg names *)
       admit. }
-    specialize (IHr h_incr h_disjoint).
+    assert (x0 <> nme).
+    { intro abs. 
+      subst.
+      rewrite heq_CEfetches_none in heq_CEfetches_x0.
+      discriminate. }
+    assert (CompilEnv.fetches x0 (fst new_fram_sz) = Some e).
+    { admit. (* because x0 ≠ nme *) }
     eapply IHr;auto.
-    destruct (add_to_frame_correct3 stbl fram_sz nme subtyp_mrk (fst new_fram_sz) (snd new_fram_sz) (parameter_name x0) e);auto.
-    + xxx admit. (* add it in  hyp? *)
-    + destruct new_fram_sz;auto.
+    assert (h_correct3:= add_to_frame_correct3 stbl fram_sz nme).
+    spec 7%nat h_correct3 heq_CEfetches_none.
+    xxx
+    
+
+      ;auto.
+
+
+    admit. (* lemma *)
 Qed.
 
 
