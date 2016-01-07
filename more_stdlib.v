@@ -1,5 +1,20 @@
 Require Import LibHypsNaming Sorted ZArith.
 
+(* my lists *)
+Inductive mypair {A:Type} : Type := specprod : nat -> A -> mypair.
+Notation "[ x '<-' y ]" := (specprod x y) : list_scope.
+Inductive speclist : Type :=  specnil : speclist | speccons : forall {A:Type}, @mypair A -> speclist -> speclist.
+Notation " [ ] " := specnil (format "[ ]") : list_scope.
+Notation " [ x ] " := (speccons x nil) : list_scope.
+Notation " [ x ; .. ; y ] " := (speccons x .. (speccons y specnil) ..) : list_scope.
+Open Scope list_scope.
+Check [1<-true].
+Check [1<-true].
+Check [ [1<-true] ; [2<-4] ].
+
+(* Notation " [ '(' x '<-' x2 ')' ';' .. ';' '(' y '<-' y2 ')' ] " := ((speccons x x2) .. (speccons y y2 specnil) ..) : list_scope. *)
+
+Open Scope list_scope. 
 
 Ltac assert_reduced_body n x H t :=
   match constr:(n,t) with
@@ -27,12 +42,33 @@ Ltac assert_reduced_body n x H t :=
     constr:(fun x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 => H x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 x)
   end.
 
-Ltac spec n H x :=
+Ltac spec_ n H x :=
   let t := type of H in
   let h := fresh H in
   let asserted := assert_reduced_body n x H t in
-  assert (h:= asserted); clear H; rename h into H.
+  specialize asserted.
 
+Ltac spec H p :=
+  match p with
+  | [?n <- ?x] => spec_ n H x
+  end.
+
+Ltac lspec H l :=
+  match l with
+  | specnil => idtac
+  | speccons [?n<-?x] ?l' => spec_ n H x ; lspec H l'
+  end.
+
+(* Tactic Notation "spec" hyp(h) constr(x)  := (spec h x). *)
+Tactic Notation "spec" hyp(h) constr(x)  := (lspec h x).
+
+(* Test:
+Lemma foo: forall P Q (a:nat) (b:bool), (forall x y:bool,forall z t:nat, P x y z t -> Q x z t y) -> False. 
+Proof.
+  intros P Q a b H.
+  spec H [[2<-a] ; [0 <- b]].
+Abort.  
+*)
 
 (* All elements of a sorted list are smaller or equal to the first
    element. If the ordering is reflexive. *)

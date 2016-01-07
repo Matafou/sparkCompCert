@@ -73,7 +73,7 @@ Ltac remove_refl :=
 Ltac eq_same_clear :=
   repeat progress
          (repeat remove_refl;
-           repeat match goal with
+            repeat match goal with
                   | H: ?A = _ , H': ?A = _ |- _ => rewrite H in H'; !inversion H'
                   | H: OK ?A = OK ?B |- _ => !inversion H
                   | H: Some ?A = Some ?B |- _ => !inversion H
@@ -3165,7 +3165,7 @@ Proof.
     { admit. (* because x0 ≠ nme *) }
     eapply IHr;auto.
     assert (h_correct3:= add_to_frame_correct3 stbl fram_sz nme).
-    spec 7%nat h_correct3 heq_CEfetches_none.
+    spec h_correct3 [[7%nat <- heq_CEfetches_none]].
     xxx
     
 
