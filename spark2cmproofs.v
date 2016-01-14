@@ -3070,6 +3070,49 @@ Proof.
         omega.
 Qed.
 
+Lemma add_to_frame_correct4: forall stbl fram_sz parname parsubtype new_fram_sz,
+    increasing_order (fst fram_sz)
+    -> (forall nme nme_ofs, CompilEnv.fetches nme (fst fram_sz) = Some nme_ofs -> Zlt nme_ofs (snd fram_sz))
+    -> add_to_frame stbl fram_sz parname parsubtype =: new_fram_sz
+    -> increasing_order (fst new_fram_sz) ∧ (forall nme nme_ofs, CompilEnv.fetches nme (fst new_fram_sz) = Some nme_ofs -> Zlt nme_ofs (snd new_fram_sz)).
+Proof.
+  !!intros.
+  rewrite add_to_frame_ok in heq_add_to_fr_parname.
+  functional inversion heq_add_to_fr_parname
+  ;rewrite <- ?add_to_frame_ok in *
+  ;subst;!intros.
+  subst new_size.
+  subst new_cenv.
+  simpl.
+  split.
+  - red.
+    apply Sorted_StronglySorted.
+    + red.
+      unfold gt_snd.
+      intros [a a'] [b b'] [c c'] H H1;simpl in *.
+      transitivity b';auto.
+    + apply Sorted_LocallySorted_iff.
+      destruct cenv.
+      * constructor 2.
+      * constructor 3.
+        -- apply Sorted_LocallySorted_iff.
+           apply StronglySorted_Sorted.
+           apply h_incr_order.
+        -- destruct p;simpl.
+           unfold gt_snd.
+           simpl snd at 1.
+           eapply H0 with i;simpl;eauto.
+           rewrite Nat.eqb_refl;reflexivity.
+  - intros nme nme_ofs H.
+    assert (x>0) by (unshelve eapply compute_size_pos;eauto).
+    destruct (nme =? parname)%nat.
+    * inversion H;subst.
+      omega.
+    * specialize (H0 _ _ H).
+      simpl in H0.
+      omega.
+Qed.
+
 Lemma add_to_frame_correct4: forall stbl fram_sz parameter_name parsubtype new_fr new_sz,
     CompilEnv.fetches parameter_name (fst fram_sz) = None
     -> add_to_frame stbl fram_sz parameter_name parsubtype =: (new_fr, new_sz)
@@ -3120,25 +3163,29 @@ Ltac rename_hyp ::= rename_hyp_list.
 
 Lemma build_frame_lparams_correct2 : forall lparam stbl fram_sz res,
     (*  We need NoDupNames lparam *)
+    (* fram_sz is wellformed *)
      increasing_order (fst fram_sz)
     -> (forall nme nme_ofs, CompilEnv.fetches nme (fst fram_sz) = Some nme_ofs -> Zlt nme_ofs (snd fram_sz))
+    (* res is the new frame build from parameters on top of fram_sz *)
     -> build_frame_lparams stbl fram_sz lparam  =: res
+    (* the parameters names were not present in fram_sz before *)
     -> Forall (fun prm => CompilEnv.fetches (parameter_name prm) (fst fram_sz) = None) lparam
+    (* then for all x-> e in fram_sz, x->e is still in res *)
     -> forall e x, CompilEnv.fetches x (fst fram_sz) = Some e
-    -> CompilEnv.fetches x (fst res) = Some e.
+                   -> CompilEnv.fetches x (fst res) = Some e.
 Proof.
   !!intros until 2.
   rename H0 into h_all_lt.
-  !!intros.  
+  !!intros.    
   assert (h:=build_frame_lparams_preserve_increasing_order stbl (fst fram_sz) lparam (snd res) (fst res) (snd fram_sz)).
   replace (fst fram_sz, snd fram_sz) with fram_sz in *;[|destruct fram_sz;auto].
   replace (fst res, snd res) with res in *;[|destruct res;auto].
   specialize (h heq_bld_frm_lparam).
   !assert (increasing_order (fst res) ∧ Forall (gt_x_snd_y (snd res)) (fst res)).
   { apply h;auto.
-    admit. (*consequence of h_all_lt + h_incr_order*) }
+    admit. } (*consequence of h_all_lt + h_incr_order*)
   clear h.
-  !!(assert (h_and':=h_and);destruct h_and as [? h_forall_ord]);clear h_and.
+  !!destruct h_and as [? h_forall_ord].
   rewrite function_utils.build_frame_lparams_ok in *.
   revert h_incr_order h_all_lparam res heq_bld_frm_lparam e x heq_CEfetches_x h_incr_order0  h_all h_all_lt.
   !!(functional induction (function_utils.build_frame_lparams stbl fram_sz lparam); try discriminate;
@@ -3146,13 +3193,15 @@ Proof.
   - simpl in *.
     !invclear heq.
     assumption.
-  - rename x into new_fram_sz.
+  - rename x into nme_fram_sz.
     !invclear h_all0.
     simpl in *.
-    assert (h_incr:increasing_order (fst new_fram_sz)).
-    { admit. }
+    assert (h_incr:increasing_order (fst nme_fram_sz)).
+    { unfold increasing_order.
+      
+      admit. }
     assert (h_disjoint:Forall
-                         (λ prm : parameter_specification, CompilEnv.fetches (parameter_name prm) (fst new_fram_sz) = None)
+                         (λ prm : parameter_specification, CompilEnv.fetches (parameter_name prm) (fst nme_fram_sz) = None)
                          lparam').
     { (* TODO: a lemma needing that lparam has no duplicate arg names *)
       admit. }
@@ -3161,12 +3210,218 @@ Proof.
       subst.
       rewrite heq_CEfetches_none in heq_CEfetches_x0.
       discriminate. }
-    assert (CompilEnv.fetches x0 (fst new_fram_sz) = Some e).
+    assert (CompilEnv.fetches x0 (fst nme_fram_sz) = Some e).
     { admit. (* because x0 ≠ nme *) }
     eapply IHr;auto.
     assert (h_correct3:= add_to_frame_correct3 stbl fram_sz nme).
+    destruct nme_fram_sz.
+    spec h_correct3 [[5%nat <- h_incr_order];[5%nat <- h_all_lt]; [5%nat <- heq_CEfetches_none]].
+    
+    spec h_correct3 [[0%nat <- subtyp_mrk]; [0%nat <- s]; [0%nat <- z]; [1%nat <- e]].
+
+
+    spec h_correct3 [[5%nat <- heq_add_to_fr_nme]; [3%nat <- heq_CEfetches_none];[2%nat <- h_all_lt]; [1%nat <- h_incr_order]].
+    spec h_correct3 [[5%nat <- heq_add_to_fr_nme]; [3%nat <- heq_CEfetches_none];[2%nat <- h_all_lt]; [1%nat <- h_incr_order]].
+    
+    (* should be specialize with (1:= h_incr_order) (2:=h_all_lt) (3:=heq_CEfetches_none) (4:=heq_add_to_fr_nme). *)
+    abstracted as h_correct3'
+                  eapply #h_correct3 with (1:= h_incr_order). (2:=h_all_lt) (3:=heq_CEfetches_none) (4:=heq_add_to_fr_nme).
++(*     aspecialize h_correct3 by eapply #h_correct3 with (1:= h_incr_order) (2:=h_all_lt) (3:=heq_CEfetches_none) (4:=heq_add_to_fr_nme). *)
+    abstracted as h_correct3' (eapply # add_to_frame_correct3 with (7:= h_incr_order)). (2:=h_all_lt) (3:=heq_CEfetches_none) (4:=heq_add_to_fr_nme)).
+(**********************************************************************)
+Open Scope nat_scope.
+
+Abort.
+Definition argindex(t : Type)(Admit : forall T, T) : t.
+Proof.
+  intros.
+  apply Admit.
+Qed.
+
+Ltac remove_argindexes n f :=
+  match f with
+  | context[?C] =>
+    lazymatch C with
+      (argindex (let a := n in ?T) _) =>
+      lazymatch (eval pattern C in f) with
+        ?F _ =>
+        constr:(ltac:(
+                  (*Try renaming any hyp a so that there is no clash.  The
+                  rename will not be visible outside this constr.*)
+                  tryif is_var a then (let a' := fresh in rename a into a') else idtac;
+                  let r := constr:(
+                            fun (a : T) =>
+                              ltac:(let b := (eval cbn beta in (F a)) in
+                                    let r := remove_argindexes (S n) b in
+                                    exact r)) in exact r))
+      end
+    end
+  | context[?C] =>
+    (*If the above case failed, it was probably because of a clash between a
+    and something in T.  One would not expect this to happen, considering how
+    a encloses T without binding anything in it, but it does for some
+    reason.  Probably a Coq bug?  So, in this case, we just use a fresh name.*)
+    lazymatch C with
+      (argindex (let a := n in ?T) _) =>
+      lazymatch (eval pattern C in f) with
+        ?F _ =>
+        let v := fresh a in
+        constr:(fun (v : T) =>
+                  ltac:(let b := (eval cbn beta in (F v)) in
+                        let r := remove_argindexes (S n) b in
+                        exact r))
+      end
+    end
+  | context[argindex (let _ := n in _)] =>
+    fail 1 "Something unexpectedly went wrong:" n f
+  | context[argindex (let _ := _:nat in _)] =>
+    (*in case of missing argindex numbers, due to specializing*)
+    remove_argindexes (S n) f
+  | context[argindex] =>
+    fail 1 "Did you remember to use the abstractable prefix operator '#'?"
+  | _ => f
+  end.
+
+Ltac label_args n T :=
+  lazymatch T with
+  | (forall (a : ?T), @?b a) => 
+    constr:(forall (a : (let a:=n in T)), 
+               ltac:(let b' := eval cbn beta in (b a) in 
+                     let c:= label_args (S n) b' in exact c))
+  | _ => T
+  end.
+
+Tactic Notation "abstracted" "as" ident(result) tactic3(tac) :=
+  refine (let result := _ in _);
+  let dummy :=
+      constr:(
+        ltac:(
+          let Admit := fresh in
+          intro Admit;
+          let f := constr:(
+                      ltac:(unshelve tac;
+                            [apply (@argindex _ Admit)..])) in
+          let r := remove_argindexes 1 f in
+          let r' := eval cbn beta zeta in r in
+          instantiate (1 := r') in (Value of result);
+          exact I
+        ): (forall T, T) -> True) in idtac.
+
+(*Unfortunately, we have to clutter up the syntax even more with a first pass
+over the function to be abstracted in order to label its args*)
+Ltac abstractable f :=
+  constr:(ltac:(let ft := type of f in
+                let laft := label_args 1 ft in
+                let F := fresh in
+                pose (f : laft) as F;
+                (*this appears fragile - various other combos collapse to ft
+                in the result*)
+                exact F)).
+
+(*but we can minimize that clutter to a single prefix operator:*)
+Notation "# f" := (ltac:(let f' := abstractable f in exact f')) (at level 0, only parsing).
+
+(**********************************************************************)
+Module T1.
+  Variable P : nat -> nat -> Type.
+  Variable Q : nat -> nat -> nat -> Type.
+  Variable R : Type.
+
+  Goal forall a b c, Q a b c -> (forall (x t y z : nat)(p : P x t)(q : Q x y z), R) -> True.
+  Proof.
+    intros a b c H0 H.
+    abstracted as H' eapply #H with (2 := H0).
+    exact I.
+  Qed.
+
+  Goal forall a b, P a b -> (forall (x t y z : nat), P x t -> P y z -> Q x y z -> R) -> True.
+  Proof.
+    intros a b H0 H.
+    abstracted as H1 eapply #H with (1 := H0).
+    abstracted as H2 eapply #H with (2 := H0).
+    Fail abstracted as H3 eapply H with (1 := H0) (2 := H0).
+    abstracted as H3 eapply #H with (1 := H0) (2 := H0).
+    exact I.
+  Qed.
+
+
+  Goal forall a b c, Q a b c -> (forall (x t y z : nat)(p : P x t)(q : Q x y z), R) -> True.
+  Proof.
+    intros a b c H0 H.
+    abstracted as H' (eapply #H with (2 := H0)).
+    exact I.
+  Qed.
+End T1.
+
+Variable P : nat -> Type.
+Variable Q : nat -> nat -> Type.
+Variable R : Type.
+
+Goal forall A B,
+    P A ->
+    Q A B ->
+    (forall x y t  : nat,
+        P x ->
+        Q x y ->
+        R)
+    -> True.
+Proof.
+  intros A B H H1 H2.
+  assert (H3:=fun t => H2 _ _ t H H1).
+  (* but *)
+  let foo := abstractable H2 in idtac foo.
+  abstracted as H4 eapply #H2 with (2 := H) (3 := H1).
+  exact I.
+Qed.
+
+Goal forall A B,
+    P A B ->
+    (forall (x t y z : nat)(x1 t1 y1 z1 : nat),
+        P x t ->
+        P y z ->
+        Q x y z ->
+        P x1 t1 ->
+        P y1 z1 ->
+        Q x1 y1 z1 ->
+        R)
+    -> True.
+Proof.
+  intros A B H0 H.
+  abstracted as H1 eapply #H with (1 := H0).
+  Show Proof.
+  clearbody H1.
+(*   abstracted as H2 eapply #H with (2 := H0). *)
+(*   Fail abstracted as H3 eapply H with (1 := H0) (2 := H0). *)
+(*   abstracted as H3 eapply #H with (1 := H0) (2 := H0) (4:=H0) (5:=H0). *)
+  exact I.
+Qed.
+    abstracted as h_correct3'
+                    eapply #h_correct3 with (3:=heq_CEfetches_none).  (2:=h_all_lt). (1:= h_incr_order). (3:=heq_CEfetches_none) (4:=heq_add_to_fr_nme).
     spec h_correct3 [[7%nat <- heq_CEfetches_none]].
     xxx
+
+
+
+
++    destruct new_fram_sz.
++
++    let foo := (abstractable add_to_frame_correct3) in idtac foo.
++
++    Debug Off.
++    abstracted as h_correct3 (eapply # add_to_frame_correct3 with (1:= h_incr_order) (2:=h_all_lt) (3:=heq_CEfetches_none) (4:=heq_add_to_fr_nme)).
++
+     assert (h_correct3:= add_to_frame_correct3 stbl fram_sz nme).
+-    spec h_correct3 [[7%nat <- heq_CEfetches_none]].
++    destruct new_fram_sz.
++    (* should be specialize with (1:= h_incr_order) (2:=h_all_lt) (3:=heq_CEfetches_none) (4:=heq_add_to_fr_nme). *)
++    abstracted as h_correct3'
++                    eapply #h_correct3 with (1:= h_incr_order) (2:=h_all_lt) (3:=heq_CEfetches_none) (4:=heq_add_to_fr_nme).
++(*     aspecialize h_correct3 by eapply #h_correct3 with (1:= h_incr_order) (2:=h_all_lt) (3:=heq_CEfetches_none) (4:=heq_add_to_fr_nme). *)
++    specializes h: (>> h_correct3 h_incr_order h_all_lt heq_CEfetches_none heq_add_to_fr_nme).
++    assert(h_correct3':=
++             fun othername e =>
++               h_correct3 _ _ _ othername e  h_incr_order h_all_lt heq_CEfetches_none heq_add_to_fr_nme);
++      clear h_correct3; rename h_correct3' into h_correct3.
     
 
       ;auto.
