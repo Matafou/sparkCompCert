@@ -2,7 +2,7 @@ Require Import
  ZArith function_utils LibHypsNaming Errors spark2Cminor Cminor
  symboltable semantics semantics_properties Sorted Relations
  compcert.lib.Integers compcert_utils more_stdlib.
-
+Require Import SetoidList.
 Require Ctypes.
 Import Symbol_Table_Module Memory.
 
@@ -55,6 +55,8 @@ Ltac up_type := map_all_hyps_rev move_up_types.
 (** Hypothesis renaming stuff from other files *)
 Ltac rename_hyp_prev h th :=
   match th with
+  | NoDupA _ ?l => fresh "h_NoDupA_" l
+  | NoDupA _ _ => fresh "h_NoDupA"
   | _ => (semantics_properties.rename_hyp1 h th)
   | _ => (spark2Cminor.rename_hyp1 h th)
   | _ => (compcert_utils.rename_hyp1 h th)
@@ -1119,6 +1121,9 @@ Ltac rename_hyp4 h th :=
   end.
 Ltac rename_hyp ::= rename_hyp4.
 
+
+Definition eq_param_name p1 p2 := p1.(parameter_name) = p2.(parameter_name).
+
 (** Property of the translation: Since chain variables have always zero
    offset, the offset of a variable in CE is the same as its offset in
    CMinor memory. *)
@@ -1524,6 +1529,81 @@ Proof.
     rewrite <- beq_nat_false_iff in hneq.
     rewrite hneq in heq.
     eapply IHa;eauto.
+Qed.
+
+
+Lemma fetches_none_notin: ∀ (a : localframe) (id : idnum) (st : CompilEnv.V), CompilEnv.fetches id a = None → ~List.In (id, st) a.
+Proof.
+  !intros.
+  !!(functional induction (CompilEnv.fetches id a);intros; try discriminate).
+  - specialize (IHo heq_CEfetches_id_a).
+    intro abs.
+    simpl in *.
+    !destruct abs.
+    + inversion heq;subst.
+      rewrite <- beq_nat_refl in hbeqnat_false.
+      discriminate.
+    + contradiction.
+  - apply in_nil.
+Qed.
+
+Lemma fetches_none_notinA: ∀ (a : localframe) (id : idnum) (st : CompilEnv.V), CompilEnv.fetches id a = None → ~InA (λ x1 y : idnum * CompilEnv.V, fst x1 = fst y) (id, st) a.
+Proof.
+  !!intros until 0.
+  !!(functional induction (CompilEnv.fetches id a);intros; try discriminate).
+  - specialize (IHo heq_CEfetches_id_s').
+    intro abs.
+    !inversion abs.
+    + simpl in *.
+      subst.
+      rewrite <- beq_nat_refl in hbeqnat_false.
+      discriminate.
+    + contradiction.
+  - rewrite InA_nil.
+    red;trivial.
+Qed.
+
+Lemma In_fetches_NoDup: forall l id st,
+    NoDupA (fun x y => fst x = fst y) l ->
+    List.In (id,st) l ->
+    CompilEnv.fetches id l = Some st.
+Proof.
+  intro l.
+  !induction l;simpl;!intros;try contradiction.
+  !destruct h_or;subst.
+  - rewrite <- beq_nat_refl.
+    reflexivity.
+  - destruct a.
+    assert (hneq:i<>id).
+    { intro abs.
+      subst.
+      inversion h_NoDupA;subst.
+      absurd (InA (λ x y : idnum * CompilEnv.V, fst x = fst y) (id, t) l);auto.
+      apply InA_alt.
+      exists (id, st).
+      split;auto. }
+    apply not_eq_sym in hneq.
+    rewrite <- beq_nat_false_iff in hneq.
+    rewrite hneq.
+    apply IHl;auto.
+    inversion h_NoDupA;auto.
+Qed.
+
+Lemma add_to_frame_nodup: forall stbl subtyp_mrk new_sz nme fram_sz new_fram,
+    CompilEnv.fetches nme (fst fram_sz) = None
+    -> add_to_frame stbl fram_sz nme subtyp_mrk = OK (new_fram, new_sz)
+    -> NoDupA (λ x1 y : idnum * CompilEnv.V, fst x1 = fst y) (fst fram_sz)
+    -> NoDupA (λ x1 y : idnum * CompilEnv.V, fst x1 = fst y) new_fram.
+Proof.
+  !!intros until 0.
+  rewrite add_to_frame_ok.
+  !!functional induction (function_utils.add_to_frame stbl fram_sz nme subtyp_mrk);simpl;!intros;
+    try discriminate.
+  !invclear heq.
+  constructor 2.
+  - eapply fetches_none_notinA with (st:=sz) in heq_CEfetches_nme_cenv .
+    assumption.
+  - assumption.
 Qed.
 
 Lemma fetch_In : forall a id st,
@@ -3171,18 +3251,25 @@ Ltac rename_hyp_list h th :=
     | List.In ?e ?l => fresh "h_in_" e "_" l
     | List.In ?e _ => fresh "h_in_" e
     | List.In _ _ => fresh "h_in"
+    | InA _ ?e ?l => fresh "h_inA_" e "_" l
+    | InA _ ?e _ => fresh "h_inA_" e
+    | InA _ _ _ => fresh "h_inA"
     | @Forall _ _ ?l => fresh "h_all_" l
     | @Forall _ _ _ => fresh "h_all"
+    | not ?th' => let th'_hyp := rename_hyp_list h th' in
+                  fresh "NOT_" th'_hyp
     | _ => rename_hyp_overf h th
   end.
 
 Ltac rename_hyp ::= rename_hyp_list.
 
-
+(* xxx We need NoDupNames lparam *)
 Lemma build_frame_lparams_correct2 : forall lparam stbl fram_sz res,
-    (*  We need NoDupNames lparam *)
+    (* No argument with same name *)
+    NoDupA eq_param_name lparam ->
+    NoDupA (λ x1 y : idnum * CompilEnv.V, fst x1 = fst y) (fst fram_sz)
     (* fram_sz is wellformed *)
-    increasing_order (fst fram_sz)
+    -> increasing_order (fst fram_sz)
     -> upper_bound (fst fram_sz) (snd fram_sz)
     (* res is the new frame build from parameters on top of fram_sz *)
     -> build_frame_lparams stbl fram_sz lparam  =: res
@@ -3194,14 +3281,28 @@ Lemma build_frame_lparams_correct2 : forall lparam stbl fram_sz res,
 Proof.
 (*   !!intros until 2. *)
 (*   rename H0 into h_all_lt. *)
-  !!intros.    
+  !!intros.
   assert (h:=build_frame_lparams_preserve_increasing_order stbl (fst fram_sz) lparam (snd res) (fst res) (snd fram_sz)).
   replace (fst fram_sz, snd fram_sz) with fram_sz in *;[|destruct fram_sz;auto].
   replace (fst res, snd res) with res in *;[|destruct res;auto].
+  !assert ((fst fram_sz, snd fram_sz) = fram_sz).
+  { destruct fram_sz;auto. }
+  setoid_rewrite heq in h.
   specialize (h heq_bld_frm_lparam).
   !assert (increasing_order (fst res) ∧ Forall (gt_x_snd_y (snd res)) (fst res)).
-  { apply h;auto.
-    admit. } (*consequence of h_all_lt + h_incr_order*)
+  {
+    !assert (NoDupA (λ x1 y : idnum * CompilEnv.V, fst x1 = fst y) (fst res)).
+    { admit. (* property of build_frame_lparams and NoDupA *) }
+    apply h;auto.
+    apply Forall_forall.
+    !intros .
+    unfold upper_bound in h_upb.
+    apply h_upb with (nme:=(fst x0)).
+    specialize (h_upb (fst x0) (snd x0)).
+    apply In_fetches_NoDup.
+    - assumption.
+    - replace (fst x0, snd x0) with x0;auto.
+      destruct x0;simpl;auto. }
   clear h.
   !!destruct h_and as [? h_forall_ord].
   rewrite function_utils.build_frame_lparams_ok in *.
@@ -3209,7 +3310,7 @@ Proof.
   !!(functional induction (function_utils.build_frame_lparams stbl fram_sz lparam); try discriminate;
      try rewrite <- ?function_utils.build_frame_lparams_ok in *;intros;up_type).
   - simpl in *.
-    !invclear heq.
+    !invclear heq0.
     assumption.
   - rename x into nme_fram_sz.
     !invclear h_all0.
@@ -3220,6 +3321,10 @@ Proof.
     assert (h_correct3:= λ typename, add_to_frame_correct3 stbl fram_sz nme subtyp_mrk new_fram new_sz
                                                            typename e h_incr_order h_upb heq_CEfetches_none).
     eapply IHr;auto.
+    { inversion h_NoDupA_lparam.
+      assumption. }
+    { simpl.
+      eapply add_to_frame_nodup;eauto. }
     simpl in *.
     apply Forall_forall.
     !!intros prmspec ?.
@@ -3227,20 +3332,18 @@ Proof.
     specialize (h_all_lparam' prmspec h_in_prmspec_lparam').
     up_type.
     eapply add_to_frame_correct_none with (parname:=nme);eauto.
-    
-    
-    
-    admit.
+    !inversion h_NoDupA_lparam.
+    intro abs.
+    subst nme.
+    rewrite InA_alt in NOT_h_inA.
+    apply NOT_h_inA. clear NOT_h_inA.
+    exists prmspec.
+    unfold eq_param_name;simpl.
+    split;auto.
 Admitted.
 
-    spec h_correct3 [[5%nat <- heq_add_to_fr_nme]; [3%nat <- heq_CEfetches_none];[2%nat <- h_all_lt]; [1%nat <- h_incr_order]].
-    spec h_correct3 [[5%nat <- heq_add_to_fr_nme]; [3%nat <- heq_CEfetches_none];[2%nat <- h_all_lt]; [1%nat <- h_incr_order]].
-    
-    (* should be specialize with (1:= h_incr_order) (2:=h_all_lt) (3:=heq_CEfetches_none) (4:=heq_add_to_fr_nme). *)
-    abstracted as h_correct3'
-                  eapply #h_correct3 with (1:= h_incr_order). (2:=h_all_lt) (3:=heq_CEfetches_none) (4:=heq_add_to_fr_nme).
-+(*     aspecialize h_correct3 by eapply #h_correct3 with (1:= h_incr_order) (2:=h_all_lt) (3:=heq_CEfetches_none) (4:=heq_add_to_fr_nme). *)
-    abstracted as h_correct3' (eapply # add_to_frame_correct3 with (7:= h_incr_order)). (2:=h_all_lt) (3:=heq_CEfetches_none) (4:=heq_add_to_fr_nme)).
+
+
 (**********************************************************************)
 Open Scope nat_scope.
 
