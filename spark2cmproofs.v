@@ -1606,15 +1606,6 @@ Proof.
   - assumption.
 Qed.
 
-Lemma fetch_In : forall a id st,
-    CompilEnv.fetch id a = Some st ->
-    List.In (id,st) (CompilEnv.store_of a).
-Proof.
-  !intros.
-  unfold CompilEnv.fetch in heq_CEfetch_id_a.
-  apply fetches_In.
-  assumption.
-Qed.
 
 
 Ltac rename_hyp_incro h th :=
@@ -3244,10 +3235,18 @@ Proof.
 Qed.
 
 
+Definition fresh_params lparam (fr:localframe) :=
+  forall prm, List.In prm lparam
+              -> CompilEnv.fetches (prm.(parameter_name)) fr = None.
+
+
 
 (* TODO: move this elsewhere *)
 Ltac rename_hyp_list h th :=
   match th with
+    | fresh_params ?l ?fr => fresh "h_fresh_prms_" l "_" fr
+    | fresh_params ?l _ => fresh "h_fresh_prms_" l
+    | fresh_params _ _ => fresh "h_fresh_prms"
     | List.In ?e ?l => fresh "h_in_" e "_" l
     | List.In ?e _ => fresh "h_in_" e
     | List.In _ _ => fresh "h_in"
@@ -3262,12 +3261,103 @@ Ltac rename_hyp_list h th :=
   end.
 
 Ltac rename_hyp ::= rename_hyp_list.
+Ltac fold_pairs H :=
+  match type of H with
+    context C [(fst ?x,snd ?x)] => replace (fst x,snd x) with x in H; [ | destruct x;reflexivity]
+  end.
 
-(* xxx We need NoDupNames lparam *)
+Lemma add_to_frame_fresh: forall stbl fram_sz lparam' subtyp_mrk prm x,
+    fresh_params (prm::lparam') (fst fram_sz)
+    -> NoDupA eq_param_name (prm::lparam')
+    -> add_to_frame stbl fram_sz (parameter_name prm) subtyp_mrk =: x
+    -> fresh_params lparam' (fst x).
+Proof.
+  !!intros until prm. 
+  remember (parameter_name prm) as prn_nme.
+  rewrite add_to_frame_ok.
+  !!(functional induction (function_utils.add_to_frame stbl fram_sz prn_nme subtyp_mrk);intros;try discriminate).
+  !invclear heq.
+  red.
+  !intros.
+  !assert (parameter_name prm0 <> parameter_name prm).
+  { intro abs.
+    !inversion h_NoDupA.
+    apply NOT_h_inA_prm_lparam'.
+    rewrite InA_alt.
+    exists prm0.
+    split;auto.
+    red.
+    symmetry;auto. }
+  simpl.
+  rewrite <- Nat.eqb_neq in hneq.
+  rewrite hneq.
+  simpl in hneq.
+  unfold fresh_params in h_fresh_prms.
+  apply h_fresh_prms.
+  simpl.
+  right;assumption.
+Qed.        
+
+Lemma build_frame_lparams_nodup: forall stbl lparam fram_sz res,
+    increasing_order (fst fram_sz)
+    -> NoDupA eq_param_name lparam    
+    -> fresh_params lparam (fst fram_sz)
+    -> upper_bound (fst fram_sz) (snd fram_sz)
+    -> build_frame_lparams stbl fram_sz lparam = OK res
+    -> NoDupA (λ x1 y : idnum * CompilEnv.V, fst x1 = fst y) (fst fram_sz)
+    -> NoDupA (λ x1 y : idnum * CompilEnv.V, fst x1 = fst y) (fst res).
+Proof.
+  !!intros until fram_sz.
+  rewrite build_frame_lparams_ok.
+  !!functional induction (function_utils.build_frame_lparams stbl fram_sz lparam);simpl;!intros;
+    try discriminate;try rewrite <- ?build_frame_lparams_ok in *.
+  - !invclear heq.
+    assumption.
+  - apply IHr.
+    + assert (h:=build_frame_lparams_preserve_increasing_order stbl (fst x) lparam' (snd res) (fst res) (snd x));auto.      
+      repeat fold_pairs h.
+      eapply add_to_frame_correct4;eauto.
+    + inversion h_NoDupA.
+      assumption.
+    + !assert (fresh_params lparam' (fst fram_sz)).
+      { red in h_fresh_prms.
+        red;intros.
+        apply h_fresh_prms.
+        simpl.
+        right.
+        assumption. }
+      eapply add_to_frame_fresh;eauto.
+    + eapply add_to_frame_correct4;eauto.
+    + assumption.
+    + replace x with (fst x,snd x) in heq_add_to_fr_nme.
+      * eapply add_to_frame_nodup;eauto.
+        match type of h_fresh_prms with
+        | fresh_params (?prm::_) _ => specialize (h_fresh_prms prm)
+        end.
+        apply h_fresh_prms.
+        left.
+        reflexivity.
+      * destruct x;auto.
+Qed.
+        
+        
+ 
+Lemma fetch_In : forall a id st,
+    CompilEnv.fetch id a = Some st ->
+    List.In (id,st) (CompilEnv.store_of a).
+Proof.
+  !intros.
+  unfold CompilEnv.fetch in heq_CEfetch_id_a.
+  apply fetches_In.
+  assumption.
+Qed.
+
+
 Lemma build_frame_lparams_correct2 : forall lparam stbl fram_sz res,
     (* No argument with same name *)
-    NoDupA eq_param_name lparam ->
-    NoDupA (λ x1 y : idnum * CompilEnv.V, fst x1 = fst y) (fst fram_sz)
+    NoDupA eq_param_name lparam
+    -> fresh_params lparam (fst fram_sz)
+    -> NoDupA (λ x1 y : idnum * CompilEnv.V, fst x1 = fst y) (fst fram_sz)
     (* fram_sz is wellformed *)
     -> increasing_order (fst fram_sz)
     -> upper_bound (fst fram_sz) (snd fram_sz)
@@ -3279,20 +3369,14 @@ Lemma build_frame_lparams_correct2 : forall lparam stbl fram_sz res,
     -> forall e x, CompilEnv.fetches x (fst fram_sz) = Some e
                    -> CompilEnv.fetches x (fst res) = Some e.
 Proof.
-(*   !!intros until 2. *)
-(*   rename H0 into h_all_lt. *)
   !!intros.
   assert (h:=build_frame_lparams_preserve_increasing_order stbl (fst fram_sz) lparam (snd res) (fst res) (snd fram_sz)).
   replace (fst fram_sz, snd fram_sz) with fram_sz in *;[|destruct fram_sz;auto].
   replace (fst res, snd res) with res in *;[|destruct res;auto].
-  !assert ((fst fram_sz, snd fram_sz) = fram_sz).
-  { destruct fram_sz;auto. }
-  setoid_rewrite heq in h.
   specialize (h heq_bld_frm_lparam).
   !assert (increasing_order (fst res) ∧ Forall (gt_x_snd_y (snd res)) (fst res)).
-  {
-    !assert (NoDupA (λ x1 y : idnum * CompilEnv.V, fst x1 = fst y) (fst res)).
-    { admit. (* property of build_frame_lparams and NoDupA *) }
+  { !assert (NoDupA (λ x1 y : idnum * CompilEnv.V, fst x1 = fst y) (fst res)).
+    { eapply build_frame_lparams_nodup;eauto. }
     apply h;auto.
     apply Forall_forall.
     !intros .
@@ -3310,7 +3394,7 @@ Proof.
   !!(functional induction (function_utils.build_frame_lparams stbl fram_sz lparam); try discriminate;
      try rewrite <- ?function_utils.build_frame_lparams_ok in *;intros;up_type).
   - simpl in *.
-    !invclear heq0.
+    !invclear heq.
     assumption.
   - rename x into nme_fram_sz.
     !invclear h_all0.
@@ -3321,230 +3405,29 @@ Proof.
     assert (h_correct3:= λ typename, add_to_frame_correct3 stbl fram_sz nme subtyp_mrk new_fram new_sz
                                                            typename e h_incr_order h_upb heq_CEfetches_none).
     eapply IHr;auto.
-    { inversion h_NoDupA_lparam.
-      assumption. }
-    { simpl.
-      eapply add_to_frame_nodup;eauto. }
-    simpl in *.
-    apply Forall_forall.
-    !!intros prmspec ?.
-    rewrite Forall_forall in h_all_lparam'.
-    specialize (h_all_lparam' prmspec h_in_prmspec_lparam').
-    up_type.
-    eapply add_to_frame_correct_none with (parname:=nme);eauto.
-    !inversion h_NoDupA_lparam.
-    intro abs.
-    subst nme.
-    rewrite InA_alt in NOT_h_inA.
-    apply NOT_h_inA. clear NOT_h_inA.
-    exists prmspec.
-    unfold eq_param_name;simpl.
-    split;auto.
-Admitted.
-
-
-
-(**********************************************************************)
-Open Scope nat_scope.
-
-Abort.
-Definition argindex(t : Type)(Admit : forall T, T) : t.
-Proof.
-  intros.
-  apply Admit.
+    + inversion h_NoDupA_lparam.
+      assumption.
+    + eapply add_to_frame_fresh;eauto.
+    + simpl.
+      eapply add_to_frame_nodup;eauto.
+    + simpl in *.
+      apply Forall_forall.
+      !!intros prmspec ?.
+      rewrite Forall_forall in h_all_lparam'.
+      specialize (h_all_lparam' prmspec h_in_prmspec_lparam').
+      up_type.
+      eapply add_to_frame_correct_none with (parname:=nme);eauto.
+      !inversion h_NoDupA_lparam.
+      intro abs.
+      subst nme.
+      rewrite InA_alt in NOT_h_inA.
+      apply NOT_h_inA. clear NOT_h_inA.
+      exists prmspec.
+      unfold eq_param_name;simpl.
+      split;auto.
 Qed.
 
-Ltac remove_argindexes n f :=
-  match f with
-  | context[?C] =>
-    lazymatch C with
-      (argindex (let a := n in ?T) _) =>
-      lazymatch (eval pattern C in f) with
-        ?F _ =>
-        constr:(ltac:(
-                  (*Try renaming any hyp a so that there is no clash.  The
-                  rename will not be visible outside this constr.*)
-                  tryif is_var a then (let a' := fresh in rename a into a') else idtac;
-                  let r := constr:(
-                            fun (a : T) =>
-                              ltac:(let b := (eval cbn beta in (F a)) in
-                                    let r := remove_argindexes (S n) b in
-                                    exact r)) in exact r))
-      end
-    end
-  | context[?C] =>
-    (*If the above case failed, it was probably because of a clash between a
-    and something in T.  One would not expect this to happen, considering how
-    a encloses T without binding anything in it, but it does for some
-    reason.  Probably a Coq bug?  So, in this case, we just use a fresh name.*)
-    lazymatch C with
-      (argindex (let a := n in ?T) _) =>
-      lazymatch (eval pattern C in f) with
-        ?F _ =>
-        let v := fresh a in
-        constr:(fun (v : T) =>
-                  ltac:(let b := (eval cbn beta in (F v)) in
-                        let r := remove_argindexes (S n) b in
-                        exact r))
-      end
-    end
-  | context[argindex (let _ := n in _)] =>
-    fail 1 "Something unexpectedly went wrong:" n f
-  | context[argindex (let _ := _:nat in _)] =>
-    (*in case of missing argindex numbers, due to specializing*)
-    remove_argindexes (S n) f
-  | context[argindex] =>
-    fail 1 "Did you remember to use the abstractable prefix operator '#'?"
-  | _ => f
-  end.
 
-Ltac label_args n T :=
-  lazymatch T with
-  | (forall (a : ?T), @?b a) => 
-    constr:(forall (a : (let a:=n in T)), 
-               ltac:(let b' := eval cbn beta in (b a) in 
-                     let c:= label_args (S n) b' in exact c))
-  | _ => T
-  end.
-
-Tactic Notation "abstracted" "as" ident(result) tactic3(tac) :=
-  refine (let result := _ in _);
-  let dummy :=
-      constr:(
-        ltac:(
-          let Admit := fresh in
-          intro Admit;
-          let f := constr:(
-                      ltac:(unshelve tac;
-                            [apply (@argindex _ Admit)..])) in
-          let r := remove_argindexes 1 f in
-          let r' := eval cbn beta zeta in r in
-          instantiate (1 := r') in (Value of result);
-          exact I
-        ): (forall T, T) -> True) in idtac.
-
-(*Unfortunately, we have to clutter up the syntax even more with a first pass
-over the function to be abstracted in order to label its args*)
-Ltac abstractable f :=
-  constr:(ltac:(let ft := type of f in
-                let laft := label_args 1 ft in
-                let F := fresh in
-                pose (f : laft) as F;
-                (*this appears fragile - various other combos collapse to ft
-                in the result*)
-                exact F)).
-
-(*but we can minimize that clutter to a single prefix operator:*)
-Notation "# f" := (ltac:(let f' := abstractable f in exact f')) (at level 0, only parsing).
-
-(**********************************************************************)
-Module T1.
-  Variable P : nat -> nat -> Type.
-  Variable Q : nat -> nat -> nat -> Type.
-  Variable R : Type.
-
-  Goal forall a b c, Q a b c -> (forall (x t y z : nat)(p : P x t)(q : Q x y z), R) -> True.
-  Proof.
-    intros a b c H0 H.
-    abstracted as H' eapply #H with (2 := H0).
-    exact I.
-  Qed.
-
-  Goal forall a b, P a b -> (forall (x t y z : nat), P x t -> P y z -> Q x y z -> R) -> True.
-  Proof.
-    intros a b H0 H.
-    abstracted as H1 eapply #H with (1 := H0).
-    abstracted as H2 eapply #H with (2 := H0).
-    Fail abstracted as H3 eapply H with (1 := H0) (2 := H0).
-    abstracted as H3 eapply #H with (1 := H0) (2 := H0).
-    exact I.
-  Qed.
-
-
-  Goal forall a b c, Q a b c -> (forall (x t y z : nat)(p : P x t)(q : Q x y z), R) -> True.
-  Proof.
-    intros a b c H0 H.
-    abstracted as H' (eapply #H with (2 := H0)).
-    exact I.
-  Qed.
-End T1.
-
-Variable P : nat -> Type.
-Variable Q : nat -> nat -> Type.
-Variable R : Type.
-
-Goal forall A B,
-    P A ->
-    Q A B ->
-    (forall x y t  : nat,
-        P x ->
-        Q x y ->
-        R)
-    -> True.
-Proof.
-  intros A B H H1 H2.
-  assert (H3:=fun t => H2 _ _ t H H1).
-  (* but *)
-  let foo := abstractable H2 in idtac foo.
-  abstracted as H4 eapply #H2 with (2 := H) (3 := H1).
-  exact I.
-Qed.
-
-Goal forall A B,
-    P A B ->
-    (forall (x t y z : nat)(x1 t1 y1 z1 : nat),
-        P x t ->
-        P y z ->
-        Q x y z ->
-        P x1 t1 ->
-        P y1 z1 ->
-        Q x1 y1 z1 ->
-        R)
-    -> True.
-Proof.
-  intros A B H0 H.
-  abstracted as H1 eapply #H with (1 := H0).
-  Show Proof.
-  clearbody H1.
-(*   abstracted as H2 eapply #H with (2 := H0). *)
-(*   Fail abstracted as H3 eapply H with (1 := H0) (2 := H0). *)
-(*   abstracted as H3 eapply #H with (1 := H0) (2 := H0) (4:=H0) (5:=H0). *)
-  exact I.
-Qed.
-    abstracted as h_correct3'
-                    eapply #h_correct3 with (3:=heq_CEfetches_none).  (2:=h_all_lt). (1:= h_incr_order). (3:=heq_CEfetches_none) (4:=heq_add_to_fr_nme).
-    spec h_correct3 [[7%nat <- heq_CEfetches_none]].
-    xxx
-
-
-
-
-+    destruct new_fram_sz.
-+
-+    let foo := (abstractable add_to_frame_correct3) in idtac foo.
-+
-+    Debug Off.
-+    abstracted as h_correct3 (eapply # add_to_frame_correct3 with (1:= h_incr_order) (2:=h_all_lt) (3:=heq_CEfetches_none) (4:=heq_add_to_fr_nme)).
-+
-     assert (h_correct3:= add_to_frame_correct3 stbl fram_sz nme).
--    spec h_correct3 [[7%nat <- heq_CEfetches_none]].
-+    destruct new_fram_sz.
-+    (* should be specialize with (1:= h_incr_order) (2:=h_all_lt) (3:=heq_CEfetches_none) (4:=heq_add_to_fr_nme). *)
-+    abstracted as h_correct3'
-+                    eapply #h_correct3 with (1:= h_incr_order) (2:=h_all_lt) (3:=heq_CEfetches_none) (4:=heq_add_to_fr_nme).
-+(*     aspecialize h_correct3 by eapply #h_correct3 with (1:= h_incr_order) (2:=h_all_lt) (3:=heq_CEfetches_none) (4:=heq_add_to_fr_nme). *)
-+    specializes h: (>> h_correct3 h_incr_order h_all_lt heq_CEfetches_none heq_add_to_fr_nme).
-+    assert(h_correct3':=
-+             fun othername e =>
-+               h_correct3 _ _ _ othername e  h_incr_order h_all_lt heq_CEfetches_none heq_add_to_fr_nme);
-+      clear h_correct3; rename h_correct3' into h_correct3.
-    
-
-      ;auto.
-
-
-    admit. (* lemma *)
-Qed.
 
 
 Inductive Decl_atomic : declaration -> Prop :=
@@ -3664,11 +3547,22 @@ Proof.
   - (* params = p::prms_profile *)
     subst;simpl in *;subst.
     destruct args;try now (cbv in heq0; discriminate).
-    destruct args_t;try now (cbv in heq0; discriminate).
+    destruct args_t ;try now (cbv in heq0; discriminate).
     {  simpl in heq0.
        destruct (parameter_mode p).
        - repeat match type of heq0 with
-                | OK (?x :: ?l) =: [] => discriminate heq0
+                | OK (?x :: ?l) = OK (nil) => discriminate heq0
+                | (bind2 ?x _) = _  => destruct x as  [ [CE' stcksize]|] eqn:heq_bldCE; simpl in h_tr_proc; try discriminate
+                | context [ ?x <=? ?y ]  => let heqq := fresh "heq" in destruct (Z.leb x y) eqn:heqq; try discriminate
+                | (bind ?y ?x) = _ =>
+                  let heqq := fresh "heq" in !destruct y !eqn:heqq; [ 
+                      autorename heqq; simpl in heq0
+                    | try discriminate]
+                end.
+         
+       - destruct e; try discriminate.
+         repeat match type of heq0 with
+                | OK (?x :: ?l) = OK nil => discriminate heq0
                 | (bind2 ?x _) = _  => destruct x as  [ [CE' stcksize]|] eqn:heq_bldCE; simpl in h_tr_proc; try discriminate
                 | context [ ?x <=? ?y ]  => let heqq := fresh "heq" in destruct (Z.leb x y) eqn:heqq; try discriminate
                 | (bind ?y ?x) = _ =>
@@ -3678,17 +3572,7 @@ Proof.
                 end.
        - destruct e; try discriminate.
          repeat match type of heq0 with
-                | OK (?x :: ?l) =: [] => discriminate heq0
-                | (bind2 ?x _) = _  => destruct x as  [ [CE' stcksize]|] eqn:heq_bldCE; simpl in h_tr_proc; try discriminate
-                | context [ ?x <=? ?y ]  => let heqq := fresh "heq" in destruct (Z.leb x y) eqn:heqq; try discriminate
-                | (bind ?y ?x) = _ =>
-                  let heqq := fresh "heq" in !destruct y !eqn:heqq; [ 
-                      autorename heqq; simpl in heq0
-                    | try discriminate]
-                end.
-       - destruct e; try discriminate.
-         repeat match type of heq0 with
-                | OK (?x :: ?l) =: [] => discriminate heq0
+                | OK (?x :: ?l) =: nil => discriminate heq0
                 | (bind2 ?x _) = _  => destruct x as  [ [CE' stcksize]|] eqn:heq_bldCE; simpl in h_tr_proc; try discriminate
                 | context [ ?x <=? ?y ]  => let heqq := fresh "heq" in destruct (Z.leb x y) eqn:heqq; try discriminate
                 | (bind ?y ?x) = _ =>
