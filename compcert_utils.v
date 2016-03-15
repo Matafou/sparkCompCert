@@ -35,6 +35,12 @@ Ltac rename_hyp1 h th :=
     | Mem.storev ?chk ?m ?vaddr ?v = ?m2 => fresh "heq_storev_" v "_" m2
     | Mem.storev ?chk ?m ?vaddr ?v = ?m2 => fresh "heq_storev_" v
     | Mem.storev ?chk ?m ?vaddr ?v = ?m2 => fresh "heq_storev"
+
+    | Globalenvs.Genv.find_funct ?g ?paddr = Some ?res => fresh "heq_find_func_" paddr "_" res
+    | Globalenvs.Genv.find_funct ?g ?paddr = Some _ => fresh "heq_find_func_" paddr
+    | Globalenvs.Genv.find_funct ?g _ = Some _ => fresh "heq_find_func"
+    | Globalenvs.Genv.find_funct ?g ?paddr = None => fresh "heq_find_func_" paddr "_NONE"
+    | Globalenvs.Genv.find_funct ?g ?paddr = None => fresh "heq_find_func_None"
   end.
 
 

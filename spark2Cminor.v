@@ -1134,11 +1134,11 @@ Ltac rename_hyp1 h th :=
     | transl_declaration _ _ _ ?p = _ => fresh "heq_transl_decl_" p
     | transl_declaration _ _ _ _ = _ => fresh "heq_transl_decl"
 
-    | transl_lparameter_specification_to_procsig _ _ _ _ = Error _ => fresh "heq_transl_lprm_spec_ERR"
-    | transl_lparameter_specification_to_procsig _ _ _ ?p = (OK ?r) => fresh "heq_transl_lprm_spec_" p "_" r
-    | transl_lparameter_specification_to_procsig _ _ _ ?p = ?r => fresh "heq_transl_lprm_spec_" p "_" r
-    | transl_lparameter_specification_to_procsig _ _ _ ?p = _ => fresh "heq_transl_lprm_spec_" p
-    | transl_lparameter_specification_to_procsig _ _ _ _ = _ => fresh "heq_transl_lprm_spec"
+    | transl_lparameter_specification_to_procsig _ _ _ = Error _ => fresh "heq_transl_lprm_spec_ERR"
+    | transl_lparameter_specification_to_procsig _ _ ?p = (OK ?r) => fresh "heq_transl_lprm_spec_" p "_" r
+    | transl_lparameter_specification_to_procsig _ _ ?p = ?r => fresh "heq_transl_lprm_spec_" p "_" r
+    | transl_lparameter_specification_to_procsig _ _ ?p = _ => fresh "heq_transl_lprm_spec_" p
+    | transl_lparameter_specification_to_procsig _ _ _ = _ => fresh "heq_transl_lprm_spec"
 
 
 
@@ -1185,18 +1185,20 @@ Ltac rename_hyp1 h th :=
 
     | init_locals ?stbl ?CE ?declpart = Error => fresh "heq_init_lcl_ERR_" declpart
     | init_locals ?stbl ?CE ?declpart = Error => fresh "heq_init_lcl_ERR"
-    | init_locals ?stbl ?CE ?declpart = Some ?r => fresh "heq_init_lcl_" declpart "_"r
+    | init_locals ?stbl ?CE ?declpart = OK ?r => fresh "heq_init_lcl_" declpart "_"r
     | init_locals ?stbl ?CE ?declpart = ?r => fresh "heq_init_lcl"
 
     | store_params ?stbl ?CE ?declpart = Error => fresh "heq_store_prms_ERR_" declpart
     | store_params ?stbl ?CE ?declpart = Error => fresh "heq_store_prms_ERR"
-    | store_params ?stbl ?CE ?declpart = Some ?r => fresh "heq_store_prms_" declpart "_"r
+    | store_params ?stbl ?CE ?declpart = OK ?r => fresh "heq_store_prms_" declpart "_"r
     | store_params ?stbl ?CE ?declpart = ?r => fresh "heq_store_prms"
 
-    | copy_out ?stbl ?CE ?declpart = Error => fresh "heq_cpy_out_ERR_" declpart
-    | copy_out ?stbl ?CE ?declpart = Error => fresh "heq_cpy_out_ERR"
-    | copy_out ?stbl ?CE ?declpart = Some ?r => fresh "heq_cpy_out_" declpart "_"r
-    | copy_out ?stbl ?CE ?declpart = ?r => fresh "heq_cpy_out"
+    | copy_out_params ?st ?CE ?paramsprf = (OK ?res) => fresh "h_cpout_prm_" paramsprf "_" res 
+    | copy_out_params ?st ?s ?paramsprf = (OK _) => fresh "h_cpout_prm_" paramsprf
+    | copy_out_params ?st ?s ?paramsprf = (OK _) => fresh "h_cpout_prm"
+    | copy_out_params ?st ?s ?paramsprf = Error => fresh "h_cpout_prm_" paramsprf "_ERR"
+    | copy_out_params ?st ?s ?paramsprf = Error => fresh "h_cpout_prm_ERR"
+    | copy_out_params ?st ?s ?paramsprf = Error => fresh "h_cpout_prm_ERR"
 
     | compute_size _ ?subtype = Some ?sz => fresh "heq_cmpt_size_" subtype "_" sz
     | compute_size _ ?subtype = Error => fresh "heq_cmpt_size_ERR_" subtype

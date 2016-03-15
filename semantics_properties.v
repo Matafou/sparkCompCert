@@ -90,6 +90,7 @@ Ltac rename_hyp1 h th :=
     | copy_out ?st ?s ?pstmt ?paramsprf ?args ?s' => fresh "h_copy_out_" s "_" s'
     | copy_out ?st ?s ?pstmt ?paramsprf ?args _ => fresh "h_copy_out_" s
     | copy_out ?st ?s ?pstmt ?paramsprf ?args _ => fresh "h_copy_out"
+
     | copy_in ?st ?s ?fr ?paramsprf ?args (Run_Time_Error ?er) => fresh "h_copy_in_RE"
     | copy_in ?st ?s ?fr ?paramsprf ?args (Normal ?fr') => fresh "h_copy_in_" fr "_" fr'
     | copy_in ?st ?s ?fr ?paramsprf ?args ?fr' => fresh "h_copy_in_" fr "_" fr'

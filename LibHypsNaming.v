@@ -288,3 +288,17 @@ Ltac map_hyps_rev tac hs :=
 
 Ltac map_all_hyps tac := map_hyps tac all_hyps.
 Ltac map_all_hyps_rev tac := map_hyps_rev tac all_hyps.
+
+(* A tactic which moves up a hypothesis if it sort is Type or Set. *)
+Ltac move_up_types H := match type of H with
+                        | ?T => match type of T with
+                                | Prop => idtac
+                                | Set => move H at top
+                                | Type => move H at top
+                                end
+                        end.
+
+(* Iterating the tactic on all hypothesis. Moves up all Set/Type
+   variables to the top. Really useful with [Set Compact Context]
+   which is no yet commited in coq-trunk. *)
+Ltac up_type := map_all_hyps_rev move_up_types.
