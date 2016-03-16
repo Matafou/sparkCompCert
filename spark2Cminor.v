@@ -142,7 +142,7 @@ Definition fetch_var_type id st :=
   end.
 
 (** A stack-like compile environment.
-  The compile environment a mapping from variables names (idnum) to
+  The compile environment is a stack of mappings from variables names (idnum) to
   offset in the local Cminor local stack. The type information is
   stored in symboltable (fed by sireum). *)
 
@@ -638,7 +638,9 @@ Definition transl_stmt_aux :=
         (* compute the expression denoting the address of the frame of
            the enclosing procedure. Note that it is not the current
            procedure. We have to get down to the depth of the called
-           procedure. *)
+           procedure. Note also that if lvl is 0, then addr_enclosing_frame
+           is void (global procedures have void chaining param). This is ensured
+           by the call to the main procedure below. *)
         let addr_enclosing_frame := build_loads_ (current_lvl - lvl) in
         (* Add it as one more argument to the procedure called. *)
         do tle' <- OK (addr_enclosing_frame :: tle) ;
@@ -756,10 +758,7 @@ Fixpoint build_proc_decl (lvl:Symbol_Table_Module.level)
     this is correct. *)
 Definition build_compilenv (stbl:symboltable) (enclosingCE:compilenv) (lvl:Symbol_Table_Module.level)
          (lparams:list parameter_specification) (decl:declaration) : res (compilenv*Z) :=
-  let stoszchainparam := match lvl with
-                | O => (nil,0%Z) (* no chaining for global procedures *)
-                | _ => (((0%nat,0%Z) :: nil),4%Z)
-              end in
+  let stoszchainparam := (((0%nat,0%Z) :: nil),4%Z) in
   do stoszparam <- build_frame_lparams stbl stoszchainparam lparams ;
   do (stolocals,szlocals) <- build_frame_decl stbl stoszparam decl ;
   let scope_lvl := List.length enclosingCE in
@@ -883,12 +882,9 @@ Fixpoint transl_procedure (stbl:symboltable) (enclosingCE:compilenv)
           do initparams <- store_params stbl CE lparams;
 
           (* Adding prelude: copying chaining parameter into frame *)
-          let chain_param := match lvl with
-                            | O => Sskip (* no chain for global procedures *)
-                            | _ => Sstore AST.Mint32
-                                          ((Econst (Oaddrstack (Integers.Int.zero))))
-                                          (Evar chaining_param)
-                            end in
+          let chain_param :=
+              Sstore AST.Mint32 ((Econst (Oaddrstack (Integers.Int.zero))))
+                     (Evar chaining_param) in
 
           (* Adding postlude: copying back out params *)
           do copyout <- copy_out_params stbl CE lparams ;
@@ -910,32 +906,26 @@ Fixpoint transl_procedure (stbl:symboltable) (enclosingCE:compilenv)
           let tlparams := transl_lparameter_specification_to_lident stbl lparams in
           let newGfun :=
               (transl_paramid pnum,
-              AST.Gfun (* (AST.fundef function) unit *)
+              AST.Gfun (** (AST.fundef function) unit *)
                 (AST.Internal {|
                      fn_sig:= procsig;
                      (** list of idents of parameters (including the chaining one) *)
-                     fn_params :=
-                       match lvl with
-                       | O => tlparams (* no chaining for global procedures *)
-                       | _ => chaining_param :: tlparams
-                       end;
-                     (* list ident of local vars, including copy of parameters and chaining parameter *)
-                     fn_vars:=
-                       transl_decl_to_lident stbl decl
-                     ;
+                     fn_params := chaining_param :: tlparams;
+                     (** list ident of local vars,
+                         including copy of parameters and chaining parameter.
+                         FIXME: there is only decl here, copied params are not there. *)
+                     fn_vars:= transl_decl_to_lident stbl decl;
                      fn_stackspace:= stcksize%Z;
-                     fn_body:= proc_t
-                   |})) in
+                     fn_body:= proc_t |})) in
           OK (newGfun :: newlfundef)
         else Error(msg "spark2Cminor: too many local variables, stack size exceeded")
   end
 
 (* FIXME: check the size needed for the declarations *)
-with transl_declaration
-       (stbl:symboltable) (enclosingCE:compilenv)
+with transl_declaration (stbl:symboltable) (enclosingCE:compilenv)
        (lvl:Symbol_Table_Module.level) (decl:declaration)
      : res CMfundecls :=
-  match decl with
+   match decl with
       | D_Procedure_Body _ pbdy =>
         transl_procedure stbl enclosingCE lvl pbdy
       | D_Seq_Declaration _ decl1 decl2 =>
@@ -949,15 +939,18 @@ with transl_declaration
                                        AST.gvar_init := nil; (* TODO list AST.init_data*)
                                        AST.gvar_readonly := false; (* FIXME? *)
                                        AST.gvar_volatile := false |} (* FIXME? *)
-                          ) ] (*transl_objdecl stbl 0  ;*)
-      | D_Type_Declaration _ _ =>
-        Error (msg "transl_declaration: D_Type_Declaration not yet implemented")
-      | D_Null_Declaration => OK nil
-  end.
+          ) ] (*transl_objdecl stbl 0  ;*)
+       | D_Type_Declaration _ _ =>
+         Error (msg "transl_declaration: D_Type_Declaration not yet implemented")
+       | D_Null_Declaration => OK nil
+       end.
 
 (** In Ada the main procedure is generally a procedure at toplevel
     (not inside a package or a procedure). This function returns the
-    first procedure id found in a declaration. *)
+    first procedure id found in a declaration.
+
+    WARNING: main procedure in Cminor is supposed to be called with chaining
+    param set to void. *)
 Fixpoint get_main_procedure (decl:declaration) : option procnum :=
   match decl with
     | D_Null_Declaration => None
@@ -971,8 +964,7 @@ Fixpoint get_main_procedure (decl:declaration) : option procnum :=
     | D_Procedure_Body _  (mkprocedure_body _ pnum _ _ _) => Some pnum
   end.
 
-(** Intitial program (with no procedure definition yet, onyl
-    referencing the main procedure name. *)
+(** Intitial program. *)
 Definition build_empty_program_with_main procnum (lfundef:CMfundecls) :=
   {| AST.prog_defs := lfundef;
      AST.prog_public := nil;
@@ -982,8 +974,9 @@ Definition transl_program (stbl:symboltable) (decl:declaration) : res (Cminor.pr
   match get_main_procedure decl with
     | None => Error (msg "No main procedure detected")
     | Some mainprocnum =>
-      (* Check size returned by build_compilenv *)
-      do (cenv,_) <- build_compilenv stbl nil 0%nat(*nesting lvl*) nil(*params*) decl ;
+      (* TODO:Check size returned by build_compilenv? *)
+      (* TODO:Check that main proc has no arg (except chaining param = void? *)
+      do (cenv,_) <- build_compilenv stbl nil 0%nat(*nesting lvl*) nil (*params*) decl ;
       do lfdecl <- transl_declaration stbl cenv 0%nat(*nesting lvl*) decl ;
       OK (build_empty_program_with_main mainprocnum lfdecl)
   end.

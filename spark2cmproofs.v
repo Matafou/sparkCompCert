@@ -2913,28 +2913,6 @@ Proof.
         destruct x.
         destruct (build_frame_decl_preserve_increasing_order _ _ _ _ _ _ heq0);auto.
         -- destruct (build_frame_lparams_preserve_increasing_order _ _ _ _ _ _ heq_bld_frm_prmprof);auto.
-           constructor.
-        -- destruct (build_frame_lparams_preserve_increasing_order _ _ _ _ _ _ heq_bld_frm_prmprof);auto.
-           constructor.
-      * apply (ci_increasing_ids H).
-    + apply all_addr_no_overflow_fetch_OK;eauto.
-      destruct x;unfold stoszchainparam in *.
-      eapply (build_frame_decl_preserve_no_overflow st pdeclpart s z (Datatypes.length CE) x0 stcksize).
-      -- eapply (build_frame_lparams_preserve_pos_addr st prmprof) ; eauto; try omega.
-         instantiate (lvl:=0%nat). (* otherwise it goes shelved. *)
-         red. cbn. discriminate.
-      -- assumption.
-      -- eapply (build_frame_lparams_preserve_no_overflow st prmprof);eauto; try omega.
-         red. cbn. intro. discriminate.
-  - split;eauto.
-    + constructor.
-      eauto.
-    + constructor.
-      * red.
-        cbn.
-        destruct x.
-        destruct (build_frame_decl_preserve_increasing_order _ _ _ _ _ _ heq0);auto.
-        -- destruct (build_frame_lparams_preserve_increasing_order _ _ _ _ _ _ heq_bld_frm_prmprof);auto.
            ++ constructor;cbn in *;auto.
               unfold gt_snd.
               red. cbn.
@@ -3799,14 +3777,13 @@ Lemma compilenv_inv:
          (lparams : list parameter_specification) (decl : declaration) res,
     build_compilenv stbl enclosingCE lvl lparams decl = OK res
     -> exists sto sz init_sto_sz fr_prm, res = (((Datatypes.length enclosingCE, sto)::enclosingCE),sz)
-                                         /\ init_sto_sz = (match lvl with | 0%nat => (nil, 0) | S _ => (((pair 0%nat  0)::nil), 4) end)
+                                         /\ init_sto_sz = (((pair 0%nat  0)::nil), 4)
                                          /\ build_frame_lparams stbl init_sto_sz lparams = OK fr_prm
                                          /\ build_frame_decl stbl fr_prm decl = OK (sto, sz).
 Proof.
   intros stbl enclosingCE lvl lparams decl res heq_bldCE.
   rewrite <- build_compilenv_ok in heq_bldCE.
   functional inversion heq_bldCE;subst;try discriminate.
-  - eauto 10.
   - eauto 10.
 Qed.
 
@@ -4216,10 +4193,8 @@ Proof.
     assert (h_ex:exists locenv_post_parms m_post_parms trace_post_parms outcome_post_parms,
                let env_proc := set_locals (fn_vars the_proc) (set_params args_t_v (fn_params the_proc)) in
                exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) env_proc m_proc_pre_init 
-                         (Sseq match pb_lvl with
-                               | 0%nat => Sskip
-                               | S _ => Sstore AST.Mint32 (Econst (Oaddrstack Int.zero)) (Evar chaining_param)
-                               end s_parms)
+                         (Sseq (Sstore AST.Mint32 (Econst (Oaddrstack Int.zero)) (Evar chaining_param))
+                               s_parms)
                          trace_post_parms locenv_post_parms m_post_parms outcome_post_parms).
     { (* Lemma about store_params *)
       admit.
@@ -4263,15 +4238,14 @@ Proof.
     { admit. (* Lemma about copy_out *) }
     destruct h_ex as [locenv_postcpout [m_postcpout [trace_postcpout [outcome_postcpout [m_postfree [vres [ h_exec [h_outcome [h_vres h_matchenv ]]]]]]]]].
     
+
+    assert (h_ex:exists chain_parm_v,eval_exprlist g (Values.Vptr spb ofs) locenv m (chaining_parm :: args_t) (chain_parm_v::args_t_v)).
+    { (* chain param always evaluates to something (possibly void). *)
+      admit. }
+    destruct h_ex as [chain_parm_v h_eval_exprlist_whole_args].
     exists trace_postcpout (set_optvar None vres locenv) m_postfree.
     split.
-    destruct pb_lvl.
-    { (* No chaining argment *)
-      + eapply exec_Scall with (vres:=vres);eauto.
-        
-      * constructor.
-        -- admit. (* chaingin param always evaluable to something. invariant? *)
-        -- eassumption.
+    + eapply exec_Scall with (vres:=vres) (vargs:=(chain_parm_v::args_t_v));eauto.
       * simpl.
         unfold transl_procsig in heq_transl_procsig_p.
         rewrite h_fetch_proc_p in heq_transl_procsig_p.
@@ -4282,30 +4256,19 @@ Proof.
         inversion heq_transl_procsig_p.
         reflexivity.
       * econstructor;eauto.
-        simpl.
-        eapply exec_Sseq_continue;eauto.
-      
-    }
-              
-    + eapply exec_Scall with (vres:=vres);eauto.
-      * constructor.
-        -- admit. (* chaingin param always evaluable to something. invariant? *)
-        -- eassumption.
-      * simpl.
-        unfold transl_procsig in heq_transl_procsig_p.
-        rewrite h_fetch_proc_p in heq_transl_procsig_p.
-        rewrite heq_pb in heq_transl_procsig_p.
-        simpl in heq_transl_procsig_p.
-        rewrite heq_transl_lprm_spec_procedure_parameter_profile_p_sig in heq_transl_procsig_p.
-        simpl in heq_transl_procsig_p.
-        inversion heq_transl_procsig_p.
-        reflexivity.
-      * econstructor;eauto.
-        simpl.
+        simpl fn_body.
         eapply exec_Sseq_continue;eauto.
         -- eapply exec_Sseq_continue;eauto.
-           ++ destruct pb_lvl.
-              ** eapply exec_Sskip.
+           ++ eapply exec_Sstore.
+              ** econstructor.
+                 constructor.
+              ** constructor.
+                 cbn beta iota delta -[set_locals set_params].
+                 unfold chaining_param.
+                 (* Shouldn't CE have 80 instead of 0%nat for the chainging param? *)
+
+                 simpl.
+             eapply exec_Sskip.
                  econstructor.
         constructor;try now idtac.
       eassumption.
