@@ -2930,8 +2930,7 @@ Proof.
     + apply all_addr_no_overflow_fetch_OK;eauto.
       destruct x;unfold stoszchainparam in *.
       eapply (build_frame_decl_preserve_no_overflow st pdeclpart s z (Datatypes.length CE) x0 stcksize).
-      -- eapply (build_frame_lparams_preserve_pos_addr st prmprof);eauto; try omega.
-         instantiate (lvl:=0%nat). (* otherwise it goes shelved. *)
+      -- eapply (build_frame_lparams_preserve_pos_addr st prmprof) with (lvl:=0%nat);eauto; try omega.
          red. cbn in *. !intros.
          !destruct id;cbn in *.
          ++ !invclear heq;split;auto with zarith.
@@ -4166,15 +4165,16 @@ Proof.
     
     unfold newFrame in h_copy_in.
     !destruct f.
-    destruct (copy_in_lvl _ _ _ _ _ _ _ h_copy_in) as [? h_pair].
+    destruct (copy_in_lvl _ _ _ _ _ _ _ h_copy_in) as [f h_pair].
     !inversion h_pair.
     !!destruct (copy_in_spec _ _ _ _ _ _ _ _ _ _ _ _ _ _
                              h_match_env heq_transl_params_p_x h_copy_in) as [args_t_v ?].
     assert (h_ex:exists chaining_parm_v,Cminor.eval_expr g (Values.Vptr spb ofs) locenv m chaining_parm chaining_parm_v).
     { admit. (* invariant to add: The chaining parameter is always evaluable to a value (an address). *) }
     destruct h_ex as [chaining_parm_v h_chaining_parm_v].
+    destruct (Mem.alloc m 0 (fn_stackspace the_proc)) as [m_proc_pre_init spb_proc] eqn:h_alloc.
     up_type.
-    
+    remember (set_locals (fn_vars the_proc) (set_params (chaining_parm_v :: args_t_v) (fn_params the_proc))) as proc_env_empty.
 
     (* Painfuly paraphrasing eval_funcall: should find another way...
        Each part of the procedure creates an intermediary state. Some of them
@@ -4191,21 +4191,139 @@ Proof.
        ∀σ Iₙ₋₁(σ) ⟿ ∃σ' (Iₙ(σ) ∧ <σ,initvar> ⟿ σ')
        --------------------------------------------
             ∃σ' (Iₙ(σ) ∧ <σ,initvar> ===> σ') *)
-    (* TODO: add the property that in fine will allow to recover the invariant once the prelude is executed. *)
-
-    destruct (Mem.alloc m 0 (fn_stackspace the_proc)) as [m_proc_pre_init spb_proc] eqn:h_alloc.
-
+    (* After executing intialization of parameters and local variables, we have the usual invariant back *)
     assert (h_ex:exists locenv_postdecl m_postdecl trace_postdecl,
                exec_stmt g the_proc (Values.Vptr spb_proc Int.zero)
-                         (set_locals (fn_vars the_proc) (set_params (chaining_parm_v :: args_t_v) (fn_params the_proc)))
-                         m_proc_pre_init
+                         proc_env_empty m_proc_pre_init
                          (Sseq (Sstore AST.Mint32 (Econst (Oaddrstack Int.zero)) (Evar chaining_param))
-                               (Sseq s_parms
-                                     (Sseq s_locvarinit Sskip))) 
+                               (Sseq s_parms (Sseq s_locvarinit Sskip))) 
                          trace_postdecl locenv_postdecl m_postdecl Out_normal
                /\ match_env st (f1 :: suffix_s) ((pb_lvl, sto) :: CE) (Values.Vptr spb_proc Int.zero)
                             locenv_postdecl g m_postdecl).
-    { (* Lemma about copy_in etc *)
+    { (* After copying parameters into the stack we have a hybrid invariant: parameters are visible, but not local variables *)
+      (* TODO: express this hybrid invariant *)
+      assert (h_ex:exists locenv_postprms m_postprms trace_postprms,
+               exec_stmt g the_proc (Values.Vptr spb_proc Int.zero)
+                         proc_env_empty m_proc_pre_init
+                         (Sseq (Sstore AST.Mint32 (Econst (Oaddrstack Int.zero)) (Evar chaining_param))
+                               s_parms)
+                         trace_postprms locenv_postprms m_postprms Out_normal
+             /\ match_env st (f1 :: suffix_s) ((pb_lvl, sto) :: CE) (Values.Vptr spb_proc Int.zero) locenv_postprms g m_postprms ).
+      {
+        xxx first state that match-env holds before even copying the chaingin param.
+        
+
+        (* Evaluating the first argument allows to link to the
+           enclosing procedure, all variable accessible on the spark side
+           are accessible with one more "load" than before. *)
+        assert (h_ex:exists locenv_postchain m_postchain trace_postchain,
+               exec_stmt g the_proc (Values.Vptr spb_proc Int.zero)
+                         proc_env_empty m_proc_pre_init
+                         (Sstore AST.Mint32 (Econst (Oaddrstack Int.zero)) (Evar chaining_param))
+                         trace_postchain locenv_postchain m_postchain Out_normal
+             /\ match_env st ((fst f1,nil) :: suffix_s) ((pb_lvl, sto) :: CE) (Values.Vptr spb_proc Int.zero) locenv_postchain g m_postchain ).
+        { destruct (Mem.valid_access_store m_proc_pre_init AST.Mint32 spb_proc (Int.unsigned (Int.add Int.zero Int.zero)) chaining_parm_v) as [m_postchain h_m_postchain].
+          { apply Mem.valid_access_freeable_any.
+            eapply Mem.valid_access_alloc_same;eauto.
+            - apply Int.unsigned_range.
+            - simpl.
+              admit. (* from heq_init_sto_sz heq_bld_frm_procedure_parameter_profile and heq1 by monoticity *)
+            - exists 0.
+              simpl.
+              reflexivity. }
+          do 3 eexists;split.
+          - eapply exec_Sstore with (v:=chaining_parm_v) (vaddr:=(Values.Vptr spb_proc (Int.add Int.zero Int.zero))).
+            + apply eval_Econst.
+              reflexivity.
+            + apply eval_Evar.
+              subst proc_env_empty.
+              simpl fn_vars.
+              simpl fn_params.              
+              lazy beta iota delta [set_params].
+              fold set_params.
+              lazy beta iota delta [set_locals].
+              fold set_locals.
+              admit. (* because chaining param should be different than any other parameter/var.  *)
+            + simpl.
+              eassumption.
+          - subst proc_env_empty.
+            simpl fn_params.
+            lazy delta [set_params].
+            lazy beta iota.
+            fold set_params.
+            Lemma eq_val_Equiv: Equivalence (@eq Values.val).
+            Proof.
+              split;auto.
+              apply eq_Transitive.
+            Qed.
+
+            assert
+              (h_eq_tree:
+                 match_env st ((fst f1, nil) :: suffix_s) ((pb_lvl, sto) :: CE) (Values.Vptr spb_proc Int.zero)
+                           (Maps.PTree.set chaining_param chaining_parm_v
+                                           (set_locals
+                                              (fn_vars the_proc)
+                                              (set_params args_t_v (transl_lparameter_specification_to_lident
+                                                                      st procedure_parameter_profile))))
+                           g m_postchain).
+            { 
+              split.
+              + red.
+                !intros.
+                functional inversion heq_make_load.
+                rewrite h_eq_tree.
+                simpl set_params.
+            }
+            admit. (* no name clash ==> permutation of Ptree.set are equivalent *)
+          
+
+            
+            red.
+            !intros.
+            !inversion h_eval_name_nme_v.
+            * !functional inversion heq_SfetchG_x;try subst s'0 f0 s0.
+              (* the name is found in the new frame *)
+              -- subst v0.
+                   
+                (* The name is found on enclosing frames. *)
+                --
+                   
+              subst.
+              remember (mkprocedure_body procedure_astnum procedure_name procedure_parameter_profile procedure_declarative_part
+                                         procedure_statements) as pb.
+              
+              admit.
+            + 
+              eapply assignment_preserve_stack_match_function;simpl;auto.
+              * subst.
+                constructor.
+                apply h_inv_comp_CE_st.
+                eapply h_match_env.me_stack_match_functions.
+.
+              
+            
+              (* Mem.valid_access_dec should be ok, since it comes from Mem.alloc *)
+
+
+
+          exists proc_env_empty m_proc_pre_init .
+          admit.
+        }
+        destruct h_ex as [locenv_postchain [m_postchain [trace_postchain [h_decl_ok_exec h_decl_ok_matchenv]]]].
+        (* Storing values of parameters of the procedure. *)
+        assert (h_ex:exists locenv_postchain m_postchain trace_postchain,
+               exec_stmt g the_proc (Values.Vptr spb_proc Int.zero)
+                         proc_env_empty m_proc_pre_init s_parms
+                         trace_postchain locenv_postchain m_postchain Out_normal
+             /\ match_env st ((fst f1,nil) :: suffix_s) ((pb_lvl, sto) :: CE) (Values.Vptr spb_proc Int.zero) locenv_postchain g m_postchain ).
+        {
+          admit.
+        }
+        
+
+        admit.
+      }
+      
       admit.
     }
     destruct h_ex as [locenv_postdecl [m_postdecl [trace_postdecl [h_decl_ok_exec h_decl_ok_matchenv]]]].

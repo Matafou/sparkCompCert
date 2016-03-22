@@ -641,4 +641,3 @@ Qed.
 (* Add implicit args to Gfun "(AST.fundef function) unit" to work
    around a limitation of Function *)
 
-
