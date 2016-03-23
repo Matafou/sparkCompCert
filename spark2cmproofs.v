@@ -4284,42 +4284,39 @@ Proof.
         destruct h_ex as [locenv_postchain [m_postchain [trace_postchain h_decl_ok_exec]]].
         assert (stack_match st ((pb_lvl,nil) :: suffix_s) ((pb_lvl, nil) :: CE)
                           (Values.Vptr spb_proc Int.zero) locenv_postchain g m_postchain).
-        { 
-          (*eq_same_clear.
-          up_type.
-          !inversion h_decl_ok_exec.
-          rename v into chaining_expr_from_callee_v.
-          unfold chaining_expr in *.
-          subst_exc pb locenv_postchain.
+        { assert (h_stck_mtch_CE:=me_stack_match h_match_env).
           red.
-          !!intros any_nme any_name_v **.
-          destruct ()#
-
-
-
-          assert (chaining_expr_from_callee_v = chaining_expr_from_caller_v).
+          !intros.
+          red in h_stck_mtch_CE.
+(*          assert (h_ex:exists addr_nme_sub, transl_name st CE nme =: addr_nme_sub) .
           { admit. }
-          subst_exc pb locenv_postchain.
-
-            
-
-          inversion h_eval_name_nme_v0.
-          2:admit. (* indexed_component, not yet supported *)
-          2:admit. (* selected_component, not yet supported *)
-          - Opaque id.
-            let t := type of heq_pb in change heq_pb with (id t) in heq_pb.
+          destruct h_ex as [addr_nme_sub heq_transl_nme_t].
           
+          specialize (h_stck_mtch_CE nme v addr_nme_sub nme_t typ_nme cm_typ_nme).
+          !assert (eval_name st s nme (Normal v)).
+          { !inversion h_eval_name_nme_v.
+            - constructor 1.
+              simpl in heq_SfetchG_x.
+              (* From heq_SfetchG_x, because there are no name clash *)
+              admit.
+            - admit. (* arrays *)
+            - admit. (* record *)
+          }
+          simpl in heq_transl_name.
+          specialize (h_stck_mtch_CE h_eval_name_nme_v0 heq_type_of_name heq_transl_nme_t heq_transl_type).
+          assert (make_load addr_nme_sub cm_typ_nme =: nme_t).
+          { heq_transl_name. }
 
- subst proc_env_empty.
-          simpl fn_params.
-          lazy delta [set_params].
-          lazy beta iota.
-          fold set_params.
-          Lemma eq_val_Equiv: Equivalence (@eq Values.val).
-          Proof.
-            split;auto.
-            apply eq_Transitive.
-          Qed. *)
+          assert (transl_name st CE nme =: nme_t).
+          { !functional inversion heq_transl_name;subst_exc pb proc_env_empty pb_lvl.
+            !functional inversion heq_transl_variable;subst_exc pb proc_env_empty pb_lvl.
+            simpl.
+            simpl in heq_CEfetchG_id,heq_CEframeG_id.
+            unfold transl_variable.
+            simpl.
+            rewrite heq_CEfetchG_id,heq_CEframeG_id.
+          }
+          *)
           admit.
         }
         (* Storing values of parameters of the procedure. *)
