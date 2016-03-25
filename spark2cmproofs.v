@@ -4213,7 +4213,7 @@ Proof.
     destruct h_ex as [chaining_expr_from_caller_v h_chaining_expr_from_caller_v].
     destruct (Mem.alloc m 0 (fn_stackspace the_proc)) as [m_proc_pre_init spb_proc] eqn:h_alloc.
     up_type.
-    remember (set_locals (fn_vars the_proc) (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc))) as proc_env_empty.
+    remember (set_locals (fn_vars the_proc) (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc))) as locenv_empty.
 
     (* Painfuly paraphrasing eval_funcall: should find another way...
        Each part of the procedure creates an intermediary state. Some of them
@@ -4232,7 +4232,7 @@ Proof.
             ∃σ' (Iₙ(σ) ∧ <σ,initvar> ===> σ') *)
     (* After executing intialization of parameters and local variables, we have the usual invariant back *)
     assert (h_ex:exists locenv_postdecl m_postdecl trace_postdecl,
-               exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) proc_env_empty m_proc_pre_init
+               exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) locenv_empty m_proc_pre_init
                          (Sseq (Sstore AST.Mint32 (Econst (Oaddrstack Int.zero)) (Evar chaining_param))
                                (Sseq s_parms (Sseq s_locvarinit Sskip))) 
                          trace_postdecl locenv_postdecl m_postdecl Out_normal
@@ -4240,9 +4240,8 @@ Proof.
                             (Values.Vptr spb_proc Int.zero) locenv_postdecl g m_postdecl).
     { 
       (* After copying parameters into the stack we have a hybrid invariant: parameters are visible, but not local variables *)
-      (* TODO: express this hybrid invariant *)
       assert (h_ex:exists locenv_postprms m_postprms trace_postprms,
-                 exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) proc_env_empty m_proc_pre_init
+                 exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) locenv_empty m_proc_pre_init
                            (Sseq (Sstore AST.Mint32 (Econst (Oaddrstack Int.zero)) (Evar chaining_param))
                                  s_parms)
                            trace_postprms locenv_postprms m_postprms Out_normal
@@ -4252,11 +4251,14 @@ Proof.
         (* Evaluating the first argument allows to link to the
            enclosing procedure, all variable accessible on the spark side
            are accessible with one more "load" than before. *)
+        (* First we prove that there exists a resulting state *)
         assert (h_ex:exists locenv_postchain m_postchain trace_postchain,
-               exec_stmt g the_proc (Values.Vptr spb_proc Int.zero)
-                         proc_env_empty m_proc_pre_init
-                         (Sstore AST.Mint32 (Econst (Oaddrstack Int.zero)) (Evar chaining_param))
-                         trace_postchain locenv_postchain m_postchain Out_normal).
+                   exec_stmt g the_proc (Values.Vptr spb_proc Int.zero)
+                             locenv_empty m_proc_pre_init
+                             (Sstore AST.Mint32 (Econst (Oaddrstack Int.zero)) (Evar chaining_param))
+                             trace_postchain locenv_postchain m_postchain Out_normal
+                   /\ (stack_match st ((pb_lvl,nil) :: suffix_s) ((pb_lvl, nil) :: CE)
+                                   (Values.Vptr spb_proc Int.zero) locenv_postchain g m_postchain)).
         { destruct (Mem.valid_access_store m_proc_pre_init AST.Mint32 spb_proc (Int.unsigned (Int.add Int.zero Int.zero)) chaining_expr_from_caller_v) as [m_postchain h_m_postchain].
           { apply Mem.valid_access_freeable_any.
             eapply Mem.valid_access_alloc_same;eauto.
@@ -4267,58 +4269,64 @@ Proof.
               simpl.
               reflexivity. }
           do 3 eexists.
-          eapply exec_Sstore with (v:=chaining_expr_from_caller_v) (vaddr:=(Values.Vptr spb_proc (Int.add Int.zero Int.zero))).
-          + apply eval_Econst.
-            reflexivity.
-          + apply eval_Evar.
-            subst_exc pb.
-            simpl fn_vars.
-            simpl fn_params.              
-            lazy beta iota delta [set_params].
-            fold set_params.
-            lazy beta iota delta [set_locals].
-            fold set_locals.
-            admit. (* because chaining param should be different than any other parameter/var.  *)
-          + simpl.
-            eassumption. }
-        destruct h_ex as [locenv_postchain [m_postchain [trace_postchain h_decl_ok_exec]]].
-        assert (stack_match st ((pb_lvl,nil) :: suffix_s) ((pb_lvl, nil) :: CE)
-                          (Values.Vptr spb_proc Int.zero) locenv_postchain g m_postchain).
-        { assert (h_stck_mtch_CE:=me_stack_match h_match_env).
-          red.
-          !intros.
-          red in h_stck_mtch_CE.
-(*          assert (h_ex:exists addr_nme_sub, transl_name st CE nme =: addr_nme_sub) .
-          { admit. }
-          destruct h_ex as [addr_nme_sub heq_transl_nme_t].
-          
-          specialize (h_stck_mtch_CE nme v addr_nme_sub nme_t typ_nme cm_typ_nme).
-          !assert (eval_name st s nme (Normal v)).
-          { !inversion h_eval_name_nme_v.
-            - constructor 1.
-              simpl in heq_SfetchG_x.
-              (* From heq_SfetchG_x, because there are no name clash *)
-              admit.
-            - admit. (* arrays *)
-            - admit. (* record *)
-          }
-          simpl in heq_transl_name.
-          specialize (h_stck_mtch_CE h_eval_name_nme_v0 heq_type_of_name heq_transl_nme_t heq_transl_type).
-          assert (make_load addr_nme_sub cm_typ_nme =: nme_t).
-          { heq_transl_name. }
-
-          assert (transl_name st CE nme =: nme_t).
-          { !functional inversion heq_transl_name;subst_exc pb proc_env_empty pb_lvl.
-            !functional inversion heq_transl_variable;subst_exc pb proc_env_empty pb_lvl.
-            simpl.
-            simpl in heq_CEfetchG_id,heq_CEframeG_id.
-            unfold transl_variable.
-            simpl.
-            rewrite heq_CEfetchG_id,heq_CEframeG_id.
-          }
-          *)
-          admit.
+          split.
+          - eapply exec_Sstore with (v:=chaining_expr_from_caller_v) (vaddr:=(Values.Vptr spb_proc (Int.add Int.zero Int.zero))).
+            + apply eval_Econst.
+              reflexivity.
+            + apply eval_Evar.
+              subst_exc pb.
+              simpl fn_vars.
+              simpl fn_params.              
+              lazy beta iota delta [set_params].
+              fold set_params.
+              lazy beta iota delta [set_locals].
+              fold set_locals.
+              admit. (* because chaining param should be different than any other parameter/var.  *)
+            + simpl.
+              eassumption.
+          - eq_same_clear;up_type.
+            assert (h_stck_mtch_CE:=me_stack_match h_match_env).
+            red.
+            !intros.
+            red in h_stck_mtch_CE.
+            assert (eval_name st s nme (Normal v)).
+            { assert (h_eval_name_sfx:forall nme v,  eval_name st ((pb_lvl, nil) :: suffix_s) nme (Normal v)
+                                                     -> eval_name st suffix_s nme (Normal v)).
+              { admit. (* empty top stack *) }
+              assert (h_eval_name_s:forall nme v,  eval_name st suffix_s nme (Normal v)
+                                                   -> eval_name st s nme (Normal v)).
+              { admit. (*no nam clash*) }
+              apply h_eval_name_s.
+              apply h_eval_name_sfx.
+              assumption. }
+            !functional inversion heq_transl_name.
+            !functional inversion heq_transl_variable.
+(*             cbn in heq_CEframeG_id,heq_lvloftop_m'. *)
+            !!assert (lvl_id<m')%nat by admit. (* property of CE *)
+            !assert (exists x, (m' - lvl_id)%nat = S x).
+            { destruct (Nat.lt_exists_pred _ _ h_lt_lvl_id_m') as [m0' [hm0'_1 hm0'_2]].
+              subst_exc pb locenv_empty.
+              exists (m0' - lvl_id)%nat.
+              omega. }
+            !destruct h_ex.
+            rewrite heq_nat0 in heq_build_loads.
+            unfold build_loads in heq_build_loads.
+            cbn in heq_build_loads.
+            assert (transl_name st CE nme =: Ebinop Oadd (build_loads_ x) (Econst (Ointconst (Int.repr δ_id)))).
+            { rewrite <- heq.
+              simpl.
+              subst nme_t.
+              unfold transl_variable.
+              cbn in heq_CEframeG_id, heq_lvloftop_m',heq_CEfetchG_id.
+              rewrite heq_CEframeG_id,heq_CEfetchG_id.
+              destruct (CompilEnv.level_of_top CE).
+              - admit. (* TBC. *)
+              - admit. (* assert false. *)
+            } 
+            admit. (*TBC.*)
         }
+        destruct h_ex as [locenv_postchain [m_postchain [trace_postchain [h_decl_ok_exec ?]]]].
+
         (* Storing values of parameters of the procedure. *)
         assert (h_ex:exists locenv_post_parms m_post_parms trace_post_parms,
                exec_stmt g the_proc (Values.Vptr spb_proc Int.zero)
@@ -4329,8 +4337,8 @@ Proof.
         {
           admit.
         }
-        !!destruct h_ex as [locenv_post_parms [m_post_parms [trace_post_parms [? ?]]]].
-        exists locenv_post_parms m_post_parms (Events.Eapp trace_postchain trace_post_parms).
+        !!destruct h_ex as [locenv_postparms [m_postparms [trace_postparms [? ?]]]].
+        exists locenv_postparms m_postparms (Events.Eapp trace_postchain trace_postparms).
         split.
         - eapply exec_Sseq_continue;eauto.
         - assumption.
@@ -4385,7 +4393,7 @@ Proof.
       * (* gather every intermediate parts together to get funcall ---> m_postfree *)
         eapply eval_funcall_internal with (e2:=locenv_postcpout) (out:=Out_normal);eauto.
         simpl fn_body.
-        subst proc_env_empty. 
+        subst locenv_empty. 
         eapply exec_Sseq_continue.
         -- eapply h_decl_ok_exec.
         -- eapply h_exec.
