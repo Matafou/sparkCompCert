@@ -4259,7 +4259,9 @@ Proof.
                              trace_postchain locenv_postchain m_postchain Out_normal
                    /\ (stack_match st ((pb_lvl,nil) :: suffix_s) ((pb_lvl, nil) :: CE)
                                    (Values.Vptr spb_proc Int.zero) locenv_postchain g m_postchain)).
-        { destruct (Mem.valid_access_store m_proc_pre_init AST.Mint32 spb_proc (Int.unsigned (Int.add Int.zero Int.zero)) chaining_expr_from_caller_v) as [m_postchain h_m_postchain].
+        { destruct (Mem.valid_access_store m_proc_pre_init AST.Mint32 spb_proc
+                                           (Int.unsigned (Int.add Int.zero Int.zero))
+                                           chaining_expr_from_caller_v) as [m_postchain h_m_postchain].
           { apply Mem.valid_access_freeable_any.
             eapply Mem.valid_access_alloc_same;eauto.
             - apply Int.unsigned_range.
@@ -4390,9 +4392,21 @@ Proof.
               exists v_t.
               split;auto.
               !inversion h_CM_eval_expr_v_t.
+              !inversion h_CM_eval_expr_vaddr.
               apply eval_Eload with (vaddr := vaddr).
-              - admit.
-              - admit.
+              - remember (set_locals (fn_vars the_proc) (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc)))
+                         as locenv_postchain.
+                apply eval_Ebinop with (v1:=v1) (v2:=v2);auto.
+                + (* 1) loads are evaluated only from m, locenv is orthogonal.
+                     2) there one more load than in h_CM_eval_expr_v1, but m_post_chain has one mode frame on the stack. *)
+                  admit.
+                + (* lemma: a constant expression is evaluated indenpendently of the state, hence h_CM_eval_expr_v2 is sufficient *)
+                  admit.
+              - (* 1) vaddr is the address of a spark variable in Cminor, which exists in m.
+                   2) The only difference between m and m_postchain is the new frame (see h_alloc)
+                      and the store on the chaining arg located in the new frame (h_m_postchain).
+                   Hence the value stored at vaddr has not changed.  *)
+                admit.
                 (*TBC.*)
         }
             exact h_stck_mtch_postchain.
@@ -4496,16 +4510,6 @@ Proof.
     + econstructor;eauto.
     + assumption.
 (* lots of shelved.  *)
-Qed.
 Admitted.
 
-
-
     (* TODO: deal with lvl_p = 0. *)
-
-(* *************************** SCRATCH  ************************** *)
-
-
-(* *************************** END SCRATCH ************************ *)
-
-    admit.
