@@ -4286,47 +4286,130 @@ Proof.
               eassumption.
           - eq_same_clear;up_type.
             assert (h_stck_mtch_CE:=me_stack_match h_match_env).
-            red.
-            !intros.
-            red in h_stck_mtch_CE.
-            assert (eval_name st s nme (Normal v)).
-            { assert (h_eval_name_sfx:forall nme v,  eval_name st ((pb_lvl, nil) :: suffix_s) nme (Normal v)
-                                                     -> eval_name st suffix_s nme (Normal v)).
-              { admit. (* empty top stack *) }
-              assert (h_eval_name_s:forall nme v,  eval_name st suffix_s nme (Normal v)
-                                                   -> eval_name st s nme (Normal v)).
-              { admit. (*no nam clash*) }
-              apply h_eval_name_s.
-              apply h_eval_name_sfx.
-              assumption. }
-            !functional inversion heq_transl_name.
-            !functional inversion heq_transl_variable.
-(*             cbn in heq_CEframeG_id,heq_lvloftop_m'. *)
-            !!assert (lvl_id<m')%nat by admit. (* property of CE *)
-            !assert (exists x, (m' - lvl_id)%nat = S x).
-            { destruct (Nat.lt_exists_pred _ _ h_lt_lvl_id_m') as [m0' [hm0'_1 hm0'_2]].
-              subst_exc pb locenv_empty.
-              exists (m0' - lvl_id)%nat.
-              omega. }
-            !destruct h_ex.
-            rewrite heq_nat0 in heq_build_loads.
-            unfold build_loads in heq_build_loads.
-            cbn in heq_build_loads.
-            assert (transl_name st CE nme =: Ebinop Oadd (build_loads_ x) (Econst (Ointconst (Int.repr δ_id)))).
-            { rewrite <- heq.
-              simpl.
-              subst nme_t.
-              unfold transl_variable.
-              cbn in heq_CEframeG_id, heq_lvloftop_m',heq_CEfetchG_id.
-              rewrite heq_CEframeG_id,heq_CEfetchG_id.
-              destruct (CompilEnv.level_of_top CE).
-              - admit. (* TBC. *)
-              - admit. (* assert false. *)
-            } 
-            admit. (*TBC.*)
-        }
-        destruct h_ex as [locenv_postchain [m_postchain [trace_postchain [h_decl_ok_exec ?]]]].
+            (* From the point of viex of the caller, all variables visible in suffix_s are still there. *)
+            !assert (stack_match st suffix_s CE (Values.Vptr spb ofs) locenv g m).
+            { red.
+              !intros.
+              red in h_stck_mtch_CE.
+              specialize (h_stck_mtch_CE nme v nme_t load_addr_nme typ_nme cm_typ_nme).
+              !assert (eval_name st s nme (Normal v)).
+              { admit. (* if it is mapped to v in suffix_s, then it is also in s (no clash name). *)  }
+              specialize (h_stck_mtch_CE h_eval_name_nme_v0 heq_type_of_name heq_transl_name heq_transl_type heq_make_load).
+              !!destruct h_stck_mtch_CE as [? [? ?]].
+              exists load_addr_nme_v;split;auto. }
+              
+            (* from the point of view of the called procedure, once the chaining arg has been copied to the stack,
+               all previous variables visible from suffix_s are still visible but with one more load, due to the
+               one more level in CE. *)
+            assert (h_stck_mtch_postchain:stack_match st ((pb_lvl, nil) :: suffix_s) ((pb_lvl, nil) :: CE)
+                                                      (Values.Vptr spb_proc Int.zero) locenv_empty g m_postchain).
+            { 
+              clear - h_cut_until h_stk_mtch_suffix_s_m h_m_postchain Heqlocenv_empty h_alloc h_chaining_expr_from_caller_v h_inv_CE'.
+              clearbody the_proc.
+              red.
+              !intros.
 
+              (* We need to instantiate the stack_match hypothesis on something, we need first to prove that
+                 [eval_name st s nme (Normal v)].
+                 Sketch: 
+                   -> [ eval_name st ((pb_lvl, [ ]) :: suffix_s) nme (Normal v)]
+                   -> [eval_name st suffix_s nme (Normal v)]
+                   -> [eval_name st s nme (Normal v)]
+               *)
+              !assert (eval_name st suffix_s nme (Normal v)).
+              { (* should be lemma about empty top frame.  *)
+                !inversion h_eval_name_nme_v.
+                - constructor.
+                  cbn in heq_SfetchG_x.
+                  assumption.
+                - admit. (* array *)
+                - admit. (* record *) }
+(* ****************** *)
+              (* Now we need to prove the other premisses of h_stk_mtch_suffix_s_m.
+                 This is very painful for something trivial. *)
+              !assert (exists δ nme_t_sub_indirections, nme_t = Ebinop Oadd nme_t_sub_indirections δ).
+              { !functional inversion heq_transl_name.
+                !functional inversion heq_transl_variable.
+                unfold build_loads.
+                eexists;eexists;eauto. }
+              !!destruct h_ex as [δ [nme_t_sub_indirections ?]].
+              subst nme_t.
+              
+              !assert (exists pb_lvl_sub, (pb_lvl = S pb_lvl_sub /\ CompilEnv.level_of_top CE = Some pb_lvl_sub)).
+              { !!assert (h_ce_lvl := ci_exact_lvls _ _ h_inv_CE').
+                !inversion h_exact_lvlG.
+                destruct (Datatypes.length CE) eqn:heq_lgthCE.
+                - apply length_zero_iff_nil in heq_lgthCE.
+                  subst.
+                  functional inversion heq_transl_name.
+                - exists n;split;auto.
+                  !assert (invariant_compile CE st).
+                  { admit. (* TODO: a lemma: invariant_compile is also true for sublists *)}
+                  !!pose proof ci_exact_lvls _ _ h_inv_comp_CE_st.
+                  inversion h_exact_lvlG_CE0.
+                  + subst CE.
+                    !inversion h_exact_lvlG;subst.
+                    inversion heq.
+                  + cbn.
+                    subst CE.
+                    cbn in heq_lgthCE.
+                    !inversion heq_lgthCE.
+                    reflexivity. }
+              !!destruct h_ex as [pb_sub_lvl [? ?]]; subst pb_lvl.
+
+              !functional inversion heq_make_load;subst load_addr_nme.
+              !functional inversion heq_transl_name.
+              !functional inversion heq_transl_variable.
+              subst.
+              cbn in heq_lvloftop_m'.
+              inversion heq_lvloftop_m'.
+              subst m'; eq_same_clear.
+              !assert (transl_name st CE (E_Identifier astnum id) =:
+                                    Ebinop Oadd (build_loads_ (pb_sub_lvl - lvl_id))
+                                    (Econst (Ointconst (Int.repr δ_id)))).
+              { unfold transl_name.
+                unfold transl_variable.
+                simpl in heq_CEfetchG_id,heq_CEframeG_id.
+                rewrite heq_CEfetchG_id,heq_CEframeG_id,heq_lvloftop_CE_pb_sub_lvl.
+                unfold build_loads.
+                reflexivity. }
+              !assert (make_load (Ebinop Oadd (build_loads_ (pb_sub_lvl - lvl_id)) (Econst (Ointconst (Int.repr δ_id)))) cm_typ_nme
+                                 =: Eload chunk (Ebinop Oadd (build_loads_ (pb_sub_lvl - lvl_id)) (Econst (Ointconst (Int.repr δ_id))))).
+              { unfold make_load.
+                rewrite h_access_mode_cm_typ_nme.
+                reflexivity. }
+
+              red in h_stk_mtch_suffix_s_m.
+              pose proof (h_stk_mtch_suffix_s_m
+                            _ _ _ _ _ _
+                            h_eval_name_nme_v0 heq_type_of_name heq_transl_name0 heq_transl_type heq_make_load0)
+                as h_stk_mtch_suffix_s_m'.
+              (* instantiation done *)
+(* ****************** *)
+              !!destruct h_stk_mtch_suffix_s_m' as [v_t [? ?]].
+              exists v_t.
+              split;auto.
+              !inversion h_CM_eval_expr_v_t.
+              apply eval_Eload with (vaddr := vaddr).
+              - admit.
+              - admit.
+                (*TBC.*)
+        }
+            exact h_stck_mtch_postchain.
+        }
+        !!destruct h_ex as [locenv_postchain [m_postchain [trace_postchain [h_decl_ok_exec ?]]]].
+        !assert (match_env st ((pb_lvl, nil) :: suffix_s) ((pb_lvl, nil) :: CE)
+                           (Values.Vptr spb_proc Int.zero) locenv_postchain g m_postchain).
+        { split.
+          + apply h_stk_mtch.
+          + admit.
+          + admit.
+          + admit.
+          + admit.
+          + admit.
+          + admit.
+          + admit. }
+            
         (* Storing values of parameters of the procedure. *)
         assert (h_ex:exists locenv_post_parms m_post_parms trace_post_parms,
                exec_stmt g the_proc (Values.Vptr spb_proc Int.zero)
