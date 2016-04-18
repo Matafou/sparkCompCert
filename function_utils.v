@@ -634,10 +634,116 @@ Proof.
   reflexivity.
 Qed.
 
+Definition msg1:string := "transl_declaration: D_Type_Declaration not yet implemented".
 
-(* Function bug prevents me to do this *)
 (* Definition transl_procedure := Eval cbv beta delta [bind bind2 transl_procedure] in transl_procedure. *)
 
-(* Add implicit args to Gfun "(AST.fundef function) unit" to work
+
+(* We add implicit args to Gfun "(AST.fundef function) unit" to work
    around a limitation of Function *)
+
+Function transl_procedure (stbl : Symbol_Table_Module.symboltable) (enclosingCE : compilenv)
+                 (lvl : Symbol_Table_Module.level) (pbdy : procedure_body) {struct pbdy} :
+  res CMfundecls :=
+  match pbdy with
+  | mkprocedure_body _ pnum lparams decl statm =>
+      match spark2Cminor.build_compilenv stbl enclosingCE lvl lparams decl with
+      | OK (x, y) =>
+          if y <=? Integers.Int.max_unsigned
+          then
+           match transl_declaration stbl x (S lvl) decl with
+           | OK x0 =>
+               match spark2Cminor.transl_stmt stbl x statm with
+               | OK x1 =>
+                   match init_locals stbl x decl with
+                   | OK x2 =>
+                       match store_params stbl x lparams with
+                       | OK x3 =>
+                           let chain_param :=
+                             Sstore AST.Mint32 (Econst (Oaddrstack Integers.Int.zero))
+                               (Evar chaining_param) in
+                           match copy_out_params stbl x lparams with
+                           | OK x4 =>
+                               let proc_t :=
+                                 Sseq (Sseq chain_param (Sseq x3 (Sseq x2 Sskip)))
+                                   (Sseq x1 x4) in
+                               match
+                                 transl_lparameter_specification_to_procsig stbl lvl
+                                   lparams
+                               with
+                               | OK x5 =>
+                                   let tlparams :=
+                                     transl_lparameter_specification_to_lident stbl
+                                       lparams in
+                                   let newGfun :=
+                                     (transl_paramid pnum,
+                                     @AST.Gfun (AST.fundef function) unit
+                                       (AST.Internal
+                                          {|
+                                          fn_sig := x5;
+                                          fn_params := chaining_param :: tlparams;
+                                          fn_vars := transl_decl_to_lident stbl decl;
+                                          fn_stackspace := y;
+                                          fn_body := proc_t |})) in
+                                   OK (newGfun :: x0)
+                               | Error msg => Error msg
+                               end
+                           | Error msg => Error msg
+                           end
+                       | Error msg => Error msg
+                       end
+                   | Error msg => Error msg
+                   end
+               | Error msg => Error msg
+               end
+           | Error msg => Error msg
+           end
+          else
+            Error (msg "spark2Cminor: too many local variables, stack size exceeded")
+      | Error msg => Error msg
+      end
+  end
+with
+transl_declaration (stbl : Symbol_Table_Module.symboltable) 
+                   (enclosingCE : compilenv) (lvl : Symbol_Table_Module.level)
+                   (decl : declaration) {struct decl} : res CMfundecls :=
+  match decl with
+  | D_Null_Declaration => OK [ ]
+  | D_Type_Declaration _ _ =>
+      Error (msg "transl_declaration: D_Type_Declaration not yet implemented")
+  | D_Object_Declaration _ objdecl =>
+      OK
+        [(transl_paramid (object_name objdecl),
+         AST.Gvar
+           {|
+           AST.gvar_info := tt;
+           AST.gvar_init := [ ];
+           AST.gvar_readonly := false;
+           AST.gvar_volatile := false |})]
+  | D_Procedure_Body _ pbdy => transl_procedure stbl enclosingCE lvl pbdy
+  | D_Seq_Declaration _ decl1 decl2 =>
+      match transl_declaration stbl enclosingCE lvl decl1 with
+      | OK x =>
+          match transl_declaration stbl enclosingCE lvl decl2 with
+          | OK x0 => OK (x ++ x0)
+          | Error msg => Error msg
+          end
+      | Error msg => Error msg
+      end
+  end.
+
+
+Functional Scheme transl_procedure_ind2 := Induction for transl_procedure Sort Prop
+with transl_declaration_ind2 := Induction for transl_declaration Sort Prop.
+
+Lemma transl_declaration_ok : spark2Cminor.transl_declaration = transl_declaration.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma transl_procedure_ok : spark2Cminor.transl_procedure = transl_procedure.
+Proof.
+  reflexivity.
+Qed.
+
 

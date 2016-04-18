@@ -232,10 +232,9 @@ Function make_load (addr : Cminor.expr) (ty_res : Ctypes.type) :=
     procedure frame. The type of all Load is ( void * ). *)
 Function build_loads_ (m:nat) {struct m} : Cminor.expr :=
   match m with
-    | O => Econst (Oaddrstack (Integers.Int.zero))
-    | S m' =>
-      let subloads := build_loads_ m' in
-      Eload AST.Mint32 subloads
+    | O => Econst (Oaddrstack Integers.Int.zero)
+    | S m' => let subloads := build_loads_ m' in
+              Eload AST.Mint32 subloads
   end.
 
 (** [build_loads m n] is the expression denoting the address
