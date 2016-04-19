@@ -1329,6 +1329,10 @@ Ltac rename_hyp_strong h th :=
   | exact_levelG ?CE => fresh "h_exct_lvl_" CE
   | exact_levelG ?CE => fresh "h_exct_lvl"
 
+  | repeat_Mem_loadv _ ?m ?lvl ?v ?sp => fresh "h_repeat_loadv_" lvl "_" v
+  | repeat_Mem_loadv _ ?m ?lvl ?v ?sp => fresh "h_repeat_loadv_" lvl
+  | repeat_Mem_loadv _ ?m ?lvl ?v ?sp => fresh "h_repeat_loadv"
+
   | CompilEnv.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_CEcut_" CE "_" lvl
   | CompilEnv.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_CEcut_" CE
   | CompilEnv.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_CEcut"
@@ -1345,6 +1349,7 @@ Ltac rename_hyp_strong h th :=
   | strong_match_env_2 ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch2_" s "_" CE
   | strong_match_env_2 ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch2_" s
   | strong_match_env_2 ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch2"
+
   | _ => rename_hyp4 h th
   end.
 Ltac rename_hyp ::= rename_hyp_strong.
@@ -1609,6 +1614,23 @@ Proof.
     eapply eval_expr_transl_variable_inv_locenv;eauto.
 Qed.
 
+
+
+(* 
+Lemma strong_match_env_match_env_sublist : forall (st : symboltable.symboltable) (s : STACK.stack) (CE : compilenv)
+                                     (sp : Values.val) (locenv : env) (g : genv) (m : mem),
+    strong_match_env st s CE sp locenv g m ->
+    invariant_compile CE st ->
+    forall  CE' CE'' s' s'' sp'' toplvl,
+    CompilEnv.cut_until CE toplvl CE' CE'' -> 
+    STACK.cut_until s (S toplvl) s' s'' ->
+    (CompilEnv.level_of_top CE = Some (S toplvl) \/ (CE=[]/\toplvl=0%nat)) ->
+    repeat_Mem_loadv AST.Mint32 m 1%nat sp sp'' ->
+    forall locenv, match_env st s'' CE'' sp'' locenv g m.
+Proof.
+ *)
+
+
 Lemma strong_match_env_match_env_sublist : forall (st : symboltable.symboltable) (s : STACK.stack) (CE : compilenv)
                                      (sp : Values.val) (locenv : env) (g : genv) (m : mem),
     strong_match_env st s CE sp locenv g m ->
@@ -1616,7 +1638,8 @@ Lemma strong_match_env_match_env_sublist : forall (st : symboltable.symboltable)
     forall  CE' CE'' s' s'' sp'' lvl toplvl,
     CompilEnv.cut_until CE lvl CE' CE'' -> 
     STACK.cut_until s lvl s' s'' ->
-    (CompilEnv.level_of_top CE = Some toplvl \/ (CE=[]/\toplvl=0%nat)) ->
+    ( CompilEnv.level_of_top CE = (Some (toplvl - 1))%nat (* Trying this *)
+      \/  CE = [] /\ toplvl = 0%nat) ->
     repeat_Mem_loadv AST.Mint32 m (toplvl - lvl)%nat sp sp'' ->
     forall locenv,
       match_env st s'' CE'' sp'' locenv g m.
@@ -1624,7 +1647,6 @@ Proof.
   !!intros until 1.
   !!induction h_strg_mtch_s_CE_m;!intros.  
   - rename v into sp.
-    rename H3 into repeat.
     !invclear h_CEcut;subst.
     !invclear h_stkcut.
     eapply match_env_empty;eauto.
@@ -1634,110 +1656,146 @@ Proof.
       !inversion h_stkcut.
       repeat progress (simpl in *;subst).
       !!assert ((toplvl - lvl = 0)%nat) by admit.
-      rewrite heq_nat in H3.
-      !inversion H3;subst.
+      rewrite heq_nat in h_repeat_loadv.
+      !inversion h_repeat_loadv;subst.
       apply match_env_inv_locenv with (locenv:=locenv').
       assumption.
-    + !!assert (exists s0',s'=sto :: s0') by admit. (* s' has the same form as CE', lemma todo *)
+    + !!destruct h_or as [? | [? ?] ];try discriminate.
+      !!assert (exists s0',s'=sto :: s0') by admit. (* s' has the same form as CE', lemma todo *)
+      !assert (exact_levelG (stoCE :: CE)).
+      { apply h_inv_comp_st. }
+      !assert (exact_levelG CE).
+      { inversion h_exct_lvl.
+        assumption. }
       !!destruct h_ex as [s0' ?].
       subst.
       up_type.
-      
-      eapply IHh_strg_mtch_s_CE_m with (toplvl:=(toplvl-1)%nat);auto.
-      * eapply invariant_compile_subcons;eauto.
-      * eauto.
-      * !inversion h_stkcut.
-        eauto.
-      * 
-
-
-xxx +      !!assert (exists s0',s'=sto :: s0') by admit. (* s' has the same form as CE', lemma todo *)
-      !!destruct h_ex as [s0' ?].
+      assert (Datatypes.length (stoCE :: CE) = toplvl) as heq_toplvl.
+      { apply exact_lvlG_lgth in heq_lvloftop_toplvl;auto. }
+      inversion heq_toplvl;clear heq_toplvl.
+      !!assert (lvl <= CompilEnv.level_of stoCE)%nat by omega.
+      clear H1.
+      !assert (toplvl = CompilEnv.level_of stoCE).
+      { cbn in heq_lvloftop_toplvl.
+        destruct stoCE;simpl in *.
+        inversion heq_lvloftop_toplvl.
+        reflexivity. }
       subst.
-      up_type.
+      especialize IHh_strg_mtch_s_CE_m: ?.
+      { eapply invariant_compile_subcons;eauto. }
+      specialize (IHh_strg_mtch_s_CE_m s'0 CE'' s0' s'' sp'' lvl (Datatypes.length CE-1)%nat).
+      { eapply IHh_strg_mtch_s_CE_m.
+        * eauto.
+        * !inversion h_stkcut.
+          eauto.
+        * destruct CE;cbn in *;try discriminate;try now auto.
+          inversion h_exct_lvl_CE;subst.
+          rewrite <- minus_n_O.
+          left;reflexivity.
+        * 
+(* XXXXX *)
+            assert (CE=[]) by admit.
+            subst.
+            
 
-      destruct CE.
-      { assert (s0'=[]) by admit.
-        subst.
-        !inversion h_CEcut_CE_lvl;subst.
-        !inversion h_stkcut;subst.
-        !inversion h_stkcut_s_lvl.
-        - eapply match_env_empty.
-          !inversion h_strg_mtch_s_CE_m;subst.
-          eapply (me_stack_match_functions h_match_env0).
-        - inversion h_strg_mtch_s_CE_m. }
-      eapply IHh_strg_mtch_s_CE_m with (toplvl:=(toplvl-1)%nat);auto.
-      * eapply invariant_compile_subcons;eauto.
-      * eauto.
-      * !inversion h_stkcut.
-        eauto.
-      * !assert (exact_levelG (stoCE :: f :: CE)).
-        { apply h_inv_comp_st. }
-        !assert (exact_levelG (f :: CE)).
-        { inversion h_exct_lvl.
-          assumption. }
-        !!pose proof exact_lvlG_lgth _ _ h_exct_lvl heq_lvloftop_toplvl.
-        simpl in heq_nat.
-        !invclear heq_nat.
-        inversion h_exct_lvl0;subst;cbn.
-        apply f_equal.
-        remember (Datatypes.length CE) as x.
-        apply minus_n_O.
-      * !assert (exact_levelG (stoCE :: f :: CE)).
-        { apply h_inv_comp_st. }
-        !assert (exact_levelG (f :: CE)).
-        { inversion h_exct_lvl.
-          assumption. }
-        !!pose proof exact_lvlG_lgth _ _ h_exct_lvl heq_lvloftop_toplvl.
-        simpl in heq_nat.
-        !invclear heq_nat.
-        simpl.
-        setoid_rewrite <- minus_n_O.
-        inversion H3.
-        -- destruct lvl;try discriminate;subst.
-           rewrite Nat.sub_succ in H3.
-           rewrite <- H0 in H3.
-        
-        xxxxxxxxx
-          inversion H3;subst.
-        -- rewrite <- H0 in *.
-
-
-        !assert (exact_levelG (stoCE :: f :: CE)).
-        { apply h_inv_comp_st. }
-        !assert (exact_levelG (f :: CE)).
-        { inversion h_exct_lvl.
-          assumption. }
-        !!pose proof exact_lvlG_lgth _ _ h_exct_lvl heq_lvloftop_toplvl.
-        simpl in heq_nat.
-        !invclear heq_nat.
-        !inversion H3;subst.
-        -- destruct lvl;try discriminate.
-        
-        inversion h_exct_lvl0;subst;cbn.
+XXXXX
+!assert (lvl<Datatypes.length CE)%nat.
+              { subst.
+                omega. }
+              !assert (exists n, Datatypes.length CE - lvl = S n)%nat.
+              { exists ((Datatypes.length CE - 1 - lvl)%nat).
+                omega. }
+              !destruct h_ex.
+              rewrite heq_nat in h_repeat_loadv.
+              !inversion h_repeat_loadv.
+              rewrite heq0 in heq.
+              !invclear heq.
+              assert (x = (Datatypes.length CE - 1 - lvl)%nat).
+              { omega. }
+              subst;assumption. }
 
 
 
-      !!pose proof exact_lvlG_lgth _ _ h_exct_lvl_CE .
-
-
-      !!pose proof exact_lvlG_lgth _ _ h_exct_lvl heq_lvloftop_toplvl.
-      simpl in heq_nat.
-      !invclear heq_nat.
-
-
-
-
-    
- !!pose proof STACK.cut_until_spec1 _ _ _ _ H1;simpl in *; subst.
-    !!pose proof CompilEnv.cut_until_spec1 _ _ _ _ h_cut;simpl in *; subst.
-    destruct CE'. 
-    + assert (s'=[]) by admit. (* s' has the same form as CE', lemma todo *)
-      repeat progress (simpl in *;subst).
-      inversion H1.
-    
+XXXXXXXXXx
+      destruct h_le_lvl.
+      * subst.
+        rewrite Nat.sub_diag in h_repeat_loadv.
+        inversion h_repeat_loadv;subst.
+        clear h_repeat_loadv.
+        !assert (match_env st (sto :: s) (stoCE :: CE) sp'' locenv0 g m).
+        { eapply match_env_inv_locenv;eauto. }
+        clear h_match_env.
+        rename v into sp.
+        assert ().
+        admit.
+      * {
+          eapply IHh_strg_mtch_s_CE_m with (toplvl:=(Datatypes.length CE-1)%nat);auto.
+          * eapply invariant_compile_subcons;eauto.
+          * eauto.
+          * !inversion h_stkcut.
+            eauto.
+          * destruct CE;cbn in *;try discriminate.
+            inversion h_exct_lvl_CE;subst.
+            rewrite <- minus_n_O.
+            reflexivity.
+          * !assert (lvl<Datatypes.length CE)%nat.
+              { subst.
+                omega. }
+              !assert (exists n, Datatypes.length CE - lvl = S n)%nat.
+              { exists ((Datatypes.length CE - 1 - lvl)%nat).
+                omega. }
+              !destruct h_ex.
+              rewrite heq_nat in h_repeat_loadv.
+              !inversion h_repeat_loadv.
+              rewrite heq0 in heq.
+              !invclear heq.
+              assert (x = (Datatypes.length CE - 1 - lvl)%nat).
+              { omega. }
+              subst;assumption. }
+Qed.    
     
 
+        !assert (exists n, toplvl - lvl = S n)%nat.
+        { !!destruct h_or as [? | [? ?] ];try discriminate.
+          assert (toplvl = CompilEnv.level_of stoCE).
+          { cbn in heq_lvloftop_toplvl.
+            destruct stoCE;simpl in *.
+            inversion heq_lvloftop_toplvl.
+            reflexivity. }
+          subst.
+          assert (lvl <= CompilEnv.level_of stoCE)%nat by omega.
+          admit.
+        }
+ move heq after h_stkcut.
+        move repeat_loadv after heq.
+        remember (CompilEnv.level_of stoCE) as lvlstoCE.
+        !!assert (lvl <= CompilEnv.level_of stoCE)%nat by omega.
+        !!destruct h_or as [? | [? ?] ];try discriminate.
+        assert (Datatypes.length (stoCE :: CE) = S toplvl) as heq_toplvl.
+        { apply exact_lvlG_lgth in heq_lvloftop_toplvl;auto.
+          apply h_inv_comp_st. }
+        cbn in heq_lvloftop_toplvl.
+
+
+        !destruct (toplvl - lvl)%nat eqn:heq_δlvl.
+        -- assert (toplvl<=lvl)%nat by omega. 
+          inversion repeat_loadv;subst.
+
+
+        !!assert (lvl <= CompilEnv.level_of stoCE)%nat by omega.
+
+        remember (CompilEnv.level_of stoCE) as lvlstoCE.
+        assert (Datatypes.length (stoCE :: CE) = S toplvl) as heq_toplvl.
+        { apply exact_lvlG_lgth in heq_lvloftop_toplvl;auto.
+          apply h_inv_comp_st. }
+        simpl in heq_toplvl.
+        inversion heq_toplvl.
+        subst;eq_same_clear
+.
+
+        !destruct h_le_lvl.
+        -- cbn in *.
+           subst.
 
   
 
