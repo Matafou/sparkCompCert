@@ -191,7 +191,7 @@ Proof.
     auto.
 Qed.
 
-Lemma fetch_ok_none: forall id sto, fetches id sto = None -> resides id sto = false.
+Lemma fetches_ok_none: forall id sto, fetches id sto = None -> resides id sto = false.
 Proof.
   intros id sto.
   !functional induction (fetches id sto);!intros;try discriminate.
@@ -201,6 +201,51 @@ Proof.
   - cbn.
     reflexivity.
 Qed.
+
+Lemma fetch_ok: forall id sto v, fetch id sto = Some v -> reside id sto = true.
+Proof.
+  unfold fetch, reside.
+  !intros.
+  apply fetches_ok in heq_fetches_id.
+  assumption.
+Qed.
+
+Lemma fetch_ok_none: forall id sto, fetch id sto = None -> reside id sto = false.
+Proof.
+  unfold fetch, reside.
+  !intros.
+  apply fetches_ok_none in heq_fetches_id.
+  assumption.
+Qed.
+
+Lemma fetchG_ok_none: forall id sto, fetchG id sto = None -> resideG id sto = false.
+Proof.
+  intros id sto.
+  !functional induction (fetchG id sto);!intros;try discriminate.
+  - simpl.
+    !!destruct (reside id f) eqn:heq_reside.
+    + apply fetch_ok_none in heq_fetch_id_f.
+      rewrite heq_fetch_id_f in heq_bool_true;discriminate.
+    + auto.
+  - reflexivity. 
+Qed.
+
+Lemma fetchG_ok: forall id sto v, fetchG id sto = Some v -> resideG id sto = true.
+Proof.
+  intros id sto.
+  !functional induction (fetchG id sto);!intros;try discriminate.
+  - simpl.
+    !!destruct (reside id f) eqn:heq_reside.
+    + reflexivity.
+    + apply fetch_ok in heq_fetch_id_f.
+      rewrite heq_fetch_id_f in heq_bool_false;discriminate.
+  - simpl.
+    !!destruct (reside id f) eqn:heq_reside.
+    + reflexivity.
+    + apply IHo in heq_SfetchG_id_s'.
+      assumption.
+Qed.
+
 
 Lemma updates_ok_same: forall sto id v sto',
     updates sto id v = Some sto'
@@ -220,20 +265,85 @@ Proof.
   - discriminate.
 Qed.
 
+Lemma updates_ok_same_orig: forall sto id v sto',
+    updates sto id v = Some sto'
+    -> exists v', fetches id sto = Some v'.
+Proof.
+  intros sto id v.
+  !functional induction (updates sto id v);!intros;simpl in *;intros.
+  - rewrite hbeqnat_true.
+    eauto.
+  - rewrite hbeqnat_false.
+    eapply IHo;eauto.
+  - discriminate.
+  - discriminate.
+Qed.
+
+Lemma updates_ok_same_resides: forall sto id v sto',
+    updates sto id v = Some sto'
+    -> resides id sto' = true.
+Proof.
+  !intros.
+  eapply fetches_ok.
+  eapply updates_ok_same;eauto.
+Qed.
+
+Lemma updates_ok_same_resides_orig: forall sto id v sto',
+    updates sto id v = Some sto'
+    -> resides id sto = true.
+Proof.
+  !intros.
+  !!pose proof updates_ok_same_orig _ _ _ _ heq_updates_sto_id.
+  destruct h_ex.
+  eapply fetches_ok;eauto.
+Qed.
+
 Lemma update_ok_same: forall frm id v frm',
     update frm id v = Some frm'
     -> fetch id frm' = Some v.
 Proof.
   intros until v.
-  !functional induction (STACK.update frm id v);!destruct frm;simpl in *;!intros.
+  unfold fetch, update.
+  !intros.
+  destruct (updates (store_of frm) id v) eqn:heq_upd.
   - !invclear heq;simpl.
-    apply updates_ok_same in heq_updates_id.
-    unfold fetch.
-    simpl.
+    eapply updates_ok_same;eauto.
+  - discriminate.
+Qed.
+
+
+Lemma update_ok_same_orig: forall frm id v frm',
+    update frm id v = Some frm'
+    -> exists v', fetch id frm = Some v'.
+Proof.
+  intros until v.
+  unfold fetch, update.
+  !intros.
+  destruct (updates (store_of frm) id v) eqn:heq_upd.
+  - !invclear heq;simpl.
+    !!pose proof updates_ok_same_orig _ _ _ _ heq_upd.
     assumption.
   - discriminate.
 Qed.
 
+Lemma update_ok_same_reside: forall sto id v sto',
+    update sto id v = Some sto'
+    -> reside id sto' = true.
+Proof.
+  !intros.
+  eapply fetch_ok.
+  eapply update_ok_same;eauto.
+Qed.
+
+Lemma update_ok_same_reside_orig: forall sto id v sto',
+    update sto id v = Some sto'
+    -> reside id sto = true.
+Proof.
+  !intros.
+  !!pose proof update_ok_same_orig _ _ _ _ heq_update_sto_id.
+  destruct h_ex.
+  eapply fetch_ok;eauto.
+Qed.
 
 Lemma updateG_ok_same: forall stk id v stk',
     updateG stk id v = Some stk'
@@ -255,6 +365,32 @@ Proof.
   - discriminate.
 Qed.
 
+Lemma updateG_ok_same_orig: forall stk id v stk',
+    updateG stk id v = Some stk'
+    -> exists v', fetchG id stk = Some v'.
+Proof.
+  intros until v.
+  !functional induction (updateG stk id v);simpl;!intros;try discriminate.
+  - !invclear heq;simpl.
+    !destruct (update_ok_same_orig _ _ _ _ heq_update_f_x).
+    rewrite heq_fetch_x_f.
+    eauto.
+  - !invclear heq;simpl.
+    apply update_ok_none in heq_update_f_x.
+    rewrite heq_update_f_x.
+    eapply IHo.
+    eauto.
+Qed.
+
+Lemma updateG_ok_same_resideG: forall stk id v stk',
+    updateG stk id v = Some stk'
+    -> resideG id stk' = true.
+Proof.
+  !intros.
+  eapply fetchG_ok.
+  eapply updateG_ok_same.
+  eauto.
+Qed.
 
 
 
@@ -283,7 +419,6 @@ Proof.
   - discriminate.
 Qed.
 
-
 Lemma update_ok_others: forall frm id v frm',
     update frm id v = Some frm' ->
     forall id', id<>id' -> fetch id' frm = fetch id' frm'.
@@ -295,52 +430,27 @@ Proof.
   - discriminate.
 Qed.
 
-(*
 Lemma update_ok_others_reside: forall frm id v frm',
     update frm id v = Some frm' ->
     forall id', id<>id' -> reside id' frm = reside id' frm'.
 Proof.
   !intros.
-  !functional induction (STACK.update frm id v);!destruct frm;simpl in *;!intros.
-  - !invclear heq_update_frm_id;simpl.
-    cbn.
-    !functional inversion heq_updates_id;subst;cbn in *.
-    + rewrite hbeqnat_true in heq_updates_id.
-      apply beq_nat_true in hbeqnat_true.
-      subst.
-      reflexivity.
-    + rewrite hbeqnat_false in heq_updates_id.
-      destruct (Nat.eq_dec id' y).
-      * subst.
-        rewrite Nat.eqb_refl in *.
-        reflexivity.
-      * rewrite <- Nat.eqb_neq in n.
-        rewrite n in *.
-        eapply IHo;eauto.
-
-
-
-      apply beq_nat_true in hbeqnat_true.
-      subst.
-      reflexivity.
-    assert ((id' =? y)%nat = false).
-    { apply Nat.eqb_neq.
-      rewrite 
-    rewrite hbeqnat_true in heq_updates_id.
-    
-  - discriminate.
-
-
-  pose proof update_ok_others frm id v frm' heq_update_frm_id id' hneq.
-  unfold reside.
-  !functional induction (STACK.update frm id v);!destruct frm;simpl in *;!intros.
-  intros until v.
-  !functional induction (STACK.update frm id v);!destruct frm;simpl in *;!intros.
-  - !invclear heq;simpl.
-    eapply updates_ok_others in heq_updates_id;eauto.
-  - discriminate.
+  !!pose proof update_ok_others _ _ _ _ heq_update_frm_id _ hneq.
+  destruct (fetch id' frm) eqn:heq_fetch.
+  - apply fetch_ok in heq_fetch.
+    rewrite heq_fetch.
+    symmetry in heq_fetch_id'_frm.
+    apply fetch_ok in heq_fetch_id'_frm.
+    rewrite heq_fetch_id'_frm.
+    reflexivity.
+  - apply fetch_ok_none in heq_fetch.
+    rewrite heq_fetch.
+    symmetry in heq_fetch_id'_frm.
+    apply fetch_ok_none in heq_fetch_id'_frm.
+    rewrite heq_fetch_id'_frm.
+    reflexivity.
 Qed.
-*)
+
 Lemma updateG_ok_others: forall stk id v stk',
     updateG stk id v = Some stk' ->
     forall id', id<>id' -> fetchG id' stk = fetchG id' stk'.
@@ -363,35 +473,84 @@ Proof.
   - discriminate.
 Qed.
 
-(*
+
+Lemma updateG_ok_others_resideG: forall frm id v frm',
+    updateG frm id v = Some frm' ->
+    forall id', id<>id' -> resideG id' frm = resideG id' frm'.
+Proof.
+  !intros.
+  !!pose proof updateG_ok_others _ _ _ _ heq_updateG_frm_id _ hneq.
+  destruct (fetchG id' frm) eqn:heq_fetchG.
+  - apply fetchG_ok in heq_fetchG.
+    rewrite heq_fetchG.
+    symmetry in heq_SfetchG_id'_frm.
+    apply fetchG_ok in heq_SfetchG_id'_frm.
+    rewrite heq_SfetchG_id'_frm.
+    reflexivity.
+  - apply fetchG_ok_none in heq_fetchG.
+    rewrite heq_fetchG.
+    symmetry in heq_SfetchG_id'_frm.
+    apply fetchG_ok_none in heq_SfetchG_id'_frm.
+    rewrite heq_SfetchG_id'_frm.
+    reflexivity.
+Qed.
+
+
 Lemma updateG_ok_same_frameG: forall stk id v lvl sto stk',
     updateG stk id v = Some stk'
     -> frameG id stk = Some (lvl,sto)
     -> exists sto', frameG id stk' = Some (lvl,sto').
 Proof.
   intros until v.
-  !functional induction (updateG stk id v);simpl;!intros.
+  !functional induction (updateG stk id v);simpl;!intros;try discriminate.
   - !invclear heq;simpl.
-    !! (destruct (reside x f') eqn:h).
-    + erewrite update_ok_others in heq_fetch_id'_f;eauto.
-      rewrite heq_fetch_id'_f.
-      reflexivity.
-    + erewrite update_ok_others in heq_fetch_id'_f;eauto.
-      rewrite heq_fetch_id'_f.
-      reflexivity.
-
-
+    !!pose proof update_ok_same_reside _ _ _ _ heq_update_f_x.
+    !!pose proof update_ok_same_reside_orig _ _ _ _ heq_update_f_x.
+    rewrite heq_bool_true.
+    rewrite heq_bool_true0 in heq0.
+    !invclear heq0.
     unfold update in heq_update_f_x.
-    destruct (updates (store_of f) x v).
-    + !invclear heq_update_f_x.
-      cbn.
-      unfold reside in heq0.
-      destruct (reside x f);cbn.
-    functional inversion heq_update_f_x.
-    
+    cbn in *.
+    destruct (updates sto x v) eqn:heq.
+    + eauto.
+    + discriminate.
+  - !invclear heq;simpl.
+    rewrite update_ok_none in heq_update_f_x.
+    apply fetch_ok_none in heq_update_f_x.
+    rewrite heq_update_f_x.
+    rewrite heq_update_f_x in heq0.
+    eauto.
 Qed.
-*)
 
+Lemma updateG_ok_same_frameG_orig: forall stk id v lvl sto stk',
+    updateG stk id v = Some stk'
+    -> frameG id stk' = Some (lvl,sto)
+    -> exists sto', frameG id stk = Some (lvl,sto').
+Proof.
+  intros until v.
+  !functional induction (updateG stk id v);simpl;!intros;try discriminate.
+  - !invclear heq;simpl.
+    !!pose proof update_ok_same_reside _ _ _ _ heq_update_f_x.
+    !!pose proof update_ok_same_reside_orig _ _ _ _ heq_update_f_x.
+    simpl in heq0.
+    rewrite heq_bool_true in heq0.
+    rewrite heq_bool_true0.
+    !invclear heq0.
+    unfold update in heq_update_f_x.
+    cbn in *.
+    destruct (updates (store_of f) x v) eqn:heq.
+    + destruct f;simpl in *.
+      !invclear heq_update_f_x.
+      eauto.
+    + discriminate.
+  - !invclear heq;simpl.
+    simpl in heq0.
+    rewrite update_ok_none in heq_update_f_x.
+    apply fetch_ok_none in heq_update_f_x.
+    rewrite heq_update_f_x.
+    rewrite heq_update_f_x in heq0.
+    eapply IHo; eauto.
+Qed.
 
 Lemma storeUpdate_id_ok_others: forall ast_num stbl stk id v stk',
     storeUpdate stbl stk (E_Identifier ast_num id) v (Normal stk') ->

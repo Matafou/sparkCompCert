@@ -3097,6 +3097,68 @@ Proof.
   assumption.
 Qed.
 
+
+Lemma updateG_ok_others_frameG: forall stk id v stk',
+      updateG stk id v = Some stk' ->
+      forall id' lvl sto,
+        id<>id' ->
+        frameG id' stk = Some (lvl,sto) -> 
+        exists sto', frameG id' stk' = Some (lvl,sto').
+Proof.
+  intros until v.
+  !functional induction (updateG stk id v);simpl;!intros;try discriminate.
+  - !invclear heq;simpl.
+    !!pose proof update_ok_others_reside _ _ _ _ heq_update_f_x _ hneq.
+    rewrite <- heq_bool.
+    !! (destruct (reside id' f) eqn:h).
+    + !invclear heq0.
+      unfold update in heq_update_f_x.
+      cbn in *.
+      destruct (updates sto x v) eqn:heq.
+      * !invclear heq_update_f_x.
+        eauto.
+      * discriminate.
+    + rewrite heq0.
+      eauto.
+  - !invclear heq;simpl.
+    !! (destruct (reside id' f) eqn:h).
+    + !invclear heq0.
+      eauto.
+    + eapply IHo;eauto.
+Qed.
+
+Lemma updateG_ok_others_frameG_orig: forall stk id v stk',
+      updateG stk id v = Some stk' ->
+      forall id' lvl sto,
+        id<>id' ->
+        frameG id' stk' = Some (lvl,sto) -> 
+        exists sto', frameG id' stk = Some (lvl,sto').
+Proof.
+  intros until v.
+  !functional induction (updateG stk id v);simpl;!intros;try discriminate.
+  - !invclear heq;simpl.
+    !!pose proof update_ok_others_reside _ _ _ _ heq_update_f_x _ hneq.
+    rewrite heq_bool.
+    simpl in heq0.
+    !! (destruct (reside id' f') eqn:h).
+    + !invclear heq0.
+      unfold update in heq_update_f_x.
+      cbn in *.
+      destruct (updates (store_of f) x v) eqn:heq.
+      * !invclear heq_update_f_x.
+        destruct f;simpl in *.
+        eauto.
+      * discriminate.
+    + rewrite heq0.
+      eauto.
+  - !invclear heq;simpl.
+    simpl in *. 
+    !! (destruct (reside id' f) eqn:h).
+    + !invclear heq0.
+      eauto.
+    + eapply IHo;eauto.
+Qed.
+
 Lemma assignment_preserve_stack_match_CE :
   forall stbl CE s a id id_t e_v s',
     (* translating the variabe to a Cminor load address, so id belongs to CE *)
@@ -3106,25 +3168,39 @@ Lemma assignment_preserve_stack_match_CE :
     stack_match_CE s CE ->
     stack_match_CE s' CE.
 Proof.
-(*  !intros.
+  !intros.
   red.
   !intros.
   up_type.
   red in h_stk_mtch_CE_s_CE.
   !destruct (Nat.eq_dec id nme).
   - subst nme.
-    functional inversion heq_transl_variable.
-    inversion h_storeUpd;subst.
-    pose proof (storeUpdate_id_ok_same _ _ _ _ _ _ h_storeUpd).
-    
-    
-    admit.
-  - eapply h_stk_mtch_CE_s_CE. 
-    !!pose proof (storeUpdate_id_ok_others _ _ _ _ _ _ h_storeUpd _ hneq).
-    admit.
-*)
-XXX    
-Admitted.
+    !functional inversion heq_transl_variable.
+    subst.
+    !inversion h_storeUpd;subst.
+    !!pose proof (storeUpdate_id_ok_same _ _ _ _ _ _ h_storeUpd).
+    !destruct (updateG_ok_same_orig _ _ _ _ heq_updateG_s_id).
+    rename x into e_v'.
+    !!pose proof updateG_ok_same_frameG_orig _ _ _ _ _ _ heq_updateG_s_id heq.
+    !destruct h_ex.
+    apply h_stk_mtch_CE_s_CE with (1:=heq0).
+  - !functional inversion heq_transl_variable.
+    subst.
+    !inversion h_storeUpd;subst.
+    !!pose proof storeUpdate_id_ok_others _ _ _ _ _ _ h_storeUpd _ hneq.
+    !destruct (updateG_ok_same_orig _ _ _ _ heq_updateG_s_id).
+    !!pose proof (updateG_ok_others_frameG _ _ _ _ heq_updateG_s_id).
+    specialize (H nme lvl).
+    !assert (exists sto', frameG nme s = Some (lvl, sto')).
+    { pose proof (updateG_ok_others_frameG_orig _ _ _ _ heq_updateG_s_id _ _ _ hneq heq).
+      assumption. }
+    !destruct h_ex.
+    rename x0 into sto'.
+    specialize (H sto' hneq heq0).
+    eapply h_stk_mtch_CE_s_CE;eauto. 
+Qed.
+
+
 
 Lemma assignment_preserve_stack_complete :
   forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
@@ -4800,8 +4876,7 @@ Proof.
           eapply det_eval_expr;eauto. }
         subst e_t_v0.
         constructor;eauto 7.
-        -- eapply assignment_preserve_stack_match_CE.
-           7: eapply h_storeUpd. ;eauto. 
+        -- eapply assignment_preserve_stack_match_CE;eauto.
         -- eapply assignment_preserve_stack_safe;eauto.
           !intros.
           !invclear heq.
@@ -4942,7 +5017,7 @@ Proof.
     { eapply build_compilenv_preserve_invariant_compile;eauto.
       eapply invariant_compile_sublist with CE_prefx.
       assert (h_CE:CE_prefx ++ CE_sufx = CE).
-      - eapply semantics_properties.cut_until_spec1;eassumption. (* Lemma todo *)
+      - eapply CompilEnv.cut_until_spec1;eassumption. (* Lemma todo *)
       - rewrite h_CE.
         assumption. }
     specialize (IHh_eval_stmt h_inv_CE''_bld eq_refl).
@@ -5181,12 +5256,14 @@ Proof.
         }
         !!destruct h_ex as [locenv_postchain [m_postchain [trace_postchain [h_decl_ok_exec ?]]]].
 
+xxxx
         assert (match_env st suffix_s CE_sufx (Values.Vptr spb_proc Int.zero) locenv_postchain g m_postchain).
 
         !assert (match_env st ((pb_lvl, nil) :: suffix_s) ((pb_lvl, nil) :: CE_sufx)
                            (Values.Vptr spb_proc Int.zero) locenv_postchain g m_postchain).
         { split.
           + apply h_stk_mtch.
+          + admit.
           + up_type.
             pose proof (me_stack_match_functions h_match_env) as h_sck_mtch_fun.
             red in h_sck_mtch_fun.
@@ -5203,7 +5280,7 @@ Proof.
                 constructor;auto. }
 
               split;[|split];auto.
-              eapply CompilEnv.Cut_Until_Tail.
+              apply CompilEnv.Cut_Until_Tail.
               -- simpl.
                  omega.
               -- assumption.
