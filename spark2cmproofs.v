@@ -3098,32 +3098,33 @@ Proof.
 Qed.
 
 Lemma assignment_preserve_stack_match_CE :
-  forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
-    exact_levelG CE ->
-    all_frm_increasing CE ->
-    (* translating the variabe to a Cminor load address *)
+  forall stbl CE s a id id_t e_v s',
+    (* translating the variabe to a Cminor load address, so id belongs to CE *)
     transl_variable stbl CE a id = OK id_t ->
-    (* translating the value, we may need a overflow hypothesis on e_v/e_t_v *)
-    transl_value e_v e_t_v ->
-    (* Evaluating var address in Cminor *)
-    Cminor.eval_expr g stkptr locenv m id_t idaddr ->
-    (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (E_Identifier a id) = OK chk ->
     (* the two storing operation maintain match_env *)
     storeUpdate stbl s (E_Identifier a id) e_v (Normal s') ->
-    Mem.storev chk m idaddr e_t_v = Some m' ->
-    match_env stbl s CE stkptr locenv g m ->
+    stack_match_CE s CE ->
     stack_match_CE s' CE.
 Proof.
-  !intros.
+(*  !intros.
   red.
   !intros.
-  !destruct h_match_env.
   up_type.
   red in h_stk_mtch_CE_s_CE.
-  XXX
-  eapply h_stk_mtch_CE_s_CE;eauto.
-Qed.
+  !destruct (Nat.eq_dec id nme).
+  - subst nme.
+    functional inversion heq_transl_variable.
+    inversion h_storeUpd;subst.
+    pose proof (storeUpdate_id_ok_same _ _ _ _ _ _ h_storeUpd).
+    
+    
+    admit.
+  - eapply h_stk_mtch_CE_s_CE. 
+    !!pose proof (storeUpdate_id_ok_others _ _ _ _ _ _ h_storeUpd _ hneq).
+    admit.
+*)
+XXX    
+Admitted.
 
 Lemma assignment_preserve_stack_complete :
   forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
@@ -4793,7 +4794,8 @@ Proof.
         eassumption. }
       split.
       * assumption.
-      * !invclear h_exec_stmt.
+      * up_type.
+        !invclear h_exec_stmt.
         assert (e_t_v0 = e_t_v). {
           eapply det_eval_expr;eauto. }
         subst e_t_v0.
