@@ -522,21 +522,20 @@ Qed.
 
 
 (* Definition foo_compute_chk:= Eval lazy beta iota delta [compute_chnk compute_chnk_id compute_chnk_astnum compute_chnk_of_type bind] in compute_chnk. *)
-Function compute_chnk (stbl' : symboltable) (nme : name) :=
+Function compute_chnk (stbl : symboltable) (nme : name) :=
 match nme with
-| E_Identifier astnum0 _ =>
-    match fetch_exp_type astnum0 stbl' with
-    | Some typ =>
-        match reduce_type stbl' typ max_recursivity with
+| E_Identifier _ id =>
+    match fetch_var_type id stbl with
+    | OK x =>
+        match reduce_type stbl x max_recursivity with
         | OK BBoolean => OK AST.Mint32
         | OK (BInteger _) => OK AST.Mint32
         | OK (BArray_Type _ _) => Error (msg "compute_chnk_of_type: Arrays types not yet implemented!!.")
         | OK (BRecord_Type _) => Error (msg "compute_chnk_of_type: Records types not yet implemented!!.")
-        | Error x => Error x
+        | Error x0 => Error x0
         end
-    | None =>
-        Error [MSG "compute_chnk_astnum: unkniwn type on astnum: ";
-          CTX (Pos.of_nat astnum0)] end
+    | Error msg => Error msg
+    end
 | E_Indexed_Component _ _ _ => Error (msg "compute_chnk: arrays not implemented yet")
 | E_Selected_Component _ _ _ => Error (msg "compute_chnk: records not implemented yet")
 end.

@@ -1614,6 +1614,19 @@ Proof.
 Qed.
 
 
+Lemma strong_match_env_inv_locenv : forall st s CE sp locenv g m,
+    strong_match_env st s CE sp locenv g m ->
+    forall locenv', strong_match_env st s CE sp locenv' g m.
+Proof.
+  !!intros until 1.
+  !induction h_strg_mtch_s_CE_m;!intros.
+  - constructor.
+    eapply match_env_inv_locenv;eauto.
+  - econstructor;eauto.
+    eapply match_env_inv_locenv;eauto.
+Qed.
+
+
 
 
 Lemma cut_until_exact_lvl:
@@ -1941,7 +1954,7 @@ Ltac rename_hyp5 th :=
   match th with
   | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ None  => fresh "h_exec_stmt_None"
   | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ _  => fresh "h_exec_stmt"
-  | _ => rename_hyp4 th
+  | _ => rename_hyp_strong th
   end.
 
 Ltac rename_hyp ::= rename_hyp5.
@@ -4994,7 +5007,6 @@ Proof.
     rename locals_section into f1'_l.
     rename params_section into f1'_p.
     specialize (IHh_eval_stmt ((n, f1'_l ++ f1'_p) :: s3) eq_refl).
-    rename H1 into h_cut_until.
     rewrite <- transl_stmt_ok in heq_transl_stmt_stm'.
     !functional inversion heq_transl_stmt_stm';subst;eq_same_clear; clear heq_transl_stmt_stm'.
     rename s1 into suffix_s .
@@ -5013,7 +5025,7 @@ Proof.
     !!pose proof (me_stack_match_functions h_match_env).
     red in h_stk_mtch_fun.
     specialize (h_stk_mtch_fun _ _ _ h_fetch_proc_p).
-    !!destruct h_stk_mtch_fun as [CE_prefx [CE_sufx [paddr [pnum [fction [lglobdef [h_cut_until_CE [? [? ?]]]]]] ]]].
+    !!destruct h_stk_mtch_fun as [CE_prefx [CE_sufx [paddr [pnum [fction [lglobdef [? [? [? ?]]]]]] ]]].
     up_type.
 
     (* Core of the proof, link the different phase of execution with
@@ -5083,7 +5095,7 @@ Proof.
     assert (hnodup_arg:NoDupA eq_param_name procedure_parameter_profile) by admit. (* spark typing *)
     assert (hnodup_decl:NoDupA eq (decl_to_lident st procedure_declarative_part)) by admit. (* spark typing *)
     assert (heq_lgth_CE_sufx:Datatypes.length CE_sufx = pb_lvl).
-    { erewrite (cut_until_exact_levelG _ _ _ _ _ _ h_cut_until_CE).
+    { erewrite (cut_until_exact_levelG _ _ _ _ _ _ h_CEcut_CE_pb_lvl).
       reflexivity. }
     rewrite heq_lgth_CE_sufx in heq.
     !invclear heq.
@@ -5147,12 +5159,12 @@ Proof.
         reflexivity.
       - assumption. }
 
-    enough (h_ex:exists locenv_postcpout m_postcpout trace_postcpout m_postfree,
+    enough (h_ex:exists locenv_postcpout m_postcpout trace_postcpout,
                exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) locenv_init m_proc_pre_init
                          (fn_body the_proc) trace_postcpout locenv_postcpout m_postcpout Out_normal
-               /\ Mem.free m_postcpout spb_proc 0 sto_sz = Some m_postfree
+               /\ exists m_postfree, Mem.free m_postcpout spb_proc 0 sto_sz = Some m_postfree
                /\ match_env st s' CE (Values.Vptr spb ofs) locenv g m_postfree).
-    { destruct h_ex as [locenv_postcpout [m_postcpout [trace_postcpout [m_postfree [h_exec_ok [h_free_ok h_matchenv_ok]]]]]].
+    { destruct h_ex as [locenv_postcpout [m_postcpout [trace_postcpout [h_exec_ok [m_postfree [h_free_ok h_matchenv_ok]]]]]].
       exists m_postfree trace_postcpout Values.Vundef.
       split.
       - econstructor;eauto.
@@ -5161,32 +5173,162 @@ Proof.
         + cbn. assumption.
       - assumption. }
 
+    (* Same as above but just before the free performed at the end of funcall *)
+    enough (h_ex:exists locenv_postcpout m_postcpout trace_postcpout,
+               exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) locenv_init m_proc_pre_init
+                         (fn_body the_proc) trace_postcpout locenv_postcpout m_postcpout Out_normal
+               /\ match_env st s' CE (Values.Vptr spb ofs) locenv g m_postcpout).
+    { destruct h_ex as [locenv_postcpout [m_postcpout [trace_postcpout [h_exec_ok h_matchenv_ok]]]].
+      exists locenv_postcpout m_postcpout trace_postcpout.
+      split.
+      - assumption.
+      - destruct (Mem.free m_postcpout spb_proc 0 sto_sz) eqn:heq_free.
+        + exists m0;split;auto.
+          admit. (* no variable of CE and st are in m_postcpout, so the free maintains match_env. *)
+        + admit. (* free is always possible on a stackframe (should be in the invariant). *)
+    }
 
     enough (h_ex:exists locenv_postbdy m_postbdy trace_postbdy,
                exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) locenv_init m_proc_pre_init
-                         (Sseq
-                         (Sseq (Sstore AST.Mint32 (Econst (Oaddrstack Int.zero)) (Evar chaining_param))
-                            (Sseq s_parms (Sseq s_locvarinit Sskip))) s_pbdy)
+                         (Sseq (Sseq (Sstore AST.Mint32 (Econst (Oaddrstack Int.zero)) (Evar chaining_param))
+                                     (Sseq s_parms (Sseq s_locvarinit Sskip))) s_pbdy)
                          trace_postbdy locenv_postbdy m_postbdy Out_normal
-               /\ match_env st ((pb_lvl, f1'_l ++ f1'_p)::suffix_s') CE (Values.Vptr spb_proc Int.zero) locenv_postbdy g m_postbdy).
-    {
-      destruct h_ex as
-          [locenv_postbdy [m_postbdy [trace_postbdy [h_exec_ok h_matchenv_ok ]]]].
+               /\ forall locenv_caller,
+                 match_env st (intact_s ++ suffix_s') CE (Values.Vptr spb ofs) locenv_caller g m_postbdy).
+    { destruct h_ex as [locenv_postbdy [m_postbdy [trace_postbdy [h_exec_ok h_matchenv_ok]]]].
+      !assert ( ∃ (locenv_postcpout : env) (m_postcpout : mem) (trace_postcpout : Events.trace),
+                  exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) locenv_postbdy m_postbdy
+                            s_copyout trace_postcpout locenv_postcpout m_postcpout Out_normal).
+      { admit. (* exec_stmt s_copyout does not raise any error *) }
+      destruct h_ex as[locenv_postcpout [m_postcpout [trace_postcpout h_exec_ok2]]].
+      exists locenv_postcpout m_postcpout (Events.Eapp trace_postbdy trace_postcpout).      
+      split.
+      - unfold the_proc at 2;cbn.
+        apply exec_stmt_assoc.
+        econstructor;eauto.
+      - 
+        (* temporary patch before switching to strong_match: *)
+        match goal with
+        | H: context P [(match_env st (intact_s ++ suffix_s'))] |- _
+          => let x := context P [(strong_match_env st (intact_s ++ suffix_s'))] in
+             assert (h_str_matchenv_ok:x) by admit
+        end.
+        up_type.
+        Lemma copy_out_ok:
+          forall st s prms_v params args opt_s', 
+            copy_out st s prms_v params args opt_s' ->
+            forall  s' g the_proc spb ofs spb_proc sto CE CE_sufx pb_lvl f1'_p
+                    s_copyout m_postbdy m_postcpout locenv_postcpout trace_postcpout locenv_postbdy,
+              opt_s' = Normal s' ->
+              prms_v = (pb_lvl, f1'_p) ->
+              copy_out_params st ((pb_lvl, sto) :: CE_sufx) params =: s_copyout ->
+              exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) locenv_postbdy m_postbdy s_copyout trace_postcpout locenv_postcpout
+                        m_postcpout Out_normal ->
+              (forall locenv_caller, strong_match_env st s CE (Values.Vptr spb ofs) locenv_caller g m_postbdy) ->
+              forall locenv,  strong_match_env st s' CE (Values.Vptr spb ofs) locenv g m_postcpout.
+        Proof.
+          !!intros until 1. 
+          !induction h_copy_out_s_opt_s'; !!intros until 4; intros h_strg_mtch ?;try discriminate;subst;up_type.
+          - !invclear heq.
+            cbn in h_cpout_prm.
+            !invclear h_cpout_prm.
+            inversion h_exec_stmt;subst.
+            apply h_strg_mtch.
+          - cbn in h_cpout_prm.
+            
+            
+        Qed.
+        admit.
+        (* copy_out property *)
+      
+      
+      
+    }
 
+
+
+    enough (h_ex:exists locenv_postbdy m_postbdy trace_postbdy,
+               exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) locenv_init m_proc_pre_init
+                         (Sseq (Sseq (Sstore AST.Mint32 (Econst (Oaddrstack Int.zero)) (Evar chaining_param))
+                                     (Sseq s_parms (Sseq s_locvarinit Sskip))) s_pbdy)
+                         trace_postbdy locenv_postbdy m_postbdy Out_normal
+               /\ match_env st ((pb_lvl, f1'_l ++ f1'_p)::suffix_s') ((pb_lvl, sto)::CE_sufx)
+                            (Values.Vptr spb_proc Int.zero) locenv_postbdy g m_postbdy).
+    { destruct h_ex as [locenv_postbdy [m_postbdy [trace_postbdy [h_exec_ok h_matchenv_ok]]]].
+      !assert (strong_match_env st ((pb_lvl, f1'_l ++ f1'_p) :: suffix_s') ((pb_lvl, sto)::CE_sufx)
+                                (Values.Vptr spb_proc Int.zero) locenv_postbdy g m_postbdy).
+      { admit. (* to be added (replace it actually) in the invariant *) }
       (* Just before cpout, the suffix of s match with the enclosing stack  *)
-      assert (forall enclosingstack locenv_caller,
+      assert (h_match_env_suffix_s': forall enclosingstack locenv_caller,
                  Mem.loadv AST.Mint32 m_postbdy (Values.Vptr spb_proc Int.zero) = Some enclosingstack ->
-                 match_env st suffix_s' CE_sufx enclosingstack locenv_caller g m_postbdy).
-      { !assert (strong_match_env st ((pb_lvl, f1'_l ++ f1'_p) :: suffix_s') ((pb_lvl, sto) :: CE_sufx) (Values.Vptr spb_proc Int.zero) locenv_postbdy g m_postbdy).
-        { admit. (* TODO: put this in the invariant *) }
-        !inversion H.
-        !intros.
+                 strong_match_env st suffix_s' CE_sufx enclosingstack locenv_caller g m_postbdy).
+      { !intros.
+        !inversion h_strg_mtch.
         rewrite heq2 in heq.
         !invclear heq.
-        !inversion H9.
-        - apply match_env_inv_locenv with locenv0;assumption.
-        - apply match_env_inv_locenv with locenv0;assumption. }
+        apply strong_match_env_inv_locenv with locenv0;assumption. }
+
+      !assert ( ∃ (locenv_postcpout : env) (m_postcpout : mem) (trace_postcpout : Events.trace) m_postfree,
+                   exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) locenv_postbdy m_postbdy
+                             s_copyout trace_postcpout locenv_postcpout m_postcpout Out_normal
+                   ∧ Mem.free m_postcpout spb_proc 0 sto_sz = Some m_postfree).
+      { admit. }
+      destruct h_ex as[locenv_postcpout [m_postcpout [trace_postcpout [m_postfree [h_exec_ok2 h_free]]]]].
+        
+
+    enough (h_ex:exists locenv_postbdy m_postbdy trace_postbdy,
+               exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) locenv_init m_proc_pre_init
+                         (Sseq (Sseq (Sstore AST.Mint32 (Econst (Oaddrstack Int.zero)) (Evar chaining_param))
+                                     (Sseq s_parms (Sseq s_locvarinit Sskip))) s_pbdy)
+                         trace_postbdy locenv_postbdy m_postbdy Out_normal
+               /\ match_env st ((pb_lvl, f1'_l ++ f1'_p)::suffix_s') ((pb_lvl, sto)::CE_sufx)
+                            (Values.Vptr spb_proc Int.zero) locenv_postbdy g m_postbdy
+               /\ ∃ (locenv_postcpout : env) (m_postcpout : mem) (trace_postcpout : Events.trace) m_postfree,
+                   exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) locenv_postbdy m_postbdy
+                             s_copyout trace_postcpout locenv_postcpout m_postcpout Out_normal
+                   ∧ Mem.free m_postcpout spb_proc 0 sto_sz = Some m_postfree).
+    { destruct h_ex as
+          [locenv_postbdy
+             [m_postbdy
+                [trace_postbdy [h_exec_ok [h_matchenv_ok [locenv_postcpout [m_postcpout [trace_postcpout [m_postfree [h_exec_ok2 h_free]]]]]]]]]].
+
+      !assert (strong_match_env st ((pb_lvl, f1'_l ++ f1'_p) :: suffix_s') ((pb_lvl, sto)::CE_sufx)
+                                (Values.Vptr spb_proc Int.zero) locenv_postbdy g m_postbdy).
+      { admit. (* to be added (replace it actually) in the invariant *) }
+
+      (* Just before cpout, the suffix of s match with the enclosing stack  *)
+      assert (h_match_env_suffix_s': forall enclosingstack locenv_caller,
+                 Mem.loadv AST.Mint32 m_postbdy (Values.Vptr spb_proc Int.zero) = Some enclosingstack ->
+                 strong_match_env st suffix_s' CE_sufx enclosingstack locenv_caller g m_postbdy).
+      { !intros.
+        !inversion h_strg_mtch.
+        rewrite heq2 in heq.
+        !invclear heq.
+        apply strong_match_env_inv_locenv with locenv0;assumption. }
+
+      assert (h_ex:exists intact_s', cut_until s' pb_lvl intact_s' suffix_s').
+      { admit. (* property of copy_out *) }
+      destruct h_ex as [intact_s' h_intact_s'].
+      assert (s' = intact_s' ++ suffix_s'). {
+        symmetry.
+        eapply cut_until_spec1;eauto. }
+      subst s'.
+      assert (h_match_env_intact_s_suffix_ss: forall locenv_caller,
+                 strong_match_env st (intact_s ++ suffix_s') CE (Values.Vptr spb ofs) locenv_caller g m_postbdy).
+      { (* Hard part, needs the fact that intact_s did not change *) }                  
+        
+        assert (strong_match_env intact_s ).
+
+      exists locenv_postcpout m_postcpout (Events.Eapp trace_postbdy trace_postcpout) m_postfree.
+      split;[|split].
+      - unfold the_proc at 2;cbn.
+        apply exec_stmt_assoc.
+        econstructor;eauto.
+      - assumption.
+      - 
       
+      
+
 XXXX
 
     enough (h_ex:exists locenv_postbdy m_postbdy trace_postbdy,

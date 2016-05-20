@@ -490,7 +490,7 @@ Definition compute_chnk_astnum (stbl:symboltable) (astn:astnum): res AST.memory_
 (* FIXME *)
 Definition compute_chnk (stbl:symboltable) (nme:name): res AST.memory_chunk :=
   match nme with
-  | E_Identifier astnum id => compute_chnk_astnum stbl astnum
+  | E_Identifier astnum id => compute_chnk_id stbl id
   | E_Indexed_Component _ nme' e => Error (msg "compute_chnk: arrays not implemented yet")
   | E_Selected_Component _ nme' id => Error (msg "compute_chnk: records not implemented yet")
   end.
