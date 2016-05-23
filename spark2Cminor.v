@@ -822,7 +822,7 @@ Fixpoint copy_out_params stbl (CE:compilenv) (lparams:list parameter_specificati
                id) contains the address where this value should be
                copied and as it is in lvalue position we don't put a
                Eload. *)
-            OK (Sseq recres (Sstore chnk (Evar id) (Eload chnk rexp)))
+            OK (Sseq (Sstore chnk (Evar id) (Eload chnk rexp)) recres)
         end
   end.
 

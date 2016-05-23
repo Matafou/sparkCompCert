@@ -3038,23 +3038,31 @@ Proof.
       clear h_tr_exp_other.
       erewrite Mem.load_store_other;[now eassumption| now eassumption | ].
       subst nme other_nme.
-      unfold compute_chnk_astnum in heq_compute_chnk.
-      destruct (symboltable.fetch_exp_type a stbl) eqn:heq_fetchvartyp;try discriminate.
-      assert (heq_tr_type_id:transl_type stbl t
-                             = OK (Ctypes.Tint Ctypes.I32 Ctypes.Signed Ctypes.noattr)). {
-        apply compute_chk_32.
-        unfold compute_chnk_astnum in heq_compute_chnk.
-        assumption. }
+      unfold compute_chnk_id in heq_compute_chnk.
+      destruct (symboltable.fetch_exp_type astnum stbl) eqn:heq_fetchvartyp;try discriminate.
+      !invclear heq_ftch_astnum.
       unfold stack_separate in h_separate_CE_m.
-      { eapply h_separate_CE_m with (nme:=(E_Identifier a id))
-                                      (nme':=(E_Identifier astnum other_id))
-                                      (k₂ := b0) (k₁:=b);
+
+
+      eapply h_separate_CE_m with (nme:=(E_Identifier astnum id))
+                                    (nme':=(E_Identifier astnum other_id))
+                                    (k₂ := b0) (k₁:=b);
         clear h_separate_CE_m;simpl;try eassumption;auto.
-        - rewrite heq_fetchvartyp.
+        * rewrite heq_fetchvartyp.
           reflexivity.
-        - intro abs.
+        * rewrite heq_fetchvartyp.
+          reflexivity.
+        * erewrite transl_variable_astnum;eauto.
+        * rewrite h_access_mode_cm_typ_other.
+          f_equal.
+          eq_same_clear.
+          clear heq_type_of_name.
+          functional inversion heq_transl_type;subst;auto;cbn in *.
+          -- inversion heq_make_load;reflexivity.
+          -- inversion heq_make_load;reflexivity.
+        * intro abs.
           inversion abs;subst;try discriminate.
-          elim hneq;reflexivity. }
+          elim hneq;reflexivity.
 Qed.
 
 
@@ -5214,27 +5222,119 @@ Proof.
              assert (h_str_matchenv_ok:x) by admit
         end.
         up_type.
+
         Lemma copy_out_ok:
           forall st s prms_v params args opt_s', 
             copy_out st s prms_v params args opt_s' ->
-            forall  s' g the_proc spb ofs spb_proc sto CE CE_sufx pb_lvl f1'_p
+            forall  s' g the_proc spb ofs spb_proc CE
                     s_copyout m_postbdy m_postcpout locenv_postcpout trace_postcpout locenv_postbdy,
               opt_s' = Normal s' ->
-              prms_v = (pb_lvl, f1'_p) ->
-              copy_out_params st ((pb_lvl, sto) :: CE_sufx) params =: s_copyout ->
-              exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) locenv_postbdy m_postbdy s_copyout trace_postcpout locenv_postcpout
-                        m_postcpout Out_normal ->
+              invariant_compile CE st ->
+              level_of prms_v = (Datatypes.length CE - 1)%nat ->
+              copy_out_params st CE params =: s_copyout ->
+              exec_stmt g the_proc (Values.Vptr spb_proc Int.zero)
+                        locenv_postbdy m_postbdy
+                        s_copyout
+                        trace_postcpout locenv_postcpout m_postcpout Out_normal ->
               (forall locenv_caller, strong_match_env st s CE (Values.Vptr spb ofs) locenv_caller g m_postbdy) ->
               forall locenv,  strong_match_env st s' CE (Values.Vptr spb ofs) locenv g m_postcpout.
         Proof.
           !!intros until 1. 
-          !induction h_copy_out_s_opt_s'; !!intros until 4; intros h_strg_mtch ?;try discriminate;subst;up_type.
+          !induction h_copy_out_s_opt_s'; !!intros until 4; !!intros ? h_strg_mtch;try discriminate;subst;up_type.
           - !invclear heq.
             cbn in h_cpout_prm.
             !invclear h_cpout_prm.
             inversion h_exec_stmt;subst.
             apply h_strg_mtch.
-          - cbn in h_cpout_prm.
+          - rename n into real_param_name.
+            rename v into param_v.
+            intros locenv.
+            specialize (IHh_copy_out_s_opt_s' s'0 g the_proc spb ofs spb_proc CE).
+            
+
+(* Definition copy_out_params:= Eval lazy beta iota delta [copy_out_params bind] in copy_out_params. *)
+Function copy_out_params (stbl : symboltable) (CE : compilenv) (lparams : list parameter_specification) {struct lparams} : 
+res stmt :=
+  match lparams with
+  | [ ] => OK Sskip
+  | prm :: lparams' =>
+      let id := transl_paramid (parameter_name prm) in
+      match compute_chnk stbl (E_Identifier 0%nat (parameter_name prm)) with
+      | OK x =>
+          match copy_out_params stbl CE lparams' with
+          | OK x0 =>
+              match transl_name stbl CE (E_Identifier 0%nat (parameter_name prm)) with
+              | OK x1 =>
+                  match parameter_mode prm with
+                  | In => OK x0
+                  | Out => OK (Sseq (Sstore x (Evar id) (Eload x x1)) x0)
+                  | In_Out => OK (Sseq (Sstore x (Evar id) (Eload x x1)) x0)
+                  end
+              | Error msg => Error msg
+              end
+          | Error msg => Error msg
+          end
+      | Error msg => Error msg
+      end
+  end.
+Lemma copy_out_params_ok : forall stbl CE lparams, copy_out_params stbl CE lparams = spark2Cminor.copy_out_params stbl CE lparams.
+Proof.
+  reflexivity.
+Qed.
+            rewrite <- copy_out_params_ok in h_cpout_prm.
+            !functional inversion h_cpout_prm;subst;rewrite copy_out_params_ok in *.
+            + (* In parameter *)
+              !destruct h_or;
+              match goal with
+              | H: parameter_mode param = _, H': parameter_mode param = _ |- _ => rewrite H in H';discriminate
+              end.
+            + clear h_or.
+              !inversion h_exec_stmt;try eq_same_clear.
+              specialize (IHh_copy_out_s_opt_s' x0 m1 m_postcpout locenv_postcpout t2).
+              eapply IHh_copy_out_s_opt_s';eauto.
+              intros locenv_caller. 
+              enough (match_env st s' CE (Values.Vptr spb ofs) locenv_caller g m1).
+              { admit. (* temporary until strong_match_env everywhere *) }
+              assert (stack_match st s' CE (Values.Vptr spb ofs) locenv_caller g m1).
+              { (* Need here something stating thate local variable correspond to params addresses. *)
+                xxx
+
+
+            
+
+            cbn in h_cpout_prm.
+            !assert ((compute_chnk_id st (parameter_name param)) = OK AST.Mint32).
+            { admit. (* TODO *) }
+            rewrite heq0 in h_cpout_prm.
+            simpl in h_cpout_prm.
+            !!destruct (copy_out_params st CE lparam) eqn:?; try discriminate.
+            simpl in h_cpout_prm.
+            !!destruct (transl_variable st CE 0%nat (parameter_name param)) eqn:?; try discriminate.
+            simpl in h_cpout_prm.
+            !destruct h_or.
+            + rewrite heq1 in h_cpout_prm.
+              !invclear h_cpout_prm.
+              !inversion h_exec_stmt;subst;auto.
+              * eapply IHh_copy_out_s_opt_s' ;eauto.
+                specialize 
+                  (IHh_copy_out_s_opt_s' s'0 g the_proc spb ofs spb_proc CE s0 m_postbdy m_postcpout locenv_postcpout t2 locenv_postbdy eq_refl h_inv_comp_CE_st heq h_cpout_prm_lparam_s0).
+                apply IHh_copy_out_s_opt_s';auto.
+                intros locenv.
+                !assert (∀ locenv : env, strong_match_env st s'0 CE (Values.Vptr spb ofs) locenv g m_postcpout).
+                { 
+                eapply IHh_copy_out_s_opt_s';eauto.
+              inversion h_exec_stmt;subst;eauto.
+              eapply IHh_copy_out_s_opt_s';eauto.
+              * 
+            
+            
+
+            eapply IHh_copy_out_s_opt_s';eauto.
+            + ec
+
+            !assert (compute_chnk_id st (parameter_name param) =: ast_num_type).
+            { admit. (* well formedness of st wrt to ast nums *) }
+            rewrite heq_fetch_exp_type0 in h_cpout_prm.
             
             
         Qed.
