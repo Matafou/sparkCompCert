@@ -5224,10 +5224,9 @@ Proof.
         up_type.
 
         Lemma copy_out_ok:
-          forall st s prms_v params args opt_s', 
+          ∀ st s prms_v params args opt_s', 
             copy_out st s prms_v params args opt_s' ->
-            forall  s' g the_proc spb ofs spb_proc CE
-                    s_copyout m_postbdy m_postcpout locenv_postcpout trace_postcpout locenv_postbdy,
+            ∀ s' g the_proc spb ofs spb_proc CE s_copyout m_postbdy m_postcpout locenv_postcpout trace_postcpout locenv_postbdy,
               opt_s' = Normal s' ->
               invariant_compile CE st ->
               level_of prms_v = (Datatypes.length CE - 1)%nat ->
@@ -5250,55 +5249,179 @@ Proof.
             rename v into param_v.
             intros locenv.
             specialize (IHh_copy_out_s_opt_s' s'0 g the_proc spb ofs spb_proc CE).
-            
-
-(* Definition copy_out_params:= Eval lazy beta iota delta [copy_out_params bind] in copy_out_params. *)
-Function copy_out_params (stbl : symboltable) (CE : compilenv) (lparams : list parameter_specification) {struct lparams} : 
-res stmt :=
-  match lparams with
-  | [ ] => OK Sskip
-  | prm :: lparams' =>
-      let id := transl_paramid (parameter_name prm) in
-      match compute_chnk stbl (E_Identifier 0%nat (parameter_name prm)) with
-      | OK x =>
-          match copy_out_params stbl CE lparams' with
-          | OK x0 =>
-              match transl_name stbl CE (E_Identifier 0%nat (parameter_name prm)) with
-              | OK x1 =>
-                  match parameter_mode prm with
-                  | In => OK x0
-                  | Out => OK (Sseq (Sstore x (Evar id) (Eload x x1)) x0)
-                  | In_Out => OK (Sseq (Sstore x (Evar id) (Eload x x1)) x0)
-                  end
-              | Error msg => Error msg
-              end
-          | Error msg => Error msg
-          end
-      | Error msg => Error msg
-      end
-  end.
-Lemma copy_out_params_ok : forall stbl CE lparams, copy_out_params stbl CE lparams = spark2Cminor.copy_out_params stbl CE lparams.
-Proof.
-  reflexivity.
-Qed.
-            rewrite <- copy_out_params_ok in h_cpout_prm.
-            !functional inversion h_cpout_prm;subst;rewrite copy_out_params_ok in *.
-            + (* In parameter *)
+            rewrite copy_out_params_ok in h_cpout_prm.
+            !functional inversion h_cpout_prm;subst;rewrite <- copy_out_params_ok in *.
+            + (* In parameter, no problem *)
               !destruct h_or;
               match goal with
               | H: parameter_mode param = _, H': parameter_mode param = _ |- _ => rewrite H in H';discriminate
               end.
-            + clear h_or.
+            + (* In or InOut *)
+              clear h_or.
+              rename x into chk. rename x0 into cpout_stmt. rename x1 into prm_nme_t.
               !inversion h_exec_stmt;try eq_same_clear.
-              specialize (IHh_copy_out_s_opt_s' x0 m1 m_postcpout locenv_postcpout t2).
+              clear h_exec_stmt. (* should be useless now *)
+              rename e1 into locenv_id_stored.
+              rename m1 into m_id_stored.
+              rename t2 into trace_id_stored.
+              up_type.
               eapply IHh_copy_out_s_opt_s';eauto.
               intros locenv_caller. 
-              enough (match_env st s' CE (Values.Vptr spb ofs) locenv_caller g m1).
-              { admit. (* temporary until strong_match_env everywhere *) }
-              assert (stack_match st s' CE (Values.Vptr spb ofs) locenv_caller g m1).
+
+
+
+              Definition visible_spark_id CE id :=
+                ∃ z, CompilEnv.fetchG id CE = Some z.
+
+              (* st not really used here, its in transl_variable only for error messages *)
+              Definition visible_cminor_addr st CE g astnum locenv stkptr (m:mem) spb ofs :=
+                ∃ id id_t,
+                  (* id_t is the address of id_t *)
+                  (transl_variable st CE astnum id =: id_t)
+                  /\ ∃ id_chk, (compute_chnk_id st id =: id_chk)
+                               /\ ∃ ofs_id , Cminor.eval_expr g stkptr locenv m id_t (Values.Vptr spb ofs_id)
+                                             /\ ofs <= Int.unsigned ofs_id + size_chunk id_chk.
+              
+              Definition invisible_cminor_addr st CE g astnum locenv stkptr (m:mem) spb ofs :=
+                ~ visible_cminor_addr st CE g astnum locenv stkptr m spb ofs.
+
+              Lemma exec_preserve_invisible:
+                ∀ g func stkptr locenv m stmt_t tr locenv' m' outc,
+                exec_stmt g func stkptr locenv m stmt_t tr locenv' m' outc -> 
+                ∀ st CE stmt,
+                  transl_stmt st CE stmt =: stmt_t ->
+                  forall astnum,
+                    (* eval_stmt st s stmt s' -> *)
+                    Mem.unchanged_on
+                      (fun sp_id ofs_id => invisible_cminor_addr st CE g astnum locenv stkptr m sp_id ofs_id)
+                      m m'.
+(*                 with exec_funcall_preserve_invisible: *)
+(*                        ∀  *)
+              Proof.
+                !!intros until 1.
+                !induction h_exec_stmt;!intros;
+                  rewrite <- transl_stmt_ok in heq_transl_stmt_stmt;
+                  !functional inversion heq_transl_stmt_stmt;
+                  rewrite transl_stmt_ok in *;subst.
+                - apply Mem.unchanged_on_refl.
+                - destruct addr_v;try discriminate. 
+                  up_type.
+                  simpl in heq_storev_a_v_m'.
+                  eapply Mem.store_unchanged_on;eauto.
+                  !intros.
+                  intro abs.
+                  red in abs.
+                  unfold visible_cminor_addr in abs.
+                  apply abs. clear abs.
+                  !functional inversion heq_transl_name.
+                  exists id addr;split;auto.
+                  { erewrite transl_variable_astnum;eauto. }
+                  subst.
+                  simpl in heq_compute_chnk_nme_chunk.
+                  exists chunk; split;auto.
+                  exists i;split;auto.
+                  !destruct h_and.
+                  omega.
+                - rename x1 into chaining_arg.
+                  rename x into args_t.
+                  rename lexp into args.
+                  rename bl into all_args_t.
+                  rename a_v into proc_addr.
+                  rename fd into proc_value.
+                  rename y into proc_lvl.
+                  (* Experimenting what would be needed on funcall. *)
+                  inversion H3;subst.
+                  + assert (
+                        forall g func stkptr locenv m stmt_t tr locenv' m' outc,
+                        eval_funcall g m (AST.Internal f0) vargs t m' vres
+                        -> Mem.unchanged_on (λ (sp_id : Values.block) (ofs_id : Z),
+                                             invisible_cminor_addr st CE g astnum e sp m sp_id ofs_id) m m').
+                    admit.
+                  + (* functional inversion would be cleaner here. *)
+                    admit. (* No External function *)
+                - destruct b.
+                  + eapply IHh_exec_stmt;eauto.
+                  + eapply IHh_exec_stmt;eauto.
+                - specialize (IHh_exec_stmt1 _ _ _ heq1).
+                  specialize (IHh_exec_stmt2 _ _ _ heq0).
+                  admit. (* transitivity of unchanged_on is proved in recent Compcert, by changing its definition. *)
+                - eapply IHh_exec_stmt;eauto.
+              Qed.
+
+
+
+
+(* BAD induction *)
+
+              Lemma exec_preserve_invisible:
+                ∀ st CE stmt stmt_t,
+                  transl_stmt st CE stmt =: stmt_t ->
+                  ∀ g func tr outc locenv stkptr m locenv',
+                  (* s s' *)
+                  forall m' astnum,
+                    (* eval_stmt st s stmt s' -> *)
+                    exec_stmt g func stkptr locenv m stmt_t tr locenv' m' outc ->
+                    Mem.unchanged_on
+                      (fun sp_id ofs_id => invisible_cminor_addr st CE g astnum locenv stkptr m sp_id ofs_id)
+                      m m'.
+              Proof.
+                intros st CE stmt.
+                !functional induction (transl_stmt st CE stmt);!intros;try discriminate; try !invclear heq.
+                - inversion h_exec_stmt;subst.
+                  apply Mem.unchanged_on_refl.
+                - !!inversion_clear h_exec_stmt;subst.
+                  destruct nme_t_v;try discriminate. 
+                  up_type.
+                  simpl in heq_storev_e_t_v_m'.
+                  eapply Mem.store_unchanged_on;eauto.
+                  !intros.
+                  intro abs.
+                  red in abs.
+                  unfold visible_cminor_addr in abs.
+                  apply abs. clear abs.
+                  !functional inversion heq_transl_name.
+                  exists id nme_t;split;auto.
+                  { erewrite transl_variable_astnum;eauto. }
+                  subst.
+                  simpl in heq_compute_chnk_nme_nme_chk.
+                  exists nme_chk; split;auto.
+                  exists i;split;auto.
+                  !destruct h_and.
+                  omega.
+                - !!inversion_clear h_exec_stmt;subst.
+                  destruct b.
+                  + eapply IHr;eauto.
+                  + eapply IHr0;eauto.
+                - admit.
+                - specialize (IHr _ heq_transl_stmt_stmt_x).
+                  specialize (IHr0 _ heq_transl_stmt_stmt0_x0).
+                  !!inversion_clear h_exec_stmt;subst.
+                  + assert (Mem.unchanged_on (λ sp_id ofs_id, invisible_cminor_addr st CE g astnum locenv stkptr m sp_id ofs_id) m m1).
+                    { eapply IHr;eauto. }
+                    assert (Mem.unchanged_on (λ sp_id ofs_id, invisible_cminor_addr st CE g astnum e1 stkptr m1 sp_id ofs_id) m1 m').
+                    { eapply IHr0;eauto. }
+                    admit. (* transitivity of unchanged_on is proved in recent Compcert, by changing its definition. *)
+                  + eapply IHr;eauto.
+              Qed.
+                  
+                
+                H g func tr outc locenv stkptr m locenv' m' astnum H0.
+                
+                
+              Qed.
+
+
+
+              admit. 
+
+              enough (match_env st s' CE (Values.Vptr spb ofs) locenv_caller g m_id_stored).
+              { admit. } (* temporary until strong_match_env everywhere *)
+              assert (stack_match st s' CE (Values.Vptr spb ofs) locenv_caller g m_id_stored).
               { (* Need here something stating thate local variable correspond to params addresses. *)
                 xxx
+              }
 
+              specialize (IHh_copy_out_s_opt_s' cpout_stmt m_postcpout m_id_stored locenv_postcpout trace_id_stored).
 
             
 

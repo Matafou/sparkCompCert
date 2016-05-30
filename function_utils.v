@@ -745,3 +745,33 @@ Proof.
   reflexivity.
 Qed.
 
+(* Definition copy_out_params:= Eval lazy beta iota delta [copy_out_params bind] in copy_out_params. *)
+Function copy_out_params (stbl : symboltable) (CE : compilenv) (lparams : list parameter_specification) {struct lparams} : 
+res stmt :=
+  match lparams with
+  | [ ] => OK Sskip
+  | prm :: lparams' =>
+      let id := transl_paramid (parameter_name prm) in
+      match compute_chnk stbl (E_Identifier 0%nat (parameter_name prm)) with
+      | OK x =>
+          match copy_out_params stbl CE lparams' with
+          | OK x0 =>
+              match transl_name stbl CE (E_Identifier 0%nat (parameter_name prm)) with
+              | OK x1 =>
+                  match parameter_mode prm with
+                  | In => OK x0
+                  | Out => OK (Sseq (Sstore x (Evar id) (Eload x x1)) x0)
+                  | In_Out => OK (Sseq (Sstore x (Evar id) (Eload x x1)) x0)
+                  end
+              | Error msg => Error msg
+              end
+          | Error msg => Error msg
+          end
+      | Error msg => Error msg
+      end
+  end.
+
+Lemma copy_out_params_ok : forall stbl CE lparams, spark2Cminor.copy_out_params stbl CE lparams = copy_out_params stbl CE lparams.
+Proof.
+  reflexivity.
+Qed.
