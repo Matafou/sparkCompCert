@@ -11,7 +11,11 @@ Ltac rename_hyp1 h th :=
     | Mem.valid_access ?m ?chk ?b ?ofs ?perm => fresh "h_valid_access_" b
     | Mem.valid_access ?m ?chk ?b ?ofs ?perm => fresh "h_valid_access"
     | Ctypes.access_mode _ = _ => fresh "h_access_mode"
-    | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ None  => fresh "h_exec_stmt_None"
+    | Cminor.exec_stmt _ _ _ _ _ ?stmt _ _ _ None  => fresh "h_exec_stmt_None_" stmt 
+    | Cminor.exec_stmt _ _ _ _ _ ?stmt _ _ _ None  => fresh "h_exec_stmt_None"
+    | Cminor.exec_stmt _ _ _ _ _ ?stmt _ _ _ (Some ?res)  => fresh "h_exec_stmt_" stmt "_" res
+    | Cminor.exec_stmt _ _ _ _ _ ?stmt _ _ _ ?res => fresh "h_exec_stmt_" stmt "_" res
+    | Cminor.exec_stmt _ _ _ _ _ ?stmt _ _ _ _ => fresh "h_exec_stmt_" stmt
     | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ _  => fresh "h_exec_stmt"
     | Cminor.eval_constant _ _ _ = (Some _)  => fresh "h_eval_constant"
     | Cminor.eval_constant _ _ _ = None  => fresh "h_eval_constant_None"
@@ -19,6 +23,11 @@ Ltac rename_hyp1 h th :=
     | Cminor.eval_expr _ _ _ _ ?x _ => fresh "h_CM_eval_expr_" x
     | Cminor.eval_expr _ _ _ _ _ ?y => fresh "h_CM_eval_expr_" y
     | Cminor.eval_expr _ _ _ _ _ _ => fresh "h_CM_eval_expr"
+
+    | Cminor.eval_funcall ?g ?m ?proc_value ?vargs ?t ?m' ?vres => fresh "h_evalfuncall_" proc_value "_" vargs "_" vres
+    | Cminor.eval_funcall ?g ?m ?proc_value ?vargs ?t ?m' ?vres => fresh "h_evalfuncall_" proc_value "_" vargs
+    | Cminor.eval_funcall ?g ?m ?proc_value ?vargs ?t ?m' ?vres => fresh "h_evalfuncall_" proc_value
+    | Cminor.eval_funcall ?g ?m ?proc_value ?vargs ?t ?m' ?vres => fresh "h_evalfuncall"
 
     | Cminor.eval_exprlist _ _ _ _ ?x ?y => fresh "h_CM_eval_exprl_" x "_" y
     | Cminor.eval_exprlist _ _ _ _ ?x _ => fresh "h_CM_eval_exprl_" x

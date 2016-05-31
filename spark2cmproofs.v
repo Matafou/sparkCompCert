@@ -3399,6 +3399,159 @@ Proof.
 Qed.
 
 
+Definition visible_spark_id CE id :=
+  ∃ z, CompilEnv.fetchG id CE = Some z.
+
+(* st not really used here, its in transl_variable only for error messages *)
+Definition visible_cminor_addr st CE g astnum locenv stkptr (m:mem) spb ofs :=
+  ∃ id id_t,
+    (* id_t is the address of id_t *)
+    (transl_variable st CE astnum id =: id_t)
+    /\ ∃ id_chk, (compute_chnk_id st id =: id_chk)
+                 /\ ∃ ofs_id , Cminor.eval_expr g stkptr locenv m id_t (Values.Vptr spb ofs_id)
+                               /\ ofs <= Int.unsigned ofs_id + size_chunk id_chk.
+
+Definition invisible_cminor_addr st CE g astnum locenv stkptr (m:mem) spb ofs :=
+  ~ visible_cminor_addr st CE g astnum locenv stkptr m spb ofs.
+
+Lemma exec_preserve_invisible:
+  ∀ g func stkptr locenv m stmt_t tr locenv' m' outc,
+    exec_stmt g func stkptr locenv m stmt_t tr locenv' m' outc -> 
+    ∀ st CE stmt,
+      stack_match_functions st stkptr CE locenv g m ->
+      transl_stmt st CE stmt =: stmt_t ->
+      forall astnum,
+        (* eval_stmt st s stmt s' -> *)
+        Mem.unchanged_on
+          (fun sp_id ofs_id => invisible_cminor_addr st CE g astnum locenv stkptr m sp_id ofs_id)
+          m m'.
+(*                 with exec_funcall_preserve_invisible: *)
+(*                        ∀  *)
+Proof.
+  !!intros until 1.
+  !induction h_exec_stmt_stmt_t_outc;!intros;
+    rewrite <- transl_stmt_ok in heq_transl_stmt_stmt;
+    !functional inversion heq_transl_stmt_stmt;
+    rewrite transl_stmt_ok in *;subst.
+  - apply Mem.unchanged_on_refl.
+  - destruct addr_v;try discriminate. 
+    up_type.
+    simpl in heq_storev_a_v_m'.
+    eapply Mem.store_unchanged_on;eauto.
+    !intros.
+    intro abs.
+    red in abs.
+    unfold visible_cminor_addr in abs.
+    apply abs. clear abs.
+    !functional inversion heq_transl_name.
+    exists id addr;split;auto.
+    { erewrite transl_variable_astnum;eauto. }
+    subst.
+    simpl in heq_compute_chnk_nme_chunk.
+    exists chunk; split;auto.
+    exists i;split;auto.
+    !destruct h_and.
+    omega.
+  - rename x1 into chaining_arg.
+    rename x into args_t.
+    rename lexp into args.
+    rename bl into all_args_t.
+    rename a_v into proc_addr.
+    rename fd into proc_value.
+    rename y into proc_lvl.
+    !inversion h_evalfuncall_fd_vargs_vres;subst.
+    + !assert (
+         (* transl_procsig gives f0,proc_lvl, so f0 is
+            the result of a translation with the right
+            CE. All procedures in memory are supposed
+            to come  from compilation. *)
+         ∃ CE_prfx CE_sufx pbdy X lotherproc,
+           CompilEnv.cut_until CE proc_lvl CE_prfx CE_sufx /\
+           transl_procedure st CE_sufx proc_lvl pbdy (* prov_lvl+1? *)
+           = OK ((X, AST.Gfun (AST.Internal f0))::lotherproc)
+       ).
+      { unfold transl_procsig in heq_transl_procsig_pnum.
+        red in h_stk_mtch_fun.
+        unfold symboltable.fetch_proc in h_stk_mtch_fun.
+        specialize (h_stk_mtch_fun pnum).
+        !!destruct (fetch_proc pnum st) eqn:?;try discriminate.
+        !destruct t0.
+        specialize (h_stk_mtch_fun l p eq_refl).
+        decomp h_stk_mtch_fun.
+        exists x x0.
+        !!destruct (transl_lparameter_specification_to_procsig st l (procedure_parameter_profile p)) eqn:?;try discriminate.
+        simpl in heq_transl_procsig_pnum.
+        !invclear heq_transl_procsig_pnum.
+        repeat eexists.
+        assumption.
+        admit. (* TBC. *)
+      }
+
+      decompose [ex] h_ex;clear h_ex.
+      rename f0 into proc_t.
+      rename x into CE_prfx.
+      rename x0 into CE_sufx.
+      rename x3 into sub_proces.
+      rename x1 into pbdy.
+      rename x2 into proc_id_t.
+      decomp H.
+      rewrite transl_procedure_ok in heq_transl_proc_pbdy.
+      !functional inversion heq_transl_proc_pbdy;up_type.
+      rewrite <- transl_procedure_ok in *.
+      subst.
+      set (proc_t := {|
+                      fn_sig := x5;
+                      fn_params := chaining_param :: tlparams;
+                      fn_vars := transl_decl_to_lident st decl;
+                      fn_stackspace := y;
+                      fn_body := proc_t0 |}) in *.
+      rename proc_t0 into pbody_t.
+      rename x into CE_proc.
+      rename y into proc_sz_locals.
+      up_type.
+      unfold proc_t in h_exec_stmt at 2 3 4.
+      simpl fn_vars in h_exec_stmt.
+      simpl fn_params in h_exec_stmt.
+      simpl fn_body in h_exec_stmt.
+      unfold pbody_t in h_exec_stmt.
+      !assert (exec_stmt g proc_t (Values.Vptr sp0 Int.zero)
+                         (set_locals (transl_decl_to_lident st decl) (set_params vargs (chaining_param :: tlparams))) m1
+                         (Sseq (Sseq (Sseq chain_param (Sseq x3 (Sseq x2 Sskip))) (Sseq x1 Sskip)) x4)
+                         t e2 m2 out).
+      { admit. (* associativity of Sseq, or just change the translation so that it matches. *) }
+      !!inversion h_exec_stmt0;subst;try discriminate.
+      * assert (Mem.unchanged_on
+                  (λ sp_id ofs_id, invisible_cminor_addr st CE_proc g astnum e (Values.Vptr sp0 Int.zero) m sp_id ofs_id)
+                  m m3). {
+          admit. (* Should be the induction hyp? *)
+        }
+
+        assert (Mem.unchanged_on
+                  (λ sp_id ofs_id, invisible_cminor_addr st CE_proc g astnum e sp m sp_id ofs_id)
+                  m3 m'). {
+          admit. (* Should be the induction hyp? *)
+        }
+
+        admit. (* associativity of unchanged_on? No, more
+                                complex: the unchanged_on on the body part
+                                correpsond to either visible parts from sp or from
+                                freeed space (outcome_free_mem m2 ... m'). *)
+      * admit. (* an error occurred befor copy_out, the is simpler. *)
+    + (* functional inversion would be cleaner here. *)
+      admit. (* No External function *)
+  - destruct b.
+    + eapply IHh_exec_stmt_stmt_t_outc;eauto.
+    + eapply IHh_exec_stmt_stmt_t_outc;eauto.
+  - specialize (IHh_exec_stmt_stmt_t_outc1 _ _ _ h_stk_mtch_fun heq1).
+    (* Needing match_env preserved here. *)
+    specialize (IHh_exec_stmt_stmt_t_outc2 _ _ _ ? heq0).
+    admit. (* transitivity of unchanged_on is proved in recent Compcert, by changing its definition. *)
+  - eapply IHh_exec_stmt_stmt_t_outc;eauto.
+Qed.
+
+
+
+
 Hint Resolve
      assignment_preserve_stack_match
      assignment_preserve_stack_match_function
@@ -5243,7 +5396,7 @@ Proof.
           - !invclear heq.
             cbn in h_cpout_prm.
             !invclear h_cpout_prm.
-            inversion h_exec_stmt;subst.
+            inversion h_exec_stmt_s_copyout;subst.
             apply h_strg_mtch.
           - rename n into real_param_name.
             rename v into param_v.
@@ -5259,8 +5412,8 @@ Proof.
             + (* In or InOut *)
               clear h_or.
               rename x into chk. rename x0 into cpout_stmt. rename x1 into prm_nme_t.
-              !inversion h_exec_stmt;try eq_same_clear.
-              clear h_exec_stmt. (* should be useless now *)
+              !inversion h_exec_stmt_s_copyout;try eq_same_clear.
+              clear h_exec_stmt_s_copyout. (* should be useless now *)
               rename e1 into locenv_id_stored.
               rename m1 into m_id_stored.
               rename t2 into trace_id_stored.
@@ -5269,84 +5422,6 @@ Proof.
               intros locenv_caller. 
 
 
-
-              Definition visible_spark_id CE id :=
-                ∃ z, CompilEnv.fetchG id CE = Some z.
-
-              (* st not really used here, its in transl_variable only for error messages *)
-              Definition visible_cminor_addr st CE g astnum locenv stkptr (m:mem) spb ofs :=
-                ∃ id id_t,
-                  (* id_t is the address of id_t *)
-                  (transl_variable st CE astnum id =: id_t)
-                  /\ ∃ id_chk, (compute_chnk_id st id =: id_chk)
-                               /\ ∃ ofs_id , Cminor.eval_expr g stkptr locenv m id_t (Values.Vptr spb ofs_id)
-                                             /\ ofs <= Int.unsigned ofs_id + size_chunk id_chk.
-              
-              Definition invisible_cminor_addr st CE g astnum locenv stkptr (m:mem) spb ofs :=
-                ~ visible_cminor_addr st CE g astnum locenv stkptr m spb ofs.
-
-              Lemma exec_preserve_invisible:
-                ∀ g func stkptr locenv m stmt_t tr locenv' m' outc,
-                exec_stmt g func stkptr locenv m stmt_t tr locenv' m' outc -> 
-                ∀ st CE stmt,
-                  transl_stmt st CE stmt =: stmt_t ->
-                  forall astnum,
-                    (* eval_stmt st s stmt s' -> *)
-                    Mem.unchanged_on
-                      (fun sp_id ofs_id => invisible_cminor_addr st CE g astnum locenv stkptr m sp_id ofs_id)
-                      m m'.
-(*                 with exec_funcall_preserve_invisible: *)
-(*                        ∀  *)
-              Proof.
-                !!intros until 1.
-                !induction h_exec_stmt;!intros;
-                  rewrite <- transl_stmt_ok in heq_transl_stmt_stmt;
-                  !functional inversion heq_transl_stmt_stmt;
-                  rewrite transl_stmt_ok in *;subst.
-                - apply Mem.unchanged_on_refl.
-                - destruct addr_v;try discriminate. 
-                  up_type.
-                  simpl in heq_storev_a_v_m'.
-                  eapply Mem.store_unchanged_on;eauto.
-                  !intros.
-                  intro abs.
-                  red in abs.
-                  unfold visible_cminor_addr in abs.
-                  apply abs. clear abs.
-                  !functional inversion heq_transl_name.
-                  exists id addr;split;auto.
-                  { erewrite transl_variable_astnum;eauto. }
-                  subst.
-                  simpl in heq_compute_chnk_nme_chunk.
-                  exists chunk; split;auto.
-                  exists i;split;auto.
-                  !destruct h_and.
-                  omega.
-                - rename x1 into chaining_arg.
-                  rename x into args_t.
-                  rename lexp into args.
-                  rename bl into all_args_t.
-                  rename a_v into proc_addr.
-                  rename fd into proc_value.
-                  rename y into proc_lvl.
-                  (* Experimenting what would be needed on funcall. *)
-                  inversion H3;subst.
-                  + assert (
-                        forall g func stkptr locenv m stmt_t tr locenv' m' outc,
-                        eval_funcall g m (AST.Internal f0) vargs t m' vres
-                        -> Mem.unchanged_on (λ (sp_id : Values.block) (ofs_id : Z),
-                                             invisible_cminor_addr st CE g astnum e sp m sp_id ofs_id) m m').
-                    admit.
-                  + (* functional inversion would be cleaner here. *)
-                    admit. (* No External function *)
-                - destruct b.
-                  + eapply IHh_exec_stmt;eauto.
-                  + eapply IHh_exec_stmt;eauto.
-                - specialize (IHh_exec_stmt1 _ _ _ heq1).
-                  specialize (IHh_exec_stmt2 _ _ _ heq0).
-                  admit. (* transitivity of unchanged_on is proved in recent Compcert, by changing its definition. *)
-                - eapply IHh_exec_stmt;eauto.
-              Qed.
 
 
 
