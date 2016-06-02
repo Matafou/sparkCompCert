@@ -664,8 +664,7 @@ Function transl_procedure (stbl : Symbol_Table_Module.symboltable) (enclosingCE 
                            match copy_out_params stbl x lparams with
                            | OK x4 =>
                                let proc_t :=
-                                 Sseq (Sseq chain_param (Sseq x3 (Sseq x2 Sskip)))
-                                   (Sseq x1 x4) in
+                                   Sseq chain_param (Sseq (Sseq x3 (Sseq x2 x1)) x4) in
                                match
                                  transl_lparameter_specification_to_procsig stbl lvl
                                    lparams

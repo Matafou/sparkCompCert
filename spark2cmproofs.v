@@ -3399,6 +3399,26 @@ Proof.
 Qed.
 
 
+(* TODO: prove and  move somewhere else. *)
+Lemma exec_stmt_assoc: forall g the_proc stackptr locenv m prog1 prog2 prog3 trace locenv' m' Out_normal,
+    exec_stmt g the_proc stackptr locenv m (Sseq (Sseq prog1 prog2) prog3 )  trace locenv' m' Out_normal ->
+    exec_stmt g the_proc stackptr locenv m (Sseq prog1 (Sseq prog2 prog3))  trace locenv' m' Out_normal.
+Proof.
+Admitted.
+
+Lemma exec_stmt_assoc_2: forall g the_proc stackptr locenv m prog1 prog2 prog3 prog4 prog5 trace locenv' m' Out_normal,
+    exec_stmt
+      g the_proc stackptr locenv m
+      (Sseq (Sseq prog1 (Sseq prog2 prog3)) (Sseq prog4 prog5))
+      trace locenv' m' Out_normal ->
+    exec_stmt
+      g the_proc stackptr locenv m
+      (Sseq (Sseq (Sseq prog1 (Sseq prog2 prog3)) (Sseq prog4 Sskip)) prog5)
+      trace locenv' m' Out_normal.
+Proof.
+Admitted.
+
+
 Definition visible_spark_id CE id :=
   ∃ z, CompilEnv.fetchG id CE = Some z.
 
@@ -3464,7 +3484,7 @@ Proof.
          (* transl_procsig gives f0,proc_lvl, so f0 is
             the result of a translation with the right
             CE. All procedures in memory are supposed
-            to come  from compilation. *)
+            to come from compilation. *)
          ∃ CE_prfx CE_sufx pbdy X lotherproc,
            CompilEnv.cut_until CE proc_lvl CE_prfx CE_sufx /\
            transl_procedure st CE_sufx proc_lvl pbdy (* prov_lvl+1? *)
@@ -3479,13 +3499,21 @@ Proof.
         specialize (h_stk_mtch_fun l p eq_refl).
         decomp h_stk_mtch_fun.
         exists x x0.
-        !!destruct (transl_lparameter_specification_to_procsig st l (procedure_parameter_profile p)) eqn:?;try discriminate.
+        !!destruct 
+          (transl_lparameter_specification_to_procsig
+             st l (procedure_parameter_profile p)) eqn:?;try discriminate.
         simpl in heq_transl_procsig_pnum.
         !invclear heq_transl_procsig_pnum.
-        repeat eexists.
-        assumption.
-        admit. (* TBC. *)
-      }
+        exists p x2 x4.
+        split.
+        + assumption.
+        + assert (x1 = proc_addr).
+          { eapply det_eval_expr with (1:=h_CM_eval_expr_x1)
+                                        (2:=h_CM_eval_expr_a_a_v). }
+          subst.
+          rewrite heq_find_func_a_v_fd in heq_find_func_x1_x3.
+          !invclear heq_find_func_x1_x3.
+          assumption. }
 
       decompose [ex] h_ex;clear h_ex.
       rename f0 into proc_t.
@@ -3498,6 +3526,10 @@ Proof.
       rewrite transl_procedure_ok in heq_transl_proc_pbdy.
       !functional inversion heq_transl_proc_pbdy;up_type.
       rewrite <- transl_procedure_ok in *.
+      rename x3 into initparams.
+      rename x2 into locvarinit.
+      rename x1 into bdy.
+      rename x4 into copyout.
       subst.
       set (proc_t := {|
                       fn_sig := x5;
@@ -3514,22 +3546,32 @@ Proof.
       simpl fn_params in h_exec_stmt.
       simpl fn_body in h_exec_stmt.
       unfold pbody_t in h_exec_stmt.
-      !assert (exec_stmt g proc_t (Values.Vptr sp0 Int.zero)
-                         (set_locals (transl_decl_to_lident st decl) (set_params vargs (chaining_param :: tlparams))) m1
-                         (Sseq (Sseq (Sseq chain_param (Sseq x3 (Sseq x2 Sskip))) (Sseq x1 Sskip)) x4)
-                         t e2 m2 out).
-      { admit. (* associativity of Sseq, or just change the translation so that it matches. *) }
-      !!inversion h_exec_stmt0;subst;try discriminate.
-      * assert (Mem.unchanged_on
-                  (λ sp_id ofs_id, invisible_cminor_addr st CE_proc g astnum e (Values.Vptr sp0 Int.zero) m sp_id ofs_id)
-                  m m3). {
-          admit. (* Should be the induction hyp? *)
+
+      !!inversion_clear h_exec_stmt;subst.
+      1: !!inversion_clear h_exec_stmt;subst.
+      rename h_exec_stmt into h_exec_stmt_new_frame.
+      * (* No error occured during the whole function call *)
+      * (* The alloc + chain parameter *)
+        assert (Mem.unchanged_on
+                  (λ sp_id ofs_id,
+                   invisible_cminor_addr st CE_proc g astnum e sp m sp_id ofs_id)
+                  m m1).
+        { admit. (* Should be the induction hyp? *)
+        }
+        assert (Mem.unchanged_on
+                  (λ sp_id ofs_id, invisible_cminor_addr
+                                     st CE_proc g astnum e
+                                     (Values.Vptr sp0 Int.zero) m sp_id ofs_id)
+                  m1 m3).
+        { admit. (* Should be the induction hyp? *)
         }
 
+
         assert (Mem.unchanged_on
-                  (λ sp_id ofs_id, invisible_cminor_addr st CE_proc g astnum e sp m sp_id ofs_id)
-                  m3 m'). {
-          admit. (* Should be the induction hyp? *)
+                  (λ sp_id ofs_id, invisible_cminor_addr
+                                     st CE_proc g astnum e sp m sp_id ofs_id)
+                  m3 m').
+        { admit. (* because all that is not visible and changed has bee freeed *)
         }
 
         admit. (* associativity of unchanged_on? No, more
@@ -3545,7 +3587,8 @@ Proof.
   - specialize (IHh_exec_stmt_stmt_t_outc1 _ _ _ h_stk_mtch_fun heq1).
     (* Needing match_env preserved here. *)
     specialize (IHh_exec_stmt_stmt_t_outc2 _ _ _ ? heq0).
-    admit. (* transitivity of unchanged_on is proved in recent Compcert, by changing its definition. *)
+    admit. (* transitivity of unchanged_on is proved in recent
+              Compcert, by changing its definition. *)
   - eapply IHh_exec_stmt_stmt_t_outc;eauto.
 Qed.
 
@@ -4906,12 +4949,6 @@ Tactic Notation "subst_exc" ident(v1) ident(v2) ident(v3) ident(v4) ident(v5) :=
 Tactic Notation "subst_exc" ident(v1) ident(v2) ident(v3) ident(v4) ident(v5) ident(v6) :=
   subst_exc_l ((v1=v1) -> (v2=v2) -> (v3=v3) -> (v4=v4) -> (v5=v5) -> (v6=v6) -> Prop) subst.
 
-(* TODO: prove and  move somewhere else. *)
-Lemma exec_stmt_assoc: forall g the_proc stackptr locenv m prog1 prog2 prog3 trace locenv' m' Out_normal,
-    exec_stmt g the_proc stackptr locenv m (Sseq (Sseq prog1 prog2) prog3 )  trace locenv' m' Out_normal ->
-    exec_stmt g the_proc stackptr locenv m (Sseq prog1 (Sseq prog2 prog3))  trace locenv' m' Out_normal.
-Proof.
-Admitted.
 
 
 

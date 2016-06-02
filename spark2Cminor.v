@@ -888,10 +888,10 @@ Fixpoint transl_procedure (stbl:symboltable) (enclosingCE:compilenv)
           (* Adding postlude: copying back out params *)
           do copyout <- copy_out_params stbl CE lparams ;
           (* we formulate the sequence as Sseq (initializing, Sseq (bdy copyout)) to ease proofs. *)
-          let proc_t := Sseq (Sseq chain_param
-                                   (Sseq initparams
-                                         (Sseq locvarinit Sskip)))
-                             (Sseq bdy copyout) in
+          let proc_t :=
+              Sseq chain_param
+                   (Sseq (Sseq initparams (Sseq locvarinit bdy))
+                         copyout) in
                 
           do procsig <- transl_lparameter_specification_to_procsig stbl lvl lparams ;
           (** For a given "out" (or inout) argument x of type T of a procedure P:
