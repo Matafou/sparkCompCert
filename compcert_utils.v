@@ -80,3 +80,20 @@ Proof.
   intro abs.
   apply repr_inj in abs;auto.
 Qed.
+
+
+(* no permission mean free. *)
+Definition is_free_block := fun m sp_id ofs_id => forall perm, ~ Mem.perm m sp_id ofs_id Cur perm.
+(* never allocated blocks are invalid, thus free. *)
+
+Lemma fresh_block_alloc_perm:
+  forall (m1 : mem) (lo hi : Z) (m2 : mem) (b : Values.block),
+    Mem.alloc m1 lo hi = (m2, b) ->
+    forall (ofs : Z) (k : perm_kind) p,
+      ~ Mem.perm m1 b ofs k p. (* is_free m1 b.*)
+Proof.  
+  !intros.
+  intro abs.
+  eapply Mem.fresh_block_alloc;eauto.
+  eapply Mem.perm_valid_block;eauto.
+Qed.

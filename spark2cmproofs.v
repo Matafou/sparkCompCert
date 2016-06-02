@@ -3423,16 +3423,28 @@ Definition visible_spark_id CE id :=
   ∃ z, CompilEnv.fetchG id CE = Some z.
 
 (* st not really used here, its in transl_variable only for error messages *)
+(* [visible_spark_id st CE stnum locenv stkptr m spb ofs] means that in the
+   context (st CE g locenv stkptr m) the value (spb+ofs) denotes the address
+   (of a byte of) a spark variable id (mapped by CE to id_t). *)
 Definition visible_cminor_addr st CE g astnum locenv stkptr (m:mem) spb ofs :=
   ∃ id id_t,
     (* id_t is the address of id_t *)
     (transl_variable st CE astnum id =: id_t)
     /\ ∃ id_chk, (compute_chnk_id st id =: id_chk)
+                 (* the block part of the address is exactly spb and the
+                    offset ofs is inside [ofs_id, ofs_id+chnk[. *)   
                  /\ ∃ ofs_id , Cminor.eval_expr g stkptr locenv m id_t (Values.Vptr spb ofs_id)
-                               /\ ofs <= Int.unsigned ofs_id + size_chunk id_chk.
+                               /\ Int.unsigned ofs_id <= ofs < Int.unsigned ofs_id + size_chunk id_chk.
+
 
 Definition invisible_cminor_addr st CE g astnum locenv stkptr (m:mem) spb ofs :=
-  ~ visible_cminor_addr st CE g astnum locenv stkptr m spb ofs.
+  ∀ id id_t id_chk spb_id ofs_id,
+    (* id_t is the address of id_t *)
+    transl_variable st CE astnum id =: id_t
+    -> compute_chnk_id st id =: id_chk
+    -> Cminor.eval_expr g stkptr locenv m id_t (Values.Vptr spb_id ofs_id)
+    (* The address spb+ofs is not part of the interval [spb_id , spb_id+ofs_id[ *)
+    -> spb_id ≠ spb \/ ofs >= Int.unsigned ofs_id + size_chunk id_chk \/ ofs < Int.unsigned ofs_id.
 
 Lemma exec_preserve_invisible:
   ∀ g func stkptr locenv m stmt_t tr locenv' m' outc,
@@ -3461,17 +3473,11 @@ Proof.
     !intros.
     intro abs.
     red in abs.
-    unfold visible_cminor_addr in abs.
-    apply abs. clear abs.
-    !functional inversion heq_transl_name.
-    exists id addr;split;auto.
-    { erewrite transl_variable_astnum;eauto. }
-    subst.
+    !functional inversion heq_transl_name;subst.
     simpl in heq_compute_chnk_nme_chunk.
-    exists chunk; split;auto.
-    exists i;split;auto.
-    !destruct h_and.
-    omega.
+    rewrite <- transl_variable_astnum with (a:=astnum) (1:=heq_transl_variable) in heq_transl_variable.
+    specialize (abs id addr chunk b i heq_transl_variable heq_compute_chnk_nme_chunk h_CM_eval_expr_addr_addr_v). 
+    destruct abs;auto;omega.
   - rename x1 into chaining_arg.
     rename x into args_t.
     rename lexp into args.
@@ -3547,38 +3553,77 @@ Proof.
       simpl fn_body in h_exec_stmt.
       unfold pbody_t in h_exec_stmt.
 
+      (* splitting the execution of proc in 4: chain_param, init, bdy and cpout *)
       !!inversion_clear h_exec_stmt;subst.
-      1: !!inversion_clear h_exec_stmt;subst.
-      rename h_exec_stmt into h_exec_stmt_new_frame.
-      * (* No error occured during the whole function call *)
-      * (* The alloc + chain parameter *)
-        assert (Mem.unchanged_on
+      !!inversion_clear h_exec_stmt;subst.
+      rename h_exec_stmt into h_exec_stmt_init.
+      match goal with
+      | H: exec_stmt _ _ _ _ ?ma chain_param _ ?e ?mb _ |- _ =>
+        rename mb into m_chain; rename e into e_chain;
+        rename ma into m_pre_chain
+      end.
+      match goal with
+      | H: exec_stmt _ _ _ _ m_chain _ _ ?e ?mb _ |- _ =>
+        rename mb into m_bdy;rename e into e_bdy
+      end.
+      match goal with
+      | H: exec_stmt _ _ _ _ m_bdy _ _ ?e ?mb _ |- _ => 
+        rename mb into m_cpout; rename e into e_cpout
+      end.
+      * (* Case where No error occured during the whole function call *)
+
+        set (sp_proc := Values.Vptr sp0 Int.zero) in *.
+        (* The predicate characterizing the addresses that are not accessible
+           from the called function everything that was free in m at first, and  *)
+
+        XXX FIX THIS DEFINITION.
+        set (forbidden := λ CE sp m sp_id ofs_id,
+                          invisible_cminor_addr st CE g astnum e sp m sp_id ofs_id
+                          /\ ~ is_free_block m sp_id ofs_id).
+
+        up_type.
+
+        assert (h_unchanged_pre_chain:Mem.unchanged_on (forbidden CE sp m) m m_pre_chain).
+        { (* Lemma about invisible and alloc. *)
+          eapply Mem.alloc_unchanged_on.
+          eauto. }
+
+        (* Since the chaining param is not the translation of a spark variable, 
+           we stay in callers environment, that is: from m1 to m4 there is no change
+           in the addresses visible in m. *)
+        assert (Mem.unchanged_on (forbidden CE sp m) m_pre_chain m_chain).
+        { unfold chain_param in h_exec_stmt_chain_param.
+          !inversion h_exec_stmt_chain_param.
+          unfold Mem.storev in heq_storev_v_m_chain.
+          destruct vaddr;try discriminate.
+          apply Mem.store_unchanged_on with (1:=heq_storev_v_m_chain).
+          !intros.
+          unfold sp_proc in h_CM_eval_expr_vaddr.
+          !destruct h_and.
+          !inversion h_CM_eval_expr_vaddr;subst.
+          !inversion h_eval_constant;subst.
+          intro abs. red in abs. destruct abs as [abs1 abs2].
+          red in abs2.
+          apply abs2.
+          red.
+          intro.
+          eapply fresh_block_alloc_perm;eauto. }
+        
+        admit.
+        (*assert (Mem.unchanged_on
                   (λ sp_id ofs_id,
                    invisible_cminor_addr st CE_proc g astnum e sp m sp_id ofs_id)
                   m m1).
         { admit. (* Should be the induction hyp? *)
         }
-        assert (Mem.unchanged_on
-                  (λ sp_id ofs_id, invisible_cminor_addr
-                                     st CE_proc g astnum e
-                                     (Values.Vptr sp0 Int.zero) m sp_id ofs_id)
-                  m1 m3).
-        { admit. (* Should be the induction hyp? *)
-        }
-
-
-        assert (Mem.unchanged_on
-                  (λ sp_id ofs_id, invisible_cminor_addr
-                                     st CE_proc g astnum e sp m sp_id ofs_id)
-                  m3 m').
-        { admit. (* because all that is not visible and changed has bee freeed *)
-        }
-
         admit. (* associativity of unchanged_on? No, more
                                 complex: the unchanged_on on the body part
                                 correpsond to either visible parts from sp or from
-                                freeed space (outcome_free_mem m2 ... m'). *)
-      * admit. (* an error occurred befor copy_out, the is simpler. *)
+                                freeed space (outcome_free_mem m2 ... m'). *) *)
+
+      * eq_same_clear.
+      * (* init phase raised an error. *)
+        admit.
     + (* functional inversion would be cleaner here. *)
       admit. (* No External function *)
   - destruct b.
