@@ -852,3 +852,50 @@ Proof.
   reflexivity.
 Qed.
 
+Function eval_constant (ge : genv) (sp : Values.val) (cst : constant) :=
+  match cst with
+  | Ointconst n => Some (Values.Vint n)
+  | Ofloatconst n => Some (Values.Vfloat n)
+  | Osingleconst n => Some (Values.Vsingle n)
+  | Olongconst n => Some (Values.Vlong n)
+  | Oaddrsymbol s ofs => Some match Globalenvs.Genv.find_symbol ge s with
+                              | Some b => Values.Vptr b ofs
+                              | None => Values.Vundef
+                              end
+  | Oaddrstack ofs => Some (Values.Val.add sp (Values.Vint ofs))
+  end.
+
+Lemma eval_constant_ok : forall ge sp cst, eval_constant ge sp cst = Cminor.eval_constant ge sp cst.
+Proof.
+  reflexivity.
+Qed.
+
+Function add v1 v2 :=
+  match v1 with
+  | Values.Vundef => Values.Vundef
+  | Values.Vint n1 =>
+    match v2 with
+    | Values.Vundef => Values.Vundef
+    | Values.Vint n2 => Values.Vint (Integers.Int.add n1 n2)
+    | Values.Vlong _ => Values.Vundef
+    | Values.Vfloat _ => Values.Vundef
+    | Values.Vsingle _ => Values.Vundef
+    | Values.Vptr b2 ofs2 => Values.Vptr b2 (Integers.Int.add ofs2 n1)
+    end
+  | Values.Vlong _ => Values.Vundef
+  | Values.Vfloat _ => Values.Vundef
+  | Values.Vsingle _ => Values.Vundef
+  | Values.Vptr b1 ofs1 =>
+    match v2 with
+    | Values.Vundef => Values.Vundef
+    | Values.Vint n2 => Values.Vptr b1 (Integers.Int.add ofs1 n2)
+    | Values.Vlong _ => Values.Vundef
+    | Values.Vfloat _ => Values.Vundef
+    | Values.Vsingle _ => Values.Vundef
+    | Values.Vptr _ _ => Values.Vundef
+    end
+  end.
+Lemma add_ok : forall x y, add x y = Values.Val.add x y.
+Proof.
+  reflexivity.
+Qed.
