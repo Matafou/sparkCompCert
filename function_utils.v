@@ -664,7 +664,8 @@ Function transl_procedure (stbl : Symbol_Table_Module.symboltable) (enclosingCE 
                            match copy_out_params stbl x lparams with
                            | OK x4 =>
                                let proc_t :=
-                                   Sseq chain_param (Sseq (Sseq x3 (Sseq x2 x1)) x4) in
+                                   Sseq chain_param (Sseq (Sseq x3 (Sseq x2 Sskip))
+                                                          (Sseq x1 x4)) in
                                match
                                  transl_lparameter_specification_to_procsig stbl lvl
                                    lparams
@@ -774,3 +775,80 @@ Lemma copy_out_params_ok : forall stbl CE lparams, spark2Cminor.copy_out_params 
 Proof.
   reflexivity.
 Qed.
+
+(* Definition store_params:= Eval lazy beta iota delta [store_params bind] in store_params. *)
+
+Function store_params (stbl : Symbol_Table_Module.symboltable) (CE : compilenv)
+             (lparams : list parameter_specification) {struct lparams} : 
+res stmt :=
+  match lparams with
+  | [ ] => OK Sskip
+  | prm :: lparams' =>
+      let id := transl_paramid (parameter_name prm) in
+      match spark2Cminor.compute_chnk stbl (E_Identifier 0%nat (parameter_name prm)) with
+      | OK x =>
+          match store_params stbl CE lparams' with
+          | OK x0 =>
+              match transl_name stbl CE (E_Identifier 0%nat (parameter_name prm)) with
+              | OK x1 =>
+                  let rexp :=
+                    match parameter_mode prm with
+                    | In => Evar id
+                    | Out => Eload x (Evar id)
+                    | In_Out => Eload x (Evar id)
+                    end in
+                  OK (Sseq (Sstore x x1 rexp) x0)
+              | Error msg => Error msg
+              end
+          | Error msg => Error msg
+          end
+      | Error msg => Error msg
+      end
+  end.
+
+Lemma store_params_ok : forall stbl CE lparams, spark2Cminor.store_params stbl CE lparams = store_params stbl CE lparams.
+Proof.
+  reflexivity.
+Qed.
+
+(* Definition init_locals:= Eval lazy beta iota delta [init_locals bind] in init_locals. *)
+
+Function init_locals (stbl : Symbol_Table_Module.symboltable) (CE : compilenv) 
+            (decl : declaration) {struct decl} : res stmt :=
+  match decl with
+  | D_Null_Declaration => OK Sskip
+  | D_Type_Declaration _ _ => OK Sskip
+  | D_Object_Declaration _ objdecl =>
+      match initialization_expression objdecl with
+      | Some e =>
+          match spark2Cminor.compute_chnk stbl (E_Identifier 0%nat (object_name objdecl)) with
+          | OK x =>
+              match spark2Cminor.transl_expr stbl CE e with
+              | OK x0 =>
+                  match transl_name stbl CE (E_Identifier 0%nat (object_name objdecl)) with
+                  | OK x1 => OK (Sstore x x1 x0)
+                  | Error msg => Error msg
+                  end
+              | Error msg => Error msg
+              end
+          | Error msg => Error msg
+          end
+      | None => OK Sskip
+      end
+  | D_Procedure_Body _ _ => OK Sskip
+  | D_Seq_Declaration _ decl1 decl2 =>
+      match init_locals stbl CE decl1 with
+      | OK x =>
+          match init_locals stbl CE decl2 with
+          | OK x0 => OK (Sseq x x0)
+          | Error msg => Error msg
+          end
+      | Error msg => Error msg
+      end
+  end.
+
+Lemma init_locals_ok : forall stbl CE decl, spark2Cminor.init_locals stbl CE decl = init_locals stbl CE decl.
+Proof.
+  reflexivity.
+Qed.
+
