@@ -3500,10 +3500,193 @@ Proof.
 Qed.
 
 
+(* We need this structural invariant at least to prove that execution
+   never modifies the chainging pointers. *)
+Inductive chained_stack_structure m : nat -> Values.val -> Prop :=
+| chained_0: forall b, chained_stack_structure m 0 (Values.Vptr b Int.zero) (* Should b null? *)
+| chained_S: forall n b  b',
+    chained_stack_structure m n (Values.Vptr b' Int.zero) ->
+    Mem.loadv AST.Mint32 m (Values.Vptr b Int.zero) = Some (Values.Vptr b' Int.zero) ->
+    chained_stack_structure m (S n) (Values.Vptr b Int.zero).
+
+Lemma chained_stack_structure_aux m sp : forall n,
+    chained_stack_structure m (S n) sp ->
+    forall g e, exists b',
+      chained_stack_structure m n (Values.Vptr b' Int.zero)
+      /\ Cminor.eval_expr g sp e m (Eload AST.Mint32 (Econst (Oaddrstack Int.zero))) (Values.Vptr b' Int.zero).
+Proof.
+  !!intros until 1.
+  inversion H;subst;!intros.
+  exists b';split;eauto.
+  econstructor;eauto.
+  constructor.
+  cbn.
+  reflexivity.
+Qed.
+
+
+Lemma foo : forall  m n sp_init,
+    chained_stack_structure m n sp_init ->
+    forall δ_var g e b ofs,
+      Cminor.eval_expr g sp_init e m (build_loads n δ_var) (Values.Vptr b ofs) ->
+      ofs = Int.repr δ_var.
+Proof.
+  !!intros until 1.
+  !induction H;!intros.
+  - unfold build_loads in *; cbn in *.
+    !inversion h_CM_eval_expr;subst; clear h_CM_eval_expr.
+    !inversion h_CM_eval_expr_v1; clear h_CM_eval_expr_v1.
+    rewrite <- eval_constant_ok in h_eval_constant.
+    !functional inversion h_eval_constant;subst;clear h_eval_constant.
+    simpl in heq.
+    destruct v2;try discriminate.
+    inversion heq; subst; clear heq.
+    repeat rewrite Int.add_zero.
+    rewrite Int.add_zero_l.
+    !inversion h_CM_eval_expr_v2.
+    rewrite <- eval_constant_ok in h_eval_constant.
+    !functional inversion h_eval_constant;subst;clear h_eval_constant.
+    reflexivity.
+  - unfold build_loads in h_CM_eval_expr; cbn in h_CM_eval_expr.
+    !inversion h_CM_eval_expr;subst; clear h_CM_eval_expr.
+    !inversion h_CM_eval_expr_v1; clear h_CM_eval_expr_v1.
+    rewrite <- eval_constant_ok in h_eval_constant.
+    !functional inversion h_eval_constant;subst;clear h_eval_constant.
+    simpl in heq.
+    destruct v2;try discriminate.
+    inversion heq; subst; clear heq.
+    repeat rewrite Int.add_zero.
+    rewrite Int.add_zero_l.
+    !inversion h_CM_eval_expr_v2.
+    rewrite <- eval_constant_ok in h_eval_constant.
+    !functional inversion h_eval_constant;subst;clear h_eval_constant.
+    reflexivity.
+
+
+Qed.
+
+
+Lemma chained_stack_structure_ex:
+  forall m n sp_init g e ,
+    chained_stack_structure m (S n) sp_init ->
+    Cminor.eval_expr g sp_init e m sp_init sp ->
+    Cminor.eval_expr g sp_init e m (build_loads (S n) δ_var) (Values.Vptr b ofs) ->
+    Cminor.eval_expr g sp e m (build_loads n δ_var) (Values.Vptr b ofs).
+
+Proof.
+(*  !!intros until 1.
+  induction H;!!intros.
+  - unfold build_loads in h_CM_eval_expr.
+    unfold build_loads.
+    cbn in *.
+    inversion h_CM_eval_expr;subst;clear h_CM_eval_expr.
+    exists b0.
+    + admit.
+    + 
+    split.
+*)
+
+
+(* TODO: add this to the global invariant. *)
+Lemma chained_stack_structure_ex g m sp : forall n_full n,
+    chained_stack_structure m n sp ->
+    forall e e' δ_var b ofs,
+      Cminor.eval_expr g sp e m (build_loads n δ_var) (Values.Vptr b ofs) ->
+      exists enclose_b,
+        Cminor.eval_expr g sp e m (build_loads O 0) (Values.Vptr enclose_b Int.zero) /\
+        Cminor.eval_expr g (Values.Vptr enclose_b Int.zero) e' m (build_loads n δ_var) (Values.Vptr b ofs).
+Proof.
+(*  !!intros until 1.
+  induction H;!!intros.
+  - unfold build_loads in h_CM_eval_expr.
+    unfold build_loads.
+    cbn in *.
+    inversion h_CM_eval_expr;subst;clear h_CM_eval_expr.
+    exists b0.
+    + admit.
+    + 
+    split.
+*)
+Admitted.
+
+
+Lemma foo : forall n_full n δ_var g sp_b e m b ofs,
+    chained_stack_structure m n_full (Values.Vptr sp_b Int.zero) ->
+    S n = n_full ->
+    Cminor.eval_expr g (Values.Vptr sp_b Int.zero) e m (build_loads n δ_var) (Values.Vptr b ofs) ->
+    ofs = Int.repr δ_var.
+Proof.
+  !intros.
+  subst.
+  pose proof chained_stack_structure_aux _ _ _ H g e as h_aux.
+  decomp h_aux.
+  inversion h_CM_eval_expr;subst. clear h_CM_eval_expr.
+  cbn in H7.
+  inversion H7. clear H7.
+
+  assert (exists x, ).
+
+  assert (Values.Val.add v1 v2 = Values.Vptr b (Int.repr δ_var)).
+  {  }
+  rewrite H2 in H0.
+  inversion H0.
+  reflexivity.
+    
+
+  !inversion H.
+  - exfalso; omega.
+  - inversion heq_nat;subst. clear heq_nat.
+    pose proof chained_stack_structure_aux _ _ _ H g e as h_aux.
+    decomp h_aux.
+    subst.
+
+
+    induction n;simpl;!intros.
+    
+  - unfold build_loads in *; cbn in *.
+    !inversion h_CM_eval_expr;subst; clear h_CM_eval_expr.
+    !inversion h_CM_eval_expr_v1; clear h_CM_eval_expr_v1.
+    rewrite <- eval_constant_ok in h_eval_constant.
+    !functional inversion h_eval_constant;subst;clear h_eval_constant.
+    simpl in heq.
+    destruct v2;try discriminate.
+    inversion heq; subst; clear heq.
+    repeat rewrite Int.add_zero.
+    rewrite Int.add_zero_l.
+    !inversion h_CM_eval_expr_v2.
+    rewrite <- eval_constant_ok in h_eval_constant.
+    !functional inversion h_eval_constant;subst;clear h_eval_constant.
+    reflexivity.
+  - unfold build_loads in h_CM_eval_expr; cbn in *.
+    up_type.
+    !inversion h_CM_eval_expr;subst; clear h_CM_eval_expr.
+    unfold build_loads in IHn.
+    !inversion h_CM_eval_expr_v1.
+    destruct vaddr; try discriminate.
+    eapply IHn.
+    econstructor.
+    3:eassumption.
+    
+    cbn in heq.
+    cbn.
+    destruct v2;try now (inversion heq). discriminate.
+    
+    specialize (IHn _ _ _ _ _ _ _ h_CM_eval_expr_vaddr )#
+
+    rewrite <- eval_constant_ok in h_eval_constant.
+    !functional inversion h_eval_constant;subst;clear h_eval_constant.
+    simpl in heq.
+
+
+
+  
+
 (* TODO: move this incompcert_utils.v
  This lemma is not true for a negative sp_ofs, here we take Zero. *)
-Lemma foo : forall n δ_var g sp_b e m_before b ofs,
-    Cminor.eval_expr g (Values.Vptr sp_b Int.zero) e m_before (build_loads n δ_var) (Values.Vptr b ofs) ->
+Lemma foo : forall n n_full δ_var g sp_b e m b ofs,
+    chained_stack_structure m n_full (Values.Vptr sp_b Int.zero) ->
+    (n <= n_full)%nat ->
+    Cminor.eval_expr g (Values.Vptr sp_b Int.zero) e m (build_loads n δ_var) (Values.Vptr b ofs) ->
     4 <= Int.unsigned (Int.repr δ_var) ->
     4 <= Int.unsigned ofs.
 Proof.
@@ -3521,20 +3704,32 @@ Proof.
     rewrite Int.add_zero.
     rewrite Int.add_zero_l.
     assumption.
-  - 
-    !assert (exists sp_step, Cminor.eval_expr g (Values.Vptr sp_step Int.zero) e m_before (build_loads n δ_var) (Values.Vptr b ofs)).
-    {     
-      unfold  build_loads in h_CM_eval_expr.
-      cbn in h_CM_eval_expr.
-      !inversion h_CM_eval_expr;subst.
-      !inversion h_CM_eval_expr_v1;subst.
-      xxx
-      destruct vaddr;try discriminate.
-      pose proof (IHn _ _ _ _ _ _ _ h_CM_eval_expr_vaddr).
-    }
-    !destruct h_ex.
-    eapply IHn;eauto.
+  - pose proof chained_stack_structure_ex g _ _ _ n H as h_chain.
+    !!assert ((n < n_full)%nat) by omega.
+    specialize (h_chain h_lt_n_n_full e e δ_var b ofs h_CM_eval_expr).
+    !!destruct h_chain as [enclose_b [? ?]].
+    !!destruct (Nat.lt_exists_pred _ _ h_lt_n_n_full) as [ n' [? ?]].
+    subst.
+    !!pose proof chained_stack_structure_aux _ _ _ H g e.
+    decomp h_ex.
+
+    assert (x = enclose_b).
+    { unfold build_loads in h_CM_eval_expr0. cbn in h_CM_eval_expr0.
+      !inversion h_CM_eval_expr0;subst.
+      !inversion h_CM_eval_expr2;subst.
+      pose proof det_eval_expr _ _ _ _ _ _ _ h_CM_eval_expr_vaddr h_CM_eval_expr_v1.
+      subst.
+
+    eapply IHn.  with (3:=h_CM_eval_expr1).
+    subst.
+
+    
+    !assert (chained_stack_structure g e m (Values.Vptr enclode_b Int.zero)).
+      { admit. }
+      eapply IHn;eauto.
 Qed.
+
+
 
 Definition unchange_forbidden st CE g astnum e_chain e_chain' sp m_chain m'_chain :=
   forall (sp_id : Values.block) (ofs_id : Z),
