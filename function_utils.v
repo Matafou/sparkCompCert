@@ -380,7 +380,7 @@ res stmt :=
           match transl_procsig stbl pnum with
           | OK (x0, y) =>
               let current_lvl := (Datatypes.length CE - 1)%nat in
-              let x1 := build_loads_ (current_lvl - y) in
+              let x1 := build_loads_ (Econst (Oaddrstack Integers.Int.zero)) (current_lvl - y) in
                   match OK (x1 :: x) with
                   | OK x2 =>
                       OK
