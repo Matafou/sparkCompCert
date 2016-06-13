@@ -3721,7 +3721,7 @@ Proof.
   assumption.
 Qed.
 
-xxx Add the fact that chained_stack_structure is true for the intermediate sp'.
+(* We can split a chain into a smaller chain. *)
 Lemma foo:
   forall n'' n' m sp ,
     chained_stack_structure m (n'+n'') sp ->
@@ -3729,7 +3729,8 @@ Lemma foo:
       Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Int.zero)) (n'+n'')%nat) v -> 
       ∃ sp' : Values.val, 
         Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Int.zero)) n'') sp'
-        ∧ Cminor.eval_expr g sp' e m (build_loads_ (Econst (Oaddrstack Int.zero)) n') v.
+        ∧ Cminor.eval_expr g sp' e m (build_loads_ (Econst (Oaddrstack Int.zero)) n') v
+        ∧ chained_stack_structure m n' sp'.
 Proof.
   intro n''.
   !induction n'';!intros;up_type.
@@ -3746,20 +3747,30 @@ Proof.
     specialize (IHn'' _ h_CM_eval_expr_v).
     decomp IHn''.
     rename x into sp_n''.
-    !assert (chained_stack_structure m (S n') sp_n'').
-    { admit. (* Add this to the property *) }
-    !!pose proof chained_stack_structure_decomp_S_2 n' m sp_n'' h_chain_sp_n'' g e v h_CM_eval_expr_v0.
+    !!pose proof chained_stack_structure_decomp_S_2 n' m sp_n'' h_chain_x g e v h_CM_eval_expr_v0.
     decomp h_ex.
     rename x into sp_Sn''.
-    exists sp_Sn'';split;eauto.
-    cbn.
-    econstructor.
-    + eassumption.
-    + !inversion h_CM_eval_expr_x0.
-      !assert (Cminor.eval_expr g sp_n'' e m (Econst (Oaddrstack Int.zero))  sp_n'').
+    exists sp_Sn'';split;[|split];eauto.
+    + cbn.
+      econstructor.
+      * eassumption.
+      * !inversion h_CM_eval_expr_x0.
+        !assert (Cminor.eval_expr g sp_n'' e m (Econst (Oaddrstack Int.zero)) sp_n'').
+        { eapply cm_eval_addrstack_zero;eauto. }
+        erewrite det_eval_expr with (2:=h_CM_eval_expr_vaddr) (1:=h_CM_eval_expr_sp_n'').
+        assumption.
+    + !inversion h_CM_eval_expr_x0;subst.
+      !assert (Cminor.eval_expr g sp_n'' e m (Econst (Oaddrstack Int.zero)) sp_n'').
       { eapply cm_eval_addrstack_zero;eauto. }
-      erewrite det_eval_expr with (2:=h_CM_eval_expr_vaddr) (1:=h_CM_eval_expr_sp_n'').
-      assumption.
+      up_type.
+      clear h_chain_sp h_chain_sp0.
+      !inversion h_chain_x;subst;up_type.
+      !!enough (sp_Sn'' = Values.Vptr b' Int.zero).
+      { subst;assumption. }
+      erewrite <- det_eval_expr with (2:=h_CM_eval_expr_vaddr) (1:=h_CM_eval_expr_sp_n'') in heq.
+      rewrite heq in heq0.
+      inversion heq0.
+      reflexivity.      
 Qed.      
 
 Lemma foo : forall  m n sp_init,
