@@ -50,6 +50,43 @@ Ltac rename_hyp1 h th :=
     | Mem.unchanged_on ?prd ?m ?m' => fresh "h_unchanged_on_" prd
     | Mem.unchanged_on ?prd ?m ?m' => fresh "h_unchanged_on"
 
+
+    | outcome_result_value ?out ?typ ?res => fresh "h_outc_resval_" out "_" res
+    | outcome_result_value ?out ?typ ?res => fresh "h_outc_resval_" out
+    | outcome_result_value ?out ?typ ?res => fresh "h_outc_resval_" res
+    | outcome_result_value ?out ?typ ?res => fresh "h_outc_resval"
+
+    | outcome_free_mem ?out ?m1 ?sp ?size ?m2 => fresh "h_outc_freemem_" out "_" m1 "_" m2
+    | outcome_free_mem ?out ?m1 ?sp ?size ?m2 => fresh "h_outc_freemem_" m1 "_" m2
+    | outcome_free_mem ?out ?m1 ?sp ?size ?m2 => fresh "h_outc_freemem_" m1
+    | outcome_free_mem ?out ?m1 ?sp ?size ?m2 => fresh "h_outc_freemem_" m2
+    | outcome_free_mem ?out ?m1 ?sp ?size ?m2 => fresh "h_outc_freemem"
+
+    | eval_binop ?op ?v1 ?v2 ?m = Some ?res => fresh "h_eval_binop_" op "_" v1 "_" v2
+    | eval_binop ?op ?v1 ?v2 ?m = Some ?res => fresh "h_eval_binop_" op "_" v1
+    | eval_binop ?op ?v1 ?v2 ?m = Some ?res => fresh "h_eval_binop_" op "_" v2
+    | eval_binop ?op ?v1 ?v2 ?m = Some ?res => fresh "h_eval_binop_" op
+    | eval_binop ?op ?v1 ?v2 ?m = Some ?res => fresh "h_eval_binop"
+    | eval_binop ?op ?v1 ?v2 ?m = None => fresh "h_eval_binop_None_" op "_" v1 "_" v2
+    | eval_binop ?op ?v1 ?v2 ?m = None => fresh "h_eval_binop_None_" op "_" v1
+    | eval_binop ?op ?v1 ?v2 ?m = None => fresh "h_eval_binop_None_" op "_" v2
+    | eval_binop ?op ?v1 ?v2 ?m = None => fresh "h_eval_binop_None_" op
+    | eval_binop ?op ?v1 ?v2 ?m = None => fresh "h_eval_binop_None"
+
+
+    | Values.Val.add ?v1 ?v2 = ?res => fresh "h_val_add_" v1 "_" v2 "_" res
+    | Values.Val.add ?v1 ?v2 = ?res => fresh "h_val_add_" v1 "_" v2
+    | Values.Val.add ?v1 ?v2 = ?res => fresh "h_val_add_" v1
+    | Values.Val.add ?v1 ?v2 = ?res => fresh "h_val_add_" v2
+    | Values.Val.add ?v1 ?v2 = ?res => fresh "h_val_add"
+
+    | Mem.loadv ?chk ?m ?vaddr = Some ?res => fresh "h_loadv_" vaddr "_" res
+    | Mem.loadv ?chk ?m ?vaddr = Some ?res => fresh "h_loadv_" res
+    | Mem.loadv ?chk ?m ?vaddr = Some ?res => fresh "h_loadv"
+    | Mem.loadv ?chk ?m ?vaddr = None => fresh "h_loadv_None_" vaddr
+    | Mem.loadv ?chk ?m ?vaddr = None => fresh "h_loadv_None"
+
+
     | Globalenvs.Genv.find_funct ?g ?paddr = Some ?res => fresh "heq_find_func_" paddr "_" res
     | Globalenvs.Genv.find_funct ?g ?paddr = Some _ => fresh "heq_find_func_" paddr
     | Globalenvs.Genv.find_funct ?g _ = Some _ => fresh "heq_find_func"
