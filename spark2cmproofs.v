@@ -3781,6 +3781,22 @@ Definition forbidden_strict := λ st CE g astnum e sp m_callee sp_id ofs_id,
                                invisible_cminor_addr st CE g astnum e sp m_callee sp_id ofs_id.
 
 
+Ltac rename_hyp_forbid h th :=
+  match th with
+  | forbidden ?st ?CE ?g ?astnum ?e_chain ?stckptr ?m ?m' ?sp ?ofs => fresh "h_forbid_" m "_" m' "_" sp "_" ofs
+  | forbidden ?st ?CE ?g ?astnum ?e_chain ?stckptr ?m ?m' ?sp ?ofs => fresh "h_forbid_" m "_" m'
+  | forbidden ?st ?CE ?g ?astnum ?e_chain ?stckptr ?m ?m' ?sp ?ofs => fresh "h_forbid_" m
+  | forbidden ?st ?CE ?g ?astnum ?e_chain ?stckptr ?m ?m' ?sp ?ofs => fresh "h_forbid_" m'
+  | forbidden ?st ?CE ?g ?astnum ?e_chain ?stckptr ?m ?m' ?sp ?ofs => fresh "h_forbid"
+
+  | forbidden_strict ?st ?CE ?g ?astnum ?e_chain ?stckptr ?m ?sp ?ofs => fresh "h_forbid_" m "_" sp "_" ofs
+  | forbidden_strict ?st ?CE ?g ?astnum ?e_chain ?stckptr ?m ?sp ?ofs => fresh "h_forbid_" m
+  | forbidden_strict ?st ?CE ?g ?astnum ?e_chain ?stckptr ?m ?sp ?ofs => fresh "h_forbid"
+
+  | _ => rename_hyp_chain h th
+  end.
+Ltac rename_hyp ::= rename_hyp_forbid.
+
 
 (* Are those useful? If yes finish the proofs (needs updating compcert, 
    not true with current version). *)
@@ -3824,11 +3840,23 @@ Definition unchange_forbidden st CE g astnum e_chain e_chain' sp m_chain m'_chai
      forbidden st CE g astnum e_chain' sp m'_chain m'_chain sp_id ofs_id).
 
 (* TODO *)
-Lemma unchange_forbidden_trans: forall st CE g astnum e1 e_chain' sp m1 m2 m3,
-    unchange_forbidden st CE g astnum e1 e_chain' sp m1 m2 ->
-    unchange_forbidden st CE g astnum e1 e_chain' sp m2 m3 ->
-    unchange_forbidden st CE g astnum e1 e_chain' sp m1 m3.
+Lemma unchange_forbidden_trans: forall st CE g astnum e1 e2 e3 sp m1 m2 m3,
+    unchange_forbidden st CE g astnum e1 e2 sp m1 m2 ->
+    unchange_forbidden st CE g astnum e2 e3 sp m2 m3 ->
+    unchange_forbidden st CE g astnum e1 e3 sp m1 m3.
 Proof.
+Admitted.
+
+Lemma unchange_forbidden_sym: forall st CE g astnum e1 e_chain' sp m1 m2,
+    unchange_forbidden st CE g astnum e1 e_chain' sp m1 m2 ->
+    unchange_forbidden st CE g astnum  e_chain' e1 sp m2 m1.
+Proof.
+  intros st CE g astnum e1 e_chain' sp m1 m2 H. 
+  red.
+  intros sp_id ofs_id. 
+  symmetry.
+  red in H.
+  eapply H;eauto.
 Admitted.
 
 Definition strict_unchanged_on st CE g astnum e_chain e_chain' sp m m' :=
@@ -3846,6 +3874,23 @@ Proof.
   eapply H;eauto.
 Qed.
 
+
+Ltac rename_hyp_forbid_unch h th :=
+  match th with
+  | unchange_forbidden ?st ?CE ?g ?astnum ?e_chain ?e_chain' ?spid ?m ?m' => fresh "h_unch_forbid_" m "_" m'
+  | unchange_forbidden ?st ?CE ?g ?astnum ?e_chain ?e_chain' ?spid ?m ?m' => fresh "h_unch_forbid_" m
+  | unchange_forbidden ?st ?CE ?g ?astnum ?e_chain ?e_chain' ?spid ?m ?m' => fresh "h_unch_forbid_" m'
+  | unchange_forbidden ?st ?CE ?g ?astnum ?e_chain ?e_chain' ?spid ?m ?m' => fresh "h_unch_forbid"
+
+  | strict_unchanged_on ?st ?CE ?g ?astnum ?e_chain ?e_chain' ?spid ?m ?m' => fresh "h_strict_unch_" m "_" m'
+  | strict_unchanged_on ?st ?CE ?g ?astnum ?e_chain ?e_chain' ?spid ?m ?m' => fresh "h_strict_unch_" m
+  | strict_unchanged_on ?st ?CE ?g ?astnum ?e_chain ?e_chain' ?spid ?m ?m' => fresh "h_strict_unch_" m'
+  | strict_unchanged_on ?st ?CE ?g ?astnum ?e_chain ?e_chain' ?spid ?m ?m' => fresh "h_strict_unch"
+  | _ => rename_hyp_forbid h th
+  end.
+Ltac rename_hyp ::= rename_hyp_forbid_unch.
+
+(* Storing  values of parameters in the local stack (function prelude) does not modify any forbidden address. *)
 Lemma exec_store_params_preserve_forbidden:
   forall lparams st CE initparams,
     exact_levelG CE ->    
@@ -3863,6 +3908,9 @@ Proof.
     inversion h_exec_stmt_initparams.
     red.
     reflexivity.
+    (* The three following cases are identical, i.e. the parameter mode
+       should not be case split but functional induction does and I don't
+       want to make the induction by hand. *)
   - specialize (IHr _ h_exact_lvlG_CE h_nonul_ofs heq).
     !invclear heq1.
     !invclear h_exec_stmt_initparams; eq_same_clear.
@@ -3880,13 +3928,13 @@ Proof.
     !assert (stack_localstack_aligned CE e_chain' g m).
     { eapply stack_localstack_aligned_locenv;eauto. }
     specialize (IHr h_aligned_g_m_mid).
-    apply unchange_forbidden_trans with m_mid; [| apply IHr].
+    eapply unchange_forbidden_trans with (m2:=m_mid); [| eapply IHr].
     clear IHr h_exec_stmt_x0 m'.
     red.
     !intros.
     split;!intros.
     + unfold forbidden.
-      !destruct H.
+      !destruct h_forbid_m_m_sp_id_ofs_id.
       split.
       * red;!intros.
         red in H.
@@ -3903,13 +3951,13 @@ Proof.
           - eapply eval_build_loads_offset_non_null_var.
             + eassumption.
             + eassumption.
-            + xxx instantiate correctly. shelve.
+            + exact h_aligned_g_m. (*xxx instantiate correctly. shelve.*)
             + cbn in heq_transl_name.
               eapply heq_transl_name.
             + eassumption.
           - eassumption.
-          - assumption. }
-        specialize (H h_CM_eval_expr_id_t0).
+          - eapply eval_expr_transl_variable_inv_locenv ; eauto. }
+        specialize (H h_CM_eval_expr_id_t_val_id_t).
         assumption.
       * 
         unfold is_free_block in *.
@@ -3921,18 +3969,374 @@ Proof.
         destruct x1_v; try discriminate.
         eapply Mem.perm_store_1 in abs2;eauto.
         eapply abs;eassumption.
-    +
-      
+    + unfold forbidden.
+      !destruct h_forbid_m_mid_m_mid_sp_id_ofs_id.
+      split.
+      * red;!intros.
+        red in H.
+        specialize (H id id_t id_chk spb_id ofs_id0 heq_transl_variable heq1).
+        set (val_id_t:=(Values.Vptr spb_id ofs_id0)) in *;up_type.
+        !assert (Cminor.eval_expr g sp e_mid m_mid id_t val_id_t).
+        { unfold Mem.storev in heq_storev_v_m_mid.
+          destruct x1_v; try discriminate.
+          eapply eval_expr_transl_variable_inv_locenv with (locenv:=e_mid);eauto.
+          eapply wf_chain_load_var.
+          5:eauto.
+          2:eauto.
+          all:eauto.
+          eapply eval_build_loads_offset_non_null_var.
+          + eassumption.
+          + eassumption.
+          + exact h_aligned_g_m. (*xxx instantiate correctly. shelve.*)
+          + cbn in heq_transl_name.
+            eapply heq_transl_name.
+          + eassumption. }
+        specialize (H h_CM_eval_expr_id_t_val_id_t).
+        assumption.
+      * unfold is_free_block in *.
+        intro abs.
+        apply H0.
+        intros perm. 
+        intro abs2.
+        unfold Mem.storev in heq_storev_v_m_mid.
+        destruct x1_v; try discriminate.
+        eapply Mem.perm_store_2 in abs2;eauto.
+        eapply abs;eassumption.
+  - specialize (IHr _ h_exact_lvlG_CE h_nonul_ofs heq).
+    !invclear heq1.
+    !invclear h_exec_stmt_initparams; eq_same_clear.
+    specialize (fun h_align => IHr astnum _ _ _ _ _ _ _ _ h_align h_exec_stmt_x0).
+    rename m1 into m_mid.
+    rename e1 into e_mid.
+    !invclear h_exec_stmt.
+    up_type.
 
-Admitted.
+    !assert (stack_localstack_aligned CE e_mid g m_mid).
+    { unfold Mem.storev in heq_storev_v_m_mid.
+      destruct x1_v; try discriminate.
+      eapply wf_chain_load_aligned;eauto.
+      eapply eval_build_loads_offset_non_null_var;eauto. }
+    !assert (stack_localstack_aligned CE e_chain' g m).
+    { eapply stack_localstack_aligned_locenv;eauto. }
+    specialize (IHr h_aligned_g_m_mid).
+    eapply unchange_forbidden_trans with (m2:=m_mid); [| eapply IHr].
+    clear IHr h_exec_stmt_x0 m'.
+    red.
+    !intros.
+    split;!intros.
+    + unfold forbidden.
+      !destruct h_forbid_m_m_sp_id_ofs_id.
+      split.
+      * red;!intros.
+        red in H.
+        specialize (H id id_t id_chk spb_id ofs_id0 heq_transl_variable heq1).
+        set (val_id_t:=(Values.Vptr spb_id ofs_id0)) in *;up_type.
+        !assert (Cminor.eval_expr g sp e_mid m id_t val_id_t).
+        { unfold Mem.storev in heq_storev_v_m_mid.
+          destruct x1_v; try discriminate.
+          eapply eval_expr_transl_variable_inv_locenv with (locenv:=e_chain');eauto.
+          eapply wf_chain_load_var'.
+          - eassumption.
+          - cbn. eapply heq_storev_v_m_mid.
+          - assumption.
+          - eapply eval_build_loads_offset_non_null_var.
+            + eassumption.
+            + eassumption.
+            + exact h_aligned_g_m. (*xxx instantiate correctly. shelve.*)
+            + cbn in heq_transl_name.
+              eapply heq_transl_name.
+            + eassumption.
+          - eassumption.
+          - eapply eval_expr_transl_variable_inv_locenv ; eauto. }
+        specialize (H h_CM_eval_expr_id_t_val_id_t).
+        assumption.
+      * 
+        unfold is_free_block in *.
+        intro abs.
+        apply H0.
+        intros perm. 
+        intro abs2.
+        unfold Mem.storev in heq_storev_v_m_mid.
+        destruct x1_v; try discriminate.
+        eapply Mem.perm_store_1 in abs2;eauto.
+        eapply abs;eassumption.
+    + unfold forbidden.
+      !destruct h_forbid_m_mid_m_mid_sp_id_ofs_id.
+      split.
+      * red;!intros.
+        red in H.
+        specialize (H id id_t id_chk spb_id ofs_id0 heq_transl_variable heq1).
+        set (val_id_t:=(Values.Vptr spb_id ofs_id0)) in *;up_type.
+        !assert (Cminor.eval_expr g sp e_mid m_mid id_t val_id_t).
+        { unfold Mem.storev in heq_storev_v_m_mid.
+          destruct x1_v; try discriminate.
+          eapply eval_expr_transl_variable_inv_locenv with (locenv:=e_mid);eauto.
+          eapply wf_chain_load_var.
+          5:eauto.
+          2:eauto.
+          all:eauto.
+          eapply eval_build_loads_offset_non_null_var.
+          + eassumption.
+          + eassumption.
+          + exact h_aligned_g_m. (*xxx instantiate correctly. shelve.*)
+          + cbn in heq_transl_name.
+            eapply heq_transl_name.
+          + eassumption. }
+        specialize (H h_CM_eval_expr_id_t_val_id_t).
+        assumption.
+      * unfold is_free_block in *.
+        intro abs.
+        apply H0.
+        intros perm. 
+        intro abs2.
+        unfold Mem.storev in heq_storev_v_m_mid.
+        destruct x1_v; try discriminate.
+        eapply Mem.perm_store_2 in abs2;eauto.
+        eapply abs;eassumption.
+  - specialize (IHr _ h_exact_lvlG_CE h_nonul_ofs heq).
+    !invclear heq1.
+    !invclear h_exec_stmt_initparams; eq_same_clear.
+    specialize (fun h_align => IHr astnum _ _ _ _ _ _ _ _ h_align h_exec_stmt_x0).
+    rename m1 into m_mid.
+    rename e1 into e_mid.
+    !invclear h_exec_stmt.
+    up_type.
+
+    !assert (stack_localstack_aligned CE e_mid g m_mid).
+    { unfold Mem.storev in heq_storev_v_m_mid.
+      destruct x1_v; try discriminate.
+      eapply wf_chain_load_aligned;eauto.
+      eapply eval_build_loads_offset_non_null_var;eauto. }
+    !assert (stack_localstack_aligned CE e_chain' g m).
+    { eapply stack_localstack_aligned_locenv;eauto. }
+    specialize (IHr h_aligned_g_m_mid).
+    eapply unchange_forbidden_trans with (m2:=m_mid); [| eapply IHr].
+    clear IHr h_exec_stmt_x0 m'.
+    red.
+    !intros.
+    split;!intros.
+    + unfold forbidden.
+      !destruct h_forbid_m_m_sp_id_ofs_id.
+      split.
+      * red;!intros.
+        red in H.
+        specialize (H id id_t id_chk spb_id ofs_id0 heq_transl_variable heq1).
+        set (val_id_t:=(Values.Vptr spb_id ofs_id0)) in *;up_type.
+        !assert (Cminor.eval_expr g sp e_mid m id_t val_id_t).
+        { unfold Mem.storev in heq_storev_v_m_mid.
+          destruct x1_v; try discriminate.
+          eapply eval_expr_transl_variable_inv_locenv with (locenv:=e_chain');eauto.
+          eapply wf_chain_load_var'.
+          - eassumption.
+          - cbn. eapply heq_storev_v_m_mid.
+          - assumption.
+          - eapply eval_build_loads_offset_non_null_var.
+            + eassumption.
+            + eassumption.
+            + exact h_aligned_g_m. (*xxx instantiate correctly. shelve.*)
+            + cbn in heq_transl_name.
+              eapply heq_transl_name.
+            + eassumption.
+          - eassumption.
+          - eapply eval_expr_transl_variable_inv_locenv ; eauto. }
+        specialize (H h_CM_eval_expr_id_t_val_id_t).
+        assumption.
+      * 
+        unfold is_free_block in *.
+        intro abs.
+        apply H0.
+        intros perm. 
+        intro abs2.
+        unfold Mem.storev in heq_storev_v_m_mid.
+        destruct x1_v; try discriminate.
+        eapply Mem.perm_store_1 in abs2;eauto.
+        eapply abs;eassumption.
+    + unfold forbidden.
+      !destruct h_forbid_m_mid_m_mid_sp_id_ofs_id.
+      split.
+      * red;!intros.
+        red in H.
+        specialize (H id id_t id_chk spb_id ofs_id0 heq_transl_variable heq1).
+        set (val_id_t:=(Values.Vptr spb_id ofs_id0)) in *;up_type.
+        !assert (Cminor.eval_expr g sp e_mid m_mid id_t val_id_t).
+        { unfold Mem.storev in heq_storev_v_m_mid.
+          destruct x1_v; try discriminate.
+          eapply eval_expr_transl_variable_inv_locenv with (locenv:=e_mid);eauto.
+          eapply wf_chain_load_var.
+          5:eauto.
+          2:eauto.
+          all:eauto.
+          eapply eval_build_loads_offset_non_null_var.
+          + eassumption.
+          + eassumption.
+          + exact h_aligned_g_m. (*xxx instantiate correctly. shelve.*)
+          + cbn in heq_transl_name.
+            eapply heq_transl_name.
+          + eassumption. }
+        specialize (H h_CM_eval_expr_id_t_val_id_t).
+        assumption.
+      * unfold is_free_block in *.
+        intro abs.
+        apply H0.
+        intros perm. 
+        intro abs2.
+        unfold Mem.storev in heq_storev_v_m_mid.
+        destruct x1_v; try discriminate.
+        eapply Mem.perm_store_2 in abs2;eauto.
+        eapply abs;eassumption.
+Qed.
+
+
+(*
+Lemma unch_stable: forall st CE g astnum e_mid e_chain' sp m1 m2 m3,
+    unchange_forbidden st CE g astnum e_mid e_chain' sp m1 m2 ∧ Mem.unchanged_on (forbidden st CE g astnum e_mid sp m1 m1) m1 m2 ->
+    unchange_forbidden st CE g astnum e_mid e_chain' sp m2 m3 ∧ Mem.unchanged_on (forbidden st CE g astnum e_mid sp m1 m1) m2 m3 ->
+    unchange_forbidden st CE g astnum e_mid e_chain' sp m1 m3 ∧ Mem.unchanged_on (forbidden st CE g astnum e_mid sp m1 m1) m1 m3.
+Proof.
+  !intros.
+  !!destruct h_and, h_and0.
+  split.
+  - eapply unchange_forbidden_trans;eauto.
+  - eapply trans_unchanged;eauto.
+Qed.
+*)    
 
 Lemma exec_store_params_unchanged_on:
   forall lparams st CE initparams,
-    store_params st CE lparams = OK initparams -> 
-    forall astnum g proc_t sp e_chain m t2 e_postchain m' Out_normal,
+    exact_levelG CE ->
+    stack_no_null_offset st CE ->
+    store_params st CE lparams =: initparams ->
+    forall astnum g proc_t sp e_chain m t2 e_postchain m',
+      stack_localstack_aligned CE e_chain g m -> 
       exec_stmt g proc_t sp e_chain m initparams t2 e_postchain m' Out_normal ->
       Mem.unchanged_on (forbidden st CE g astnum e_chain sp m m) m m'.
 Proof.
+  !intros.
+  !!pose proof (exec_store_params_preserve_forbidden _ _ _ _ h_exact_lvlG_CE h_nonul_ofs heq_store_prms_lparams_initparams
+                                                     astnum _ proc_t _ _ _ _ _ _ h_aligned_g_m h_exec_stmt_initparams).
+  revert initparams h_exact_lvlG_CE h_nonul_ofs heq_store_prms_lparams_initparams astnum g proc_t sp e_chain m t2 e_postchain m' h_aligned_g_m h_exec_stmt_initparams h_unch_forbid_m_m'.
+  rewrite store_params_ok.
+  !!functional induction function_utils.store_params st CE lparams;try rewrite <- store_params_ok in *;cbn;!intros;try discriminate.
+  - !invclear heq.
+    inversion h_exec_stmt_initparams;subst.
+    apply Mem.unchanged_on_refl.
+    (* The three following cases are identical, i.e. the parameter mode
+       should not be case split but functional induction does and I don't
+       want to make the induction by hand. *)
+  - rename x0 into initparams'.
+    rename x1 into prm_name_t.
+    !invclear heq1.
+    !invclear h_exec_stmt_initparams; eq_same_clear.
+    !assert (stack_localstack_aligned CE e1 g m1).
+    { !inversion h_exec_stmt.
+      destruct prm_name_t_v;try now (cbn in heq_storev_v_m1; discriminate).
+      eapply wf_chain_load_aligned;eauto.
+      eapply eval_build_loads_offset_non_null_var;eauto. }
+    specialize (IHr _ h_exact_lvlG_CE h_nonul_ofs heq astnum _ _ _ _ _ _ _ _  h_aligned_g_m1 h_exec_stmt_initparams').
+    rename m1 into m_mid.
+    rename e1 into e_mid.
+    !invclear h_exec_stmt.
+    up_type.
+    !assert (unchange_forbidden st CE g astnum e_mid e_postchain sp m_mid m').
+    { eapply exec_store_params_preserve_forbidden;eauto. }
+    !assert (unchange_forbidden st CE g astnum e_mid e_mid sp m m_mid).
+    { eapply unchange_forbidden_trans with (e2:= e_postchain)(m2:=m');eauto.
+      apply unchange_forbidden_sym;auto. }
+      
+    specialize (IHr h_unch_forbid_m_mid_m').
+
+    apply trans_unchanged with m_mid;auto.
+    + unfold Mem.storev in heq_storev_v_m_mid.
+      destruct prm_name_t_v;try now discriminate.
+      eapply Mem.store_unchanged_on;eauto;!intros.
+      unfold forbidden.
+      intros [abs1 abs2].
+      red in abs1.
+      cbn in heq_transl_name.
+      setoid_rewrite <- transl_variable_astnum with (a:=astnum) in heq_transl_name;eauto.
+      specialize (abs1 (parameter_name prm) prm_name_t x b i heq_transl_name heq_compute_chnk h_CM_eval_expr_prm_name_t_prm_name_t_v).
+      destruct abs1; try omega.
+      apply H;auto.
+    + eapply unchanged_on_iff  ;eauto.
+      do 2 red;!intros;subst.
+      eapply h_unch_forbid_m_m_mid.
+  - rename x0 into initparams'.
+    rename x1 into prm_name_t.
+    !invclear heq1.
+    !invclear h_exec_stmt_initparams; eq_same_clear.
+    !assert (stack_localstack_aligned CE e1 g m1).
+    { !inversion h_exec_stmt.
+      destruct prm_name_t_v;try now (cbn in heq_storev_v_m1; discriminate).
+      eapply wf_chain_load_aligned;eauto.
+      eapply eval_build_loads_offset_non_null_var;eauto. }
+    specialize (IHr _ h_exact_lvlG_CE h_nonul_ofs heq astnum _ _ _ _ _ _ _ _  h_aligned_g_m1 h_exec_stmt_initparams').
+    rename m1 into m_mid.
+    rename e1 into e_mid.
+    !invclear h_exec_stmt.
+    up_type.
+    !assert (unchange_forbidden st CE g astnum e_mid e_postchain sp m_mid m').
+    { eapply exec_store_params_preserve_forbidden;eauto. }
+    !assert (unchange_forbidden st CE g astnum e_mid e_mid sp m m_mid).
+    { eapply unchange_forbidden_trans with (e2:= e_postchain)(m2:=m');eauto.
+      apply unchange_forbidden_sym;auto. }
+      
+    specialize (IHr h_unch_forbid_m_mid_m').
+
+    apply trans_unchanged with m_mid;auto.
+    + unfold Mem.storev in heq_storev_v_m_mid.
+      destruct prm_name_t_v;try now discriminate.
+      eapply Mem.store_unchanged_on;eauto;!intros.
+      unfold forbidden.
+      intros [abs1 abs2].
+      red in abs1.
+      cbn in heq_transl_name.
+      setoid_rewrite <- transl_variable_astnum with (a:=astnum) in heq_transl_name;eauto.
+      specialize (abs1 (parameter_name prm) prm_name_t x b i heq_transl_name heq_compute_chnk h_CM_eval_expr_prm_name_t_prm_name_t_v).
+      destruct abs1; try omega.
+      apply H;auto.
+    + eapply unchanged_on_iff  ;eauto.
+      do 2 red;!intros;subst.
+      eapply h_unch_forbid_m_m_mid.
+  - rename x0 into initparams'.
+    rename x1 into prm_name_t.
+    !invclear heq1.
+    !invclear h_exec_stmt_initparams; eq_same_clear.
+    !assert (stack_localstack_aligned CE e1 g m1).
+    { !inversion h_exec_stmt.
+      destruct prm_name_t_v;try now (cbn in heq_storev_v_m1; discriminate).
+      eapply wf_chain_load_aligned;eauto.
+      eapply eval_build_loads_offset_non_null_var;eauto. }
+    specialize (IHr _ h_exact_lvlG_CE h_nonul_ofs heq astnum _ _ _ _ _ _ _ _  h_aligned_g_m1 h_exec_stmt_initparams').
+    rename m1 into m_mid.
+    rename e1 into e_mid.
+    !invclear h_exec_stmt.
+    up_type.
+    !assert (unchange_forbidden st CE g astnum e_mid e_postchain sp m_mid m').
+    { eapply exec_store_params_preserve_forbidden;eauto. }
+    !assert (unchange_forbidden st CE g astnum e_mid e_mid sp m m_mid).
+    { eapply unchange_forbidden_trans with (e2:= e_postchain)(m2:=m');eauto.
+      apply unchange_forbidden_sym;auto. }
+      
+    specialize (IHr h_unch_forbid_m_mid_m').
+
+    apply trans_unchanged with m_mid;auto.
+    + unfold Mem.storev in heq_storev_v_m_mid.
+      destruct prm_name_t_v;try now discriminate.
+      eapply Mem.store_unchanged_on;eauto;!intros.
+      unfold forbidden.
+      intros [abs1 abs2].
+      red in abs1.
+      cbn in heq_transl_name.
+      setoid_rewrite <- transl_variable_astnum with (a:=astnum) in heq_transl_name;eauto.
+      specialize (abs1 (parameter_name prm) prm_name_t x b i heq_transl_name heq_compute_chnk h_CM_eval_expr_prm_name_t_prm_name_t_v).
+      destruct abs1; try omega.
+      apply H;auto.
+    + eapply unchanged_on_iff  ;eauto.
+      do 2 red;!intros;subst.
+      eapply h_unch_forbid_m_m_mid.
+Qed.
+
+(*
   !!intros ? ? ?.
   rewrite store_params_ok.  
   !functional induction (function_utils.store_params st CE lparams);
@@ -4030,142 +4434,24 @@ k              rewrite <- add_val_ok in heq0.
           eapply wf_chain_load_aligned;eauto.
         Qed.
 
-        Lemma forbidden_exec_initparam_iff:
-          forall s g proc_t sp e m_before chnk addr id t1 m_after var st CE astnum,
-             exact_levelG CE ->
-             stack_localstack_aligned CE e g m_before ->
-             match_env st s CE sp e g m_before  ->
-            transl_variable st CE astnum var =: addr ->
-            exec_stmt g proc_t sp e m_before 
-                      (Sstore chnk addr (Evar (transl_paramid id))) t1 e m_after Cminor.Out_normal ->
-            forall a b, invisible_cminor_addr st CE g astnum e sp m_before a b
-                        -> invisible_cminor_addr st CE g astnum e sp m_after a b.
-        Proof.
-          !intros.
-          !inversion h_exec_stmt;subst;eq_same_clear;clear h_exec_stmt;up_type.
-          !!pose proof (h_match_env.(me_stack_no_null_offset)).
-          specialize (h_nonul_ofs astnum var).
-          rewrite heq_transl_variable in h_nonul_ofs.
-          !functional inversion heq_transl_variable.
-          rename m' into lvl_top_CE.
-          rewrite <- heq_build_loads in h_nonul_ofs.
-          remember (lvl_top_CE - lvl_var)%nat as δ_lvl_var.
-          specialize (h_nonul_ofs _ _ eq_refl).
-
-
-          assert (Cminor.eval_expr g sp e m_after var_t var_t_v).
-          { rewrite <- cm_storev_ok in heq_storev_v_m_after.
-            functional inversion heq_storev_v_m_after.
-            try rewrite cm_storev_ok in *.
-            subst.
-            assert (ofs = Int.repr δ_var).
-            { admit. }
-            subst.
-            eapply wf_chain_load_var';eauto.
-            - admit.
-            - eapply wf_chain_load_aligned;eauto.
-          }
-            with (1:= h_exact_lvlG_CE) (2:=heq_storev_v_m_after).
-
-
-
-          assert (Cminor.eval_expr g sp e m_after var_t var_t_v).
-          { induction δ_lvl_var.
-            - unfold build_loads in heq_build_loads.
-              cbn in *.
-              subst.
-              inversion h_CM_eval_expr_var_t_var_t_v;subst.
-              
-              
-
-          }
-
-          !!remember (m'0 - lvl_id)%nat as δ.
-          induction δ.
-          - unfold build_loads in heq_build_loads;simpl in heq_build_loads.
-            subst.
-            inversion h_CM_eval_expr_id_t_id_t_v;subst.
-            split;intros [h_forbidden_1 h_forbidden_2];red;split.
-            
-  - split.
-    + red;!!intros.
-      red in h_forbidden_1.
-      eapply h_forbidden_1;eauto;clear h_forbidden_1 h_forbidden_2.
-      
-      edestruct h_stk_mtch_s'_m'.
-  
-  
-
-        
-        Lemma forbidden_exec_initparam_iff:
-          forall s s'  e_v e_t_v g proc_t sp e m_before x x1 id t1 m_after st CE astnum,
-            match_env st s CE sp e g m_before  ->
-            exact_levelG CE ->
-            all_frm_increasing CE ->
-            stack_match st s CE sp e g m_before ->
-            transl_value e_v e_t_v ->
-            storeUpdate st s (E_Identifier astnum id) e_v (Normal s') ->
-            exec_stmt g proc_t sp e m_before 
-                      (Sstore x x1 (Evar (transl_paramid id))) t1 e m_after Cminor.Out_normal ->
-            forall a b, (forbidden st CE g astnum e sp m_before m_before a b
-                         <-> forbidden st CE g astnum e sp m_after m_after a b).
-        Proof.
-          !intros.
-          !inversion h_exec_stmt.
-          assert (stack_match st s' CE sp e g m_after).
-          { eapply assignment_preserve_stack_match;eauto.
-            7:eauto.
-            6:eauto.
-            
-            
-
-
-          }
-
-          !destruct x1_v;try discriminate.
-
-          split;intros [h_forbidden_1 h_forbidden_2];red.
-
-          - split.
-            + red;!!intros.
-              red in h_forbidden_1.
-              eapply h_forbidden_1;eauto;clear h_forbidden_1 h_forbidden_2.
-              assert (stack_match st s' CE sp e_step g m_step).
-              { eapply assignment_preserve_stack_match;eauto.  with (9:=h_exact_lvlG_CE).
-                
-                eapply assignment_preserve_stack_match with (1:= h_exact_lvlG_CE) (2:=h_allincr_CE) (3:=heq_transl_variable)
-                                                                                  (4:=heq_transl_value_e_v_e_t_v);eauto.
-
-.
-
-                up_type.
-              pose proof (assignment_preserve_stack_match _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-                                                          h_exact_lvlG_CE h_allincr_CE heq_transl_variable
-                                                          heq_transl_value_e_v_e_t_v
-                         ).
-              
-
-        Qed.
-
-        !!pose proof exec_store_params_preserve_forbidden.
-        specialize (H0 _ _ _ _ heq astnum _ _ _ _ _ _ _ _ _ h_exec_stmt_x0_Out_normal).
-        red in H0.
-        symmetry in H0.
-        eapply unchanged_on_iff;eauto.
-        do 2 red;intros;subst.
-        split;intros .
-        eapply H0;eauto.
-        -- ?.
-  }
-        
-      * eapply IHr.
-    + (*an error occurred during the first param.*)
-Qed.
 *)
+Lemma init_locals_params_unchanged_on:
+  forall decl st CE locvarinit,
+    init_locals st CE decl =: locvarinit ->
+    forall astnum g proc_t sp locenv m t2 locenv' m' Out_normal,
+      exec_stmt g proc_t sp locenv m locvarinit t2 locenv' m' Out_normal ->
+      Mem.unchanged_on (forbidden st CE g astnum locenv sp m m) m m'.
+Proof.
+  admit.
+Qed.
+
 Lemma exec_preserve_invisible:
   ∀ g func stkptr locenv m stmt_t tr locenv' m' outc,
     exec_stmt g func stkptr locenv m stmt_t tr locenv' m' outc -> 
     ∀ st CE stmt,
+      exact_levelG CE ->
+      stack_localstack_aligned CE locenv g m ->
+      stack_no_null_offset st CE ->
       stack_match_functions st stkptr CE locenv g m ->
       transl_stmt st CE stmt =: stmt_t ->
       forall astnum,
@@ -4325,10 +4611,38 @@ Proof.
         (* TODO: prove that (forbidden m_chain m_chain) x y <=>
         (forbidden m m_chain) x y, everything that is visible from
         m_chain is either visible from m or free from m. *)
-        !assert (Mem.unchanged_on (forbidden st CE g astnum e sp m_chain m_chain) m_chain m_init_params).
-        { 
-          
-          admit. }
+        !assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_chain sp_proc m_chain m_chain) m_chain m_init_params).
+        { eapply exec_store_params_unchanged_on; eauto.
+
+          Lemma build_compilenv_exact_lvl:
+            forall st CE proc_lvl lparams decl CE' sz,
+              exact_levelG CE ->
+              build_compilenv st CE proc_lvl lparams decl =: (CE',sz) ->
+              exact_levelG CE'.
+          Proof.
+            !intros.
+            rewrite <- build_compilenv_ok  in heq.
+            functional inversion heq.
+            constructor;auto.
+          Qed.  
+
+          eapply build_compilenv_exact_lvl. 
+          - eapply exact_lvlG_cut_until; eauto.
+          - eassumption.
+          - admit. (* property of CE? need strong_match_env? Yes probably  *)
+          - admit. (* property of CE? need strong_match_env? Yes probably  *) }
+
+
+        assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_initparams sp_proc m_init_params m_init_params)
+                                 m_init_params m_locvarinit).
+        {  xxx use init_locals_params_unchanged_on
+ 
+
+
+
+        }
+
+        rewrite eval_expr_transl_variable_inv_locenv in 
 
         !assert (Mem.unchanged_on (forbidden st CE g astnum e sp m m_chain) m_chain m_bdy).
         { !assert (Mem.unchanged_on (forbidden st CE g astnum e sp m_chain m_chain) m_chain m_bdy).

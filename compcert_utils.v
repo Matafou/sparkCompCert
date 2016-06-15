@@ -139,3 +139,19 @@ Proof.
   eapply Mem.fresh_block_alloc;eauto.
   eapply Mem.perm_valid_block;eauto.
 Qed.
+
+
+Lemma mem_unchanged_on_mon : forall P m m',
+    Mem.unchanged_on P m m' ->
+    forall Q: Values.block -> Z -> Prop,
+      (forall x y, Q x y -> P x y) ->
+      Mem.unchanged_on Q m m'.
+Proof.
+  intros P m m' H Q H0. 
+  !destruct H.
+  split;!intros.
+  - split;!intros.
+    + apply unchanged_on_perm;auto.
+    + apply unchanged_on_perm;auto.
+  - apply unchanged_on_contents;auto.
+Qed.
