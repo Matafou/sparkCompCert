@@ -1043,6 +1043,16 @@ Definition stbl_var_types_ok st :=
 
 (* See CminorgenProof.v@205. *)
 
+
+Record safe_cm_env st CE sp locenv g m: Prop :=
+  mk_safe_cm_env {
+      me_stack_match_functions: stack_match_functions st sp CE locenv g m ;
+      me_stack_separate: stack_separate st CE sp locenv g m;
+      me_stack_localstack_aligned: stack_localstack_aligned CE locenv g m;
+      me_stack_no_null_offset: stack_no_null_offset st CE;
+      me_stack_freeable: stack_freeable st CE sp g locenv m;
+    }.
+
 (** The Memory bisimilarity/invariant property states that
 
  -[me_overflow] Spark stack [s] is ok wrt overflows 
@@ -1062,12 +1072,8 @@ Record match_env st s CE sp locenv g m: Prop :=
   mk_match_env {
       me_stack_match: stack_match st s CE sp locenv g m;
       me_stack_match_CE: stack_match_CE s CE;
-      me_stack_match_functions: stack_match_functions st sp CE locenv g m ;
       me_stack_complete: stack_complete st s CE;
-      me_stack_separate: stack_separate st CE sp locenv g m;
-      me_stack_localstack_aligned: stack_localstack_aligned CE locenv g m;
-      me_stack_no_null_offset: stack_no_null_offset st CE;
-      me_stack_freeable: stack_freeable st CE sp g locenv m;
+      me_safe_cm_env: safe_cm_env st CE sp locenv g m;
       me_overflow: safe_stack s; (* Put this somewhere else, concerns only s *)
 (*       me_nodup_stack: NoDupA  *)
     }.
@@ -1081,6 +1087,7 @@ Arguments me_stack_localstack_aligned : default implicits.
 Arguments me_stack_separate : default implicits.
 Arguments me_stack_freeable : default implicits.
 Arguments me_stack_complete : default implicits.
+Arguments me_safe_cm_env : default implicits.
 
 (** The compilation environment has some intrinsic properties:
  - Frame are numbered in increasing order in the global store
@@ -1097,7 +1104,7 @@ Arguments ci_no_overflow : default implicits.
 Arguments ci_stbl_var_types_ok : default implicits.
 
 Hint Resolve ci_exact_lvls ci_increasing_ids ci_no_overflow ci_stbl_var_types_ok.
-Hint Resolve me_stack_match me_stack_match_CE me_stack_match_functions me_stack_complete me_stack_separate me_stack_localstack_aligned me_stack_no_null_offset me_overflow.
+Hint Resolve me_stack_match me_stack_match_CE me_stack_match_functions me_stack_complete me_stack_separate me_stack_localstack_aligned me_stack_no_null_offset me_overflow me_safe_cm_env.
 
 
 (** Hypothesis renaming stuff *)
@@ -1131,6 +1138,9 @@ Ltac rename_hyp3 h th :=
   | stack_freeable _ _ _ _ _ ?m => fresh "h_freeable_" m
   | stack_freeable _ ?CE _ _ _ _ => fresh "h_freeable_" CE
   | stack_freeable _ _ _ _ _ _ => fresh "h_freeable"
+  | safe_cm_env ?st ?CE ?stkptr ?locenv ?g ?m => fresh "h_safe_cm_" CE "_" m
+  | safe_cm_env ?st ?CE ?stkptr ?locenv ?g ?m => fresh "h_safe_cm_" CE
+  | safe_cm_env ?st ?CE ?stkptr ?locenv ?g ?m => fresh "h_safe_cm"
   | invariant_compile ?CE ?stbl => fresh "h_inv_comp_" CE "_" stbl
   | invariant_compile ?CE _ => fresh "h_inv_comp_" CE
   | invariant_compile _ ?stbl => fresh "h_inv_comp_" stbl
@@ -1290,6 +1300,17 @@ Arguments ce_wf_extra : default implicits.
 
 Hint Resolve ce_wf_extra ce_wf_extra.
 
+Inductive strong_P (P: symboltable.symboltable -> STACK.stack → compilenv → Values.val → env → genv → mem → Prop) stbl: STACK.stack → compilenv → Values.val → env → genv → mem → Prop :=
+| strg1: forall v locenv g m,
+    P stbl [] [] v locenv g m ->
+    strong_P P stbl [] [] v locenv g m
+| strg2: forall lvl sto s stoCE CE v v' locenv locenv' g m,
+    strong_P P stbl s CE v locenv g m ->
+    Mem.loadv AST.Mint32 m v' = Some v ->
+    P stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m ->
+    strong_P P stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m.
+
+
 Inductive strong_match_env stbl: STACK.stack → compilenv → Values.val → env → genv → mem → Prop :=
 | C1: forall v locenv g m,
     match_env stbl [] [] v locenv g m ->
@@ -1299,9 +1320,6 @@ Inductive strong_match_env stbl: STACK.stack → compilenv → Values.val → en
     Mem.loadv AST.Mint32 m v' = Some v ->
     match_env stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m ->
     strong_match_env stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m.
-
-(* Equivalently
- *)
 
 
 Inductive repeat_Mem_loadv (chk:AST.memory_chunk) (m : mem): forall (lvl:STACK.scope_level) (sp sp' : Values.val), Prop :=
@@ -1448,9 +1466,13 @@ Lemma match_env_empty: forall st sp sp' locenv locenv' g m,
 Proof.
   !intros.
   split (* apply h_match_env. *).
+  4: split.
   + apply stack_match_empty.
   + red;!intros.
     functional inversion heq.
+  + red;!intros.
+    !functional inversion heq_transl_variable.
+    functional inversion heq_CEfetchG_nme.
   + red;!intros.
     red in h_stk_mtch_fun.
     specialize (h_stk_mtch_fun _ _ _ h_fetch_proc_p).
@@ -1467,9 +1489,6 @@ Proof.
     constructor.
     inversion h_CM_eval_expr_x1;subst; simpl in *.
     assumption.
-  + red;!intros.
-    !functional inversion heq_transl_variable.
-    functional inversion heq_CEfetchG_nme.
   + red;!intros.
     functional inversion heq_transl_name.
   + red.
@@ -1599,16 +1618,16 @@ Lemma match_env_inv_locenv : forall st s CE sp locenv g m,
     forall locenv', match_env st s CE sp locenv' g m.
 Proof.
   !intros.
-  split; try now apply h_match_env.
+  split;[ | | | split | ];try now apply h_match_env.  
   - eapply stack_match_inv_locenv;eauto.
-  - pose proof me_stack_match_functions h_match_env as h_mtch_fun.
+  - pose proof me_stack_match_functions (me_safe_cm_env h_match_env) as h_mtch_fun.
     red in h_mtch_fun.
     red;!intros.
     specialize (h_mtch_fun p pb_lvl pb h_fetch_proc_p).
     decomp h_mtch_fun.
     repeat eexists;eauto.
     eapply eval_expr_Econst_inv_locenv;eauto.
-  - pose proof me_stack_separate h_match_env as h_separate.
+  - pose proof me_stack_separate (me_safe_cm_env h_match_env) as h_separate.
     red in h_separate.
     red;!intros.
     !assert (Cminor.eval_expr g sp locenv m nme_t (Values.Vptr k₁ δ₁)).
@@ -1622,14 +1641,14 @@ Proof.
                            h_CM_eval_expr_nme_t0 h_CM_eval_expr_nme'_t0 h_access_mode_cm_typ_nme
                            h_access_mode_cm_typ_nme' hneq).
     assumption.
-  - pose proof me_stack_localstack_aligned h_match_env as h_align.
+  - pose proof me_stack_localstack_aligned (me_safe_cm_env h_match_env) as h_align.
     red in h_align.
     red.
     !intros.
     assert (Cminor.eval_expr g b locenv m (build_loads_ (Econst (Oaddrstack Int.zero)) δ_lvl) v).
     { eapply eval_expr_build_load_const_inv_locenv;eauto. }
     eapply h_align;eauto.
-  - !!pose proof me_stack_freeable h_match_env.
+  - !!pose proof me_stack_freeable (me_safe_cm_env h_match_env).
     red in h_freeable_CE_m.
     red;!intros.
     eapply h_freeable_CE_m;eauto.
@@ -1728,6 +1747,7 @@ Proof.
       * simpl.
         auto.
 Qed.
+
 
 Lemma strong_match_env_match_env_sublist : forall st s CE sp locenv g  m,
     strong_match_env st s CE sp locenv g m ->
@@ -1839,6 +1859,7 @@ Proof.
         subst v.
         assumption.
 Qed.
+
 
 (** Property of the translation: Since chain variables have always zero
    offset, the offset of a variable in CE is the same as its offset in
@@ -2980,6 +3001,7 @@ Proof.
   intros until m'.
   !intros.
   !destruct h_match_env.
+  !destruct h_safe_cm_CE_m.
   (* Getting rid of erronous cases *)
   !functional inversion heq_transl_variable.
   rename m'0 into lvl_max.
@@ -3163,6 +3185,7 @@ Proof.
   red.
   !intros.
   !destruct h_match_env.
+  !destruct h_safe_cm_CE_m.
   up_type.
   red in h_stk_mtch_fun.
   specialize (h_stk_mtch_fun p pb_lvl pb h_fetch_proc_p).
@@ -3335,6 +3358,7 @@ Proof.
   red.
   !intros.
   !destruct h_match_env.
+  !destruct h_safe_cm_CE_m.
   decompose [ex] (storev_inv _ _ _ _ _ heq_storev_e_t_v_m');subst.
   !functional inversion heq_transl_name0;subst.
   generalize heq_transl_name.
@@ -3375,7 +3399,8 @@ Lemma assignment_preserve_stack_no_null_offset :
     stack_no_null_offset stbl CE.
 Proof.
   !intros.
-  destruct h_match_env.
+  !destruct h_match_env.
+  !destruct h_safe_cm_CE_m.
   assumption.
 Qed.
 
@@ -3401,6 +3426,7 @@ Proof.
   !intros.
   match goal with H: context C [do_overflow_check] |- _ => rename H into h_overf_e_v end.
   !destruct h_match_env.
+  !destruct h_safe_cm_CE_m.
   !intros.
   red.
   !intros.
@@ -3448,7 +3474,7 @@ Proof.
   destruct nme_t_v;simpl in * ; try discriminate.
   eapply Mem.store_valid_access_1.
   - eassumption.
-  - eapply (me_stack_freeable h_match_env);eauto.
+  - eapply (me_stack_freeable (me_safe_cm_env h_match_env));eauto.
     eapply wf_chain_load_var';eauto.
     eapply eval_build_loads_offset_non_null_var
       with (5:=h_CM_eval_expr_nme_t_nme_t_v);eauto.
@@ -4445,14 +4471,24 @@ Proof.
   admit.
 Qed.
 
+Lemma build_compilenv_exact_lvl:
+  forall st CE proc_lvl lparams decl CE' sz,
+    exact_levelG CE ->
+    build_compilenv st CE proc_lvl lparams decl =: (CE',sz) ->
+    exact_levelG CE'.
+Proof.
+  !intros.
+  rewrite <- build_compilenv_ok  in heq.
+  functional inversion heq.
+  constructor;auto.
+Qed.  
+
 Lemma exec_preserve_invisible:
   ∀ g func stkptr locenv m stmt_t tr locenv' m' outc,
     exec_stmt g func stkptr locenv m stmt_t tr locenv' m' outc -> 
-    ∀ st CE stmt,
-      exact_levelG CE ->
-      stack_localstack_aligned CE locenv g m ->
-      stack_no_null_offset st CE ->
-      stack_match_functions st stkptr CE locenv g m ->
+    ∀ st CE stmt s,
+      strong_match_env st s CE stkptr locenv g m ->
+      invariant_compile CE st ->
       transl_stmt st CE stmt =: stmt_t ->
       forall astnum,
         (* eval_stmt st s stmt s' -> *)
@@ -4485,6 +4521,8 @@ Proof.
     rename a_v into proc_addr.
     rename fd into proc_value.
     rename y into proc_lvl.
+    !assert (match_env st s CE sp e g m).
+    { inversion h_strg_mtch_s_CE_m;auto. }
     !inversion h_evalfuncall_fd_vargs_vres;subst.
     + (* internal function *)
       !assert (
@@ -4496,6 +4534,7 @@ Proof.
            transl_procedure st CE_sufx proc_lvl pbdy (* prov_lvl+1? *)
            = OK ((X, AST.Gfun (AST.Internal f0))::lotherproc)).
       { unfold transl_procsig in heq_transl_procsig_pnum.
+        !!assert (stack_match_functions st sp CE e g m) by eauto.
         red in h_stk_mtch_fun.
         unfold symboltable.fetch_proc in h_stk_mtch_fun.
         specialize (h_stk_mtch_fun pnum).
@@ -4612,25 +4651,17 @@ Proof.
         (forbidden m m_chain) x y, everything that is visible from
         m_chain is either visible from m or free from m. *)
         !assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_chain sp_proc m_chain m_chain) m_chain m_init_params).
-        { eapply exec_store_params_unchanged_on; eauto.
+        {xxx 
+          !assert (exists s', match_env st s' CE_proc sp e_chain g m_chain).
+          { eapply strong_match_env_match_env_sublist.
 
-          Lemma build_compilenv_exact_lvl:
-            forall st CE proc_lvl lparams decl CE' sz,
-              exact_levelG CE ->
-              build_compilenv st CE proc_lvl lparams decl =: (CE',sz) ->
-              exact_levelG CE'.
-          Proof.
-            !intros.
-            rewrite <- build_compilenv_ok  in heq.
-            functional inversion heq.
-            constructor;auto.
-          Qed.  
 
+          }
+          decomp h_ex.
+          eapply exec_store_params_unchanged_on; eauto.
           eapply build_compilenv_exact_lvl. 
           - eapply exact_lvlG_cut_until; eauto.
-          - eassumption.
-          - admit. (* property of CE? need strong_match_env? Yes probably  *)
-          - admit. (* property of CE? need strong_match_env? Yes probably  *) }
+          - eassumption. }
 
 
         assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_initparams sp_proc m_init_params m_init_params)
@@ -6113,6 +6144,7 @@ Proof.
     assert (hex: exists vaddr,
                Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t vaddr).
     { !destruct h_match_env.
+      !destruct h_safe_cm_CE_m.
       unfold stack_match in h_stk_mtch_s_m.
       generalize (h_stk_mtch_s_m (E_Identifier x x0) x1 nme_t x3 nme_type x2).
       intro h.
@@ -6142,6 +6174,7 @@ Proof.
     !assert (Mem.valid_access m nme_chk x4 (Int.unsigned x5) Writable). {
       apply Mem.valid_access_implies with (p1:=Freeable).
       - !destruct h_match_env.
+        !destruct h_safe_cm_CE_m.
         eapply h_freeable_CE_m;eauto.
         subst.
         assumption.
