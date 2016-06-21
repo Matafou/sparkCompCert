@@ -744,6 +744,7 @@ Fixpoint build_proc_decl (lvl:Symbol_Table_Module.level)
    - One of the things to note here is that it adds a variable at
      offset 0 which contains the address of the frame of the enclosing
      procedure, for chaining. Procedures are ignored.
+     FIXME
 
    - Another thing is that we use the same compilenv for all
      procedures of one declaration bloc. Strictly speaking this means
@@ -757,7 +758,8 @@ Fixpoint build_proc_decl (lvl:Symbol_Table_Module.level)
     this is correct. *)
 Definition build_compilenv (stbl:symboltable) (enclosingCE:compilenv) (lvl:Symbol_Table_Module.level)
          (lparams:list parameter_specification) (decl:declaration) : res (compilenv*Z) :=
-  let stoszchainparam := (((0%nat,0%Z) :: nil),4%Z) in
+(*   let stoszchainparam := (((0%nat,0%Z) :: nil),4%Z) in *)
+  let stoszchainparam := (nil,4%Z) in
   do stoszparam <- build_frame_lparams stbl stoszchainparam lparams ;
   do (stolocals,szlocals) <- build_frame_decl stbl stoszparam decl ;
   let scope_lvl := List.length enclosingCE in

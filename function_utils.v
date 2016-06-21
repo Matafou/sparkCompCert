@@ -498,7 +498,8 @@ Qed.
 (* using the explicit version because of a bug in Function. *)
 Function build_compilenv (stbl : Symbol_Table_Module.symboltable) (enclosingCE : compilenv) (lvl : Symbol_Table_Module.level)
          (lparams : list parameter_specification) (decl : declaration) :=
-let stoszchainparam := @pair (list (prod nat Z)) Z (@cons (prod nat Z) (@pair nat Z O Z0) (@nil (prod nat Z))) (Zpos (xO (xO xH))) in
+(* let stoszchainparam := @pair (list (prod nat Z)) Z (@cons (prod nat Z) (@pair nat Z O Z0) (@nil (prod nat Z))) (Zpos (xO (xO xH))) in *)
+let stoszchainparam := @pair (list (prod nat Z)) Z (@nil (prod nat Z)) (Zpos (xO (xO xH))) in
 match build_frame_lparams stbl stoszchainparam lparams return (res (prod (list (prod nat CompilEnv.store)) Z)) with
 | OK x =>
     match build_frame_decl stbl x decl return (res (prod (list (prod nat CompilEnv.store)) Z)) with

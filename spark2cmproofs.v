@@ -4483,6 +4483,155 @@ Proof.
   constructor;auto.
 Qed.  
 
+Function add_to_frame  (stbl : symboltable) (cenv_sz : localframe * Z) (nme : idnum) (subtyp_mrk : type) := 
+  let (cenv, sz) := cenv_sz in
+  match compute_size stbl subtyp_mrk with
+  | OK x =>
+    let new_size := sz + x in
+    if new_size >=? Int.modulus
+    then Error (msg "add_to_frame: memory would overflow")
+    else let new_cenv := (nme, sz) :: cenv in OK (new_cenv, new_size)
+  | Error msg => Error msg
+  end.
+
+Lemma add_to_frame_ok : forall stbl cenv_sz nme subtyp_mrk,
+add_to_frame stbl cenv_sz nme subtyp_mrk = spark2Cminor.add_to_frame stbl cenv_sz nme subtyp_mrk.
+Proof.
+  intros stbl cenv_sz nme subtyp_mrk; reflexivity. 
+Qed.
+
+(* Definition compute_size:= Eval lazy beta iota delta [compute_size bind] in compute_size. *)
+
+Function compute_size stbl typ :=  match compute_chnk_of_type stbl typ with
+                                     | OK x => OK (size_chunk x)
+                                     | Error msg => Error msg
+                                     end.
+Lemma compute_size_ok : forall stbl typ ,
+    compute_size stbl typ = spark2Cminor.compute_size stbl typ.
+Proof.
+  intros;reflexivity.
+Qed.
+
+Lemma compute_size_pos : forall st subtyp_mrk x, spark2Cminor.compute_size st subtyp_mrk =: x -> (x>0).
+Proof.
+  !intros.
+  rewrite <- compute_size_ok in *.
+  !functional inversion heq_cmpt_size_subtyp_mrk.
+  apply size_chunk_pos.
+Qed.
+
+Lemma build_frame_lparams_mon: forall st stosz lparams x sz',
+    build_frame_lparams st stosz lparams =: (x,sz') ->
+    forall stoszchainparam sz,
+      stosz = (stoszchainparam,sz) -> 
+      forall k,
+        (forall nme x, CompilEnv.fetches nme stoszchainparam =Some x -> x >= k) -> 
+        sz>=k -> 
+        forall nme v,
+          CompilEnv.fetches nme x = Some v ->
+          v >= k.
+Proof.
+  !!intros until lparams.
+  !functional induction (function_utils.build_frame_lparams st stosz lparams);cbn;!intros;subst.
+  - !invclear heq.
+    eapply H1;eauto.
+  - rewrite heq_add_to_fr_nme in heq.
+    cbn [bind] in *.
+    specialize (IHr _ _ heq).
+
+    rewrite <- add_to_frame_ok in *.
+    !functional inversion heq_add_to_fr_nme;subst;cbn.
+    specialize (IHr new_cenv new_size eq_refl k).
+    subst new_size.
+    subst new_cenv.
+    apply IHr with (nme:=nme0);auto.
+    + !intros.
+      cbn in heq_CEfetches_nme1.
+      destruct (nme1 =? nme)%nat.
+      * !invclear heq_CEfetches_nme1;auto.
+      * eapply H1;eauto.
+    + assert (x1>0) by (eapply compute_size_pos;eauto).
+      omega.
+  - rewrite heq_add_to_fr_ERR_nme in heq.
+    cbn in heq.
+    discriminate.
+Qed.
+
+Lemma build_frame_lparams_mon2: forall st stosz lparams x sz',
+    build_frame_lparams st stosz lparams =: (x,sz') ->
+    sz'>=snd stosz.
+Proof.
+  !!intros until lparams.
+  !functional induction (function_utils.build_frame_lparams st stosz lparams);cbn;!intros;subst.
+  - !invclear heq.
+    cbn.
+    omega.
+  - rewrite heq_add_to_fr_nme in heq.
+    cbn [bind] in *.
+    specialize (IHr _ _ heq).
+    rewrite <- add_to_frame_ok in *.
+    !functional inversion heq_add_to_fr_nme;subst;cbn.
+    cbn in IHr.
+    subst new_size.
+    subst new_cenv.
+    assert (x1>0) by (eapply compute_size_pos;eauto).
+    omega.
+  - rewrite heq_add_to_fr_ERR_nme in heq.
+    cbn in heq.
+    discriminate.
+Qed.
+
+Lemma build_frame_decl_mon: forall st stosz lparams x sz',
+    build_frame_decl st stosz lparams =: (x,sz') ->
+    forall stoszchainparam sz,
+      stosz = (stoszchainparam,sz) -> 
+      forall k,
+        (forall nme x, CompilEnv.fetches nme stoszchainparam =Some x -> x >= k) -> 
+        sz>=k -> 
+        forall nme v,
+          CompilEnv.fetches nme x = Some v ->
+          v >= k.
+Proof.
+  admit.
+Qed.
+
+
+Lemma build_compilenv_stack_no_null_offset:
+  ∀ (st : symboltable) (CE : CompilEnv.stack) (proc_lvl : level) (lparams : list parameter_specification) 
+    (decl : declaration) (CE' : compilenv) (sz : Z),
+    stack_no_null_offset st CE →
+    build_compilenv st CE proc_lvl lparams decl =: (CE', sz) →
+    stack_no_null_offset st CE'.
+Proof.
+  !intros.
+  red;!intros.
+  rewrite <- build_compilenv_ok  in heq.
+  functional inversion heq;subst; rewrite build_compilenv_ok in *.
+  destruct x.
+  subst stoszchainparam.
+  !!pose proof build_frame_lparams_mon2 _ _ _ _ _ H1.
+  cbn in h_ge_z.
+  pose proof build_frame_lparams_mon _ _ _ _ _ H1 [] 4  eq_refl 4 as h_bld_frm.
+  !!assert (h_ftch_nil: ∀ (nme : idnum) (x : CompilEnv.V), CompilEnv.fetches nme [] = Some x → x >= 4).
+  { !intros.
+    functional inversion heq_CEfetches_nme0. }
+  !!assert (4 >= 4) by omega.
+  specialize (h_bld_frm h_ftch_nil h_ge).
+  pose proof build_frame_decl_mon _ _ _ _ _ H2 s z eq_refl 4  h_bld_frm h_ge_z as h_bld_decl.
+
+xxx
+  functional inversion heq_transl_variable.
+  cbn in H3.
+  destruct CompilEnv.fetches nme x0 eqn:heq_ftch.
+  (*   { !intros. *)
+(*     cbn in heq_CEfetches_nme0. *)
+
+  
+(* Definition add_to_frame:= Eval lazy beta iota delta [add_to_frame bind] in add_to_frame. *)
+
+
+
+
 Lemma exec_preserve_invisible:
   ∀ g func stkptr locenv m stmt_t tr locenv' m' outc,
     exec_stmt g func stkptr locenv m stmt_t tr locenv' m' outc -> 
@@ -4651,7 +4800,15 @@ Proof.
         (forbidden m m_chain) x y, everything that is visible from
         m_chain is either visible from m or free from m. *)
         !assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_chain sp_proc m_chain m_chain) m_chain m_init_params).
-        {xxx 
+        { 
+          eapply exec_store_params_unchanged_on;eauto.
+          - eapply build_compilenv_exact_lvl with (2:=heq1);eauto.
+            eapply exact_lvlG_cut_until;eauto.
+          - 
+
+            
+          - eassumption.
+          - !inversion h_exec_stmt_locvarinit.
           !assert (exists s', match_env st s' CE_proc sp e_chain g m_chain).
           { eapply strong_match_env_match_env_sublist.
 
