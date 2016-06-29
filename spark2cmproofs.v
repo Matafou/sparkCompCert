@@ -2220,9 +2220,40 @@ Proof.
   unfold build_loads.
   !intros.
   inversion heq.
-  split;auto.
-  eapply build_loads__inj;eauto.
+  split.
+  - eapply build_loads__inj;eauto.
+  - auto. 
 Qed.
+
+Lemma build_loads_inj_2 : forall i₁ i₂ k k' ,
+    (* translating the variabe to a Cminor load address *)
+    build_loads k i₁ = build_loads k' i₂ ->
+    k = k' ∧ Int.repr i₁ = Int.repr i₂.
+Proof.
+  unfold build_loads.
+  !intros.
+  remember (Int.repr i₁) as rpr1.
+  remember (Int.repr i₂) as rpr2.
+  inversion heq.
+  split.
+  - eapply build_loads__inj;eauto.
+  - auto.
+Qed.
+
+Lemma build_loads_inj_inv:
+  ∀ (i₁ i₂ : Z) (k k' : nat),
+    k = k'  ->
+    Int.repr i₁ = Int.repr i₂ -> 
+    build_loads k i₁ = build_loads k' i₂.
+Proof.
+  unfold build_loads.
+  !intros.
+  subst.
+  rewrite heq.
+  reflexivity.
+Qed.
+
+
 
 Lemma build_loads_inj_neq1 : forall i₁ i₂ k k' e₁ e₂,
     k ≠ k' ->
@@ -4512,6 +4543,39 @@ Proof.
   intros;reflexivity.
 Qed.
 
+(* Definition build_frame_decl:= Eval lazy beta iota delta [build_frame_decl bind] in build_frame_decl. *)
+Function build_frame_decl (stbl : symboltable) (fram_sz : localframe * Z) 
+                 (decl : declaration) {struct decl} : res (localframe * Z) :=
+  let (fram, sz) := fram_sz in
+  match decl with
+  | D_Null_Declaration => OK fram_sz
+  | D_Type_Declaration _ _ =>
+      Error (msg "build_frame_decl: type decl no implemented yet")
+  | D_Object_Declaration _ objdecl =>
+      match spark2Cminor.compute_size stbl (object_nominal_subtype objdecl) with
+      | OK x =>
+          let new_size := sz + x in
+          if new_size >=? Int.modulus
+          then Error (msg "build_frame_decl: memory would overflow")
+          else OK ((object_name objdecl, sz) :: fram, new_size)
+      | Error msg => Error msg
+      end
+  | D_Procedure_Body _ _ => Error (msg "build_frame_decl: proc decl no implemented yet")
+  | D_Seq_Declaration _ decl1 decl2 =>
+      match build_frame_decl stbl fram_sz decl1 with
+      | OK x => build_frame_decl stbl x decl2
+      | Error msg => Error msg
+      end
+  end.
+
+Lemma build_frame_decl_ok : 
+  forall (stbl : symboltable) (fram_sz : localframe * Z) (decl : declaration), 
+    build_frame_decl stbl fram_sz decl =
+    spark2Cminor.build_frame_decl stbl fram_sz decl.
+Proof.
+  reflexivity.
+Qed.
+
 Lemma compute_size_pos : forall st subtyp_mrk x, spark2Cminor.compute_size st subtyp_mrk =: x -> (x>0).
 Proof.
   !intros.
@@ -4520,77 +4584,161 @@ Proof.
   apply size_chunk_pos.
 Qed.
 
-Lemma build_frame_lparams_mon: forall st stosz lparams x sz',
-    build_frame_lparams st stosz lparams =: (x,sz') ->
-    forall stoszchainparam sz,
-      stosz = (stoszchainparam,sz) -> 
-      forall k,
-        (forall nme x, CompilEnv.fetches nme stoszchainparam =Some x -> x >= k) -> 
-        sz>=k -> 
-        forall nme v,
-          CompilEnv.fetches nme x = Some v ->
-          v >= k.
+(* build_frame_lparams return a non overflowed store, but the size may = to Int.modulus.
+   So that next addition will overflow *)
+Lemma build_frame_lparams_mon: forall st stosz lparams sto' sz',
+    build_frame_lparams st stosz lparams =: (sto',sz') ->
+    snd stosz<=sz'
+    /\
+    (forall stoszchainparam sz,
+        stosz = (stoszchainparam,sz) -> 
+        (* k is the lesser bound of addresses (typically 4 to let room for the chaining arg *)
+        forall k,
+          (forall nme x, CompilEnv.fetches nme stoszchainparam = Some x
+                         -> k <= x <Int.modulus) -> 
+          k <= sz < Int.modulus -> 
+          forall nme v,
+            CompilEnv.fetches nme sto' = Some v ->
+            k <= v < Int.modulus).
 Proof.
   !!intros until lparams.
   !functional induction (function_utils.build_frame_lparams st stosz lparams);cbn;!intros;subst.
   - !invclear heq.
-    eapply H1;eauto.
-  - rewrite heq_add_to_fr_nme in heq.
-    cbn [bind] in *.
-    specialize (IHr _ _ heq).
-
-    rewrite <- add_to_frame_ok in *.
-    !functional inversion heq_add_to_fr_nme;subst;cbn.
-    specialize (IHr new_cenv new_size eq_refl k).
-    subst new_size.
-    subst new_cenv.
-    apply IHr with (nme:=nme0);auto.
-    + !intros.
-      cbn in heq_CEfetches_nme1.
-      destruct (nme1 =? nme)%nat.
-      * !invclear heq_CEfetches_nme1;auto.
-      * eapply H1;eauto.
-    + assert (x1>0) by (eapply compute_size_pos;eauto).
-      omega.
-  - rewrite heq_add_to_fr_ERR_nme in heq.
-    cbn in heq.
-    discriminate.
-Qed.
-
-Lemma build_frame_lparams_mon2: forall st stosz lparams x sz',
-    build_frame_lparams st stosz lparams =: (x,sz') ->
-    sz'>=snd stosz.
-Proof.
-  !!intros until lparams.
-  !functional induction (function_utils.build_frame_lparams st stosz lparams);cbn;!intros;subst.
-  - !invclear heq.
-    cbn.
-    omega.
+    split;intros.
+    + cbn. reflexivity.
+    + inversion H;subst;eauto 5.
   - rewrite heq_add_to_fr_nme in heq.
     cbn [bind] in *.
     specialize (IHr _ _ heq).
     rewrite <- add_to_frame_ok in *.
     !functional inversion heq_add_to_fr_nme;subst;cbn.
     cbn in IHr.
+    destruct IHr as [IHr1 IHr3].
     subst new_size.
     subst new_cenv.
-    assert (x1>0) by (eapply compute_size_pos;eauto).
-    omega.
+    split;[|!intros].
+    + assert (x0>0) by (eapply compute_size_pos;eauto).
+      omega.
+    + inversion heq0;subst.
+      specialize (IHr3 ((nme, sz0) :: stoszchainparam) (sz0 + x0) eq_refl k).
+      apply IHr3 with (nme:=nme0);auto.
+      * !intros.
+        cbn in heq_CEfetches_nme1.
+        destruct (nme1 =? nme)%nat.
+        -- !invclear heq_CEfetches_nme1;auto.
+        -- inversion heq0;subst;eauto.
+      * assert (x0>0) by (eapply compute_size_pos;eauto).
+        split; try omega.
+        rewrite Z.geb_leb in heq_bool_false.
+        apply Z.leb_gt.
+        assumption.
   - rewrite heq_add_to_fr_ERR_nme in heq.
     cbn in heq.
     discriminate.
 Qed.
 
-Lemma build_frame_decl_mon: forall st stosz lparams x sz',
-    build_frame_decl st stosz lparams =: (x,sz') ->
-    forall stoszchainparam sz,
-      stosz = (stoszchainparam,sz) -> 
-      forall k,
-        (forall nme x, CompilEnv.fetches nme stoszchainparam =Some x -> x >= k) -> 
-        sz>=k -> 
-        forall nme v,
-          CompilEnv.fetches nme x = Some v ->
-          v >= k.
+Lemma build_frame_lparams_mon'': forall st stosz lparams sto' sz',
+    build_frame_lparams st stosz lparams =: (sto',sz') ->
+    snd stosz <= Int.modulus -> 
+    sz' <= Int.modulus.
+Proof.
+  !!intros until lparams.
+  !functional induction (function_utils.build_frame_lparams st stosz lparams);cbn;!intros;subst.
+  - !invclear heq.
+    cbn in *.
+    assumption.
+  - rewrite heq_add_to_fr_nme in heq.
+    cbn [bind] in *.
+    specialize (IHr _ _ heq).
+    rewrite <- add_to_frame_ok in *.
+    !functional inversion heq_add_to_fr_nme;subst;cbn.
+    subst new_size.
+    subst new_cenv.
+    cbn in IHr.
+    apply IHr.
+    rewrite Z.geb_leb in heq_bool_false.
+    apply Z.leb_gt in heq_bool_false.
+    omega.
+  - rewrite heq_add_to_fr_ERR_nme in heq.
+    cbn in heq.
+    discriminate.
+Qed.
+(* build_frame_lparams return a non overflowed store, but the size may = to Int.modulus.
+   So that next addition will overflow *)
+Lemma build_frame_lparams_mon': forall st stosz lparams sto' sz',
+    build_frame_lparams st stosz lparams =: (sto',sz') ->
+    snd stosz <= Int.modulus -> 
+    snd stosz<=sz'<= Int.modulus
+    /\
+    (forall stoszchainparam sz,
+        stosz = (stoszchainparam,sz) -> 
+        (* k is the lesser bound of addresses (typically 4 to let room for the chaining arg *)
+        forall k,
+          (forall nme x, CompilEnv.fetches nme stoszchainparam = Some x -> k <= x < sz) -> 
+          k <= sz -> 
+          forall nme v,
+            CompilEnv.fetches nme sto' = Some v ->
+            k <= v < sz').
+Proof.
+  !!intros until lparams.
+  !functional induction (function_utils.build_frame_lparams st stosz lparams);cbn;!intros;subst.
+  - !invclear heq.
+    split;[split|intros].
+    + cbn. reflexivity.
+    + cbn in *.
+      assumption.
+    + inversion H;subst;eauto 5.
+  - rewrite heq_add_to_fr_nme in heq.
+    cbn [bind] in *.
+    specialize (IHr _ _ heq).
+    rewrite <- add_to_frame_ok in *.
+    !functional inversion heq_add_to_fr_nme;subst;cbn.
+    !assert (x0 >0).
+    { eapply compute_size_pos;eauto. }
+    cbn in IHr.
+    !assert (new_size <= Int.modulus).
+    { rewrite Z.geb_leb in heq_bool_false.
+      apply Z.leb_gt in heq_bool_false.
+      omega. }
+    specialize (IHr h_le_new_size).
+    destruct IHr as [[IHr1IHr2] IHr3].
+    subst new_size.
+    subst new_cenv.
+    split;[split|!intros].
+    + omega.
+    + assumption.
+    + inversion heq0;subst.
+      specialize (IHr3 ((nme, sz0) :: stoszchainparam) (sz0 + x0) eq_refl k).
+      apply IHr3 with (nme:=nme0);auto.
+      * !intros.
+        cbn in heq_CEfetches_nme1.
+        destruct (nme1 =? nme)%nat.
+        -- !invclear heq_CEfetches_nme1;split;auto.
+           omega.
+        -- specialize (H1 nme1 x heq_CEfetches_nme1).
+           !destruct H1;auto.
+           split;auto.
+           omega.
+      * omega.
+  - rewrite heq_add_to_fr_ERR_nme in heq.
+    cbn in heq.
+    discriminate.
+Qed.
+
+Lemma build_frame_decl_mon: forall st stosz lparams sto' sz',
+    spark2Cminor.build_frame_decl st stosz lparams =: (sto',sz') ->
+    snd stosz <= Int.modulus -> 
+    snd stosz<=sz'<= Int.modulus
+    /\
+    (forall stoszchainparam sz,
+        stosz = (stoszchainparam,sz) -> 
+        (* k is the lesser bound of addresses (typically 4 to let room for the chaining arg *)
+        forall k,
+          (forall nme x, CompilEnv.fetches nme stoszchainparam = Some x -> k <= x < sz) -> 
+          k <= sz -> 
+          forall nme v,
+            CompilEnv.fetches nme sto' = Some v ->
+            k <= v < sz').
 Proof.
   admit.
 Qed.
@@ -4599,36 +4747,110 @@ Qed.
 Lemma build_compilenv_stack_no_null_offset:
   ∀ (st : symboltable) (CE : CompilEnv.stack) (proc_lvl : level) (lparams : list parameter_specification) 
     (decl : declaration) (CE' : compilenv) (sz : Z),
+    exact_levelG CE →
     stack_no_null_offset st CE →
     build_compilenv st CE proc_lvl lparams decl =: (CE', sz) →
     stack_no_null_offset st CE'.
 Proof.
   !intros.
-  red;!intros.
   rewrite <- build_compilenv_ok  in heq.
   functional inversion heq;subst; rewrite build_compilenv_ok in *.
+  rewrite <- build_frame_decl_ok in H2.
   destruct x.
   subst stoszchainparam.
-  !!pose proof build_frame_lparams_mon2 _ _ _ _ _ H1.
-  cbn in h_ge_z.
-  pose proof build_frame_lparams_mon _ _ _ _ _ H1 [] 4  eq_refl 4 as h_bld_frm.
-  !!assert (h_ftch_nil: ∀ (nme : idnum) (x : CompilEnv.V), CompilEnv.fetches nme [] = Some x → x >= 4).
+  pose proof build_frame_lparams_mon' _ _ _ _ _ H1 as h_bld_frm.
+  cbn in h_bld_frm.
+  !!assert (4 <= Int.modulus). {
+    vm_compute.
+    intro abs;discriminate. }
+   specialize (h_bld_frm h_le).
+  destruct h_bld_frm as [h_bld_frm1 h_bld_frm2].
+
+  specialize (h_bld_frm2 [] 4  eq_refl 4).
+  !!assert (h_ftch_nil: ∀ (nme : idnum) (x : CompilEnv.V), CompilEnv.fetches nme [] = Some x → 4 <= x < 4).
   { !intros.
-    functional inversion heq_CEfetches_nme0. }
-  !!assert (4 >= 4) by omega.
-  specialize (h_bld_frm h_ftch_nil h_ge).
-  pose proof build_frame_decl_mon _ _ _ _ _ H2 s z eq_refl 4  h_bld_frm h_ge_z as h_bld_decl.
+    functional inversion heq_CEfetches_nme. }
+  !!assert (4 <= 4) by omega.
+  specialize (h_bld_frm2 h_ftch_nil h_le0).
+  pose proof build_frame_decl_mon _ _ _ _ _ H2 as h_bld_decl.
+  cbn in h_bld_decl.
+  !destruct h_bld_frm1.
+  specialize (h_bld_decl h_le_z).
+  destruct h_bld_decl as [h_le_z' h_bld_decl].
+  cbn in h_le_z'.
+  specialize (h_bld_decl s z eq_refl 4 h_bld_frm2 h_le1).
+  red;!intros.
+(*   unfold transl_variable in heq_transl_variable. *)
+(*   cbn in heq_transl_variable. *)
+  destruct (CompilEnv.fetches nme x0) eqn:h1; destruct (CompilEnv.resides nme x0) eqn:h2; try discriminate;  up_type.
+  - unfold transl_variable in heq_transl_variable.
+    cbn in heq_transl_variable.
+    rewrite h1, h2 in heq_transl_variable.
+    specialize (h_bld_decl _ _ h1).
+    !destruct h_bld_decl.
+    !destruct h_le_z'.
 
-xxx
-  functional inversion heq_transl_variable.
-  cbn in H3.
-  destruct CompilEnv.fetches nme x0 eqn:heq_ftch.
-  (*   { !intros. *)
-(*     cbn in heq_CEfetches_nme0. *)
+    assert (Int.unsigned (Int.repr t)=Int.unsigned (Int.repr δ_id)). {
+      inversion heq_transl_variable.
+      destruct (Int.repr t) eqn:heq_t;destruct (Int.repr δ_id) eqn:heq_δ_id;auto. }
+    rewrite <- H.
+    rewrite Int.unsigned_repr.
+    * omega.
+    * split;try omega.
+      unfold Int.max_unsigned.
+      omega.
+  - !assert (CompilEnv.resides nme x0 = true). {
+      apply (compilenv_fetches_resides nme x0).
+      exists t;auto. }
+    rewrite h2 in heq_bool_true;discriminate.
+  - !assert (exists t, CompilEnv.fetches nme x0 = Some t). {
+      apply (compilenv_fetches_resides nme x0).
+      assumption. }
+    !!decompose [ex] h_ex.
+    rewrite h1 in heq_CEfetches_nme_x0;discriminate.
 
-  
-(* Definition add_to_frame:= Eval lazy beta iota delta [add_to_frame bind] in add_to_frame. *)
+  - red in h_nonul_ofs.
+    !assert (exists top, CompilEnv.level_of_top CE = Some top /\ Datatypes.length CE = S top).
+    { destruct (CompilEnv.level_of_top CE) eqn:heq_top.
+      - exists s0;split;auto.
+        eapply exact_level_top_lvl;eauto.
+      - !functional inversion heq_transl_variable.
+        cbn in heq_CEframeG_nme.
+        rewrite h2 in heq_CEframeG_nme.
+        functional inversion heq_CEframeG_nme.
+        + subst CE.
+          cbn in heq_top.
+          destruct f.
+          inversion heq_top.
+        + subst CE.
+          cbn in heq_top.
+          destruct f.
+          inversion heq_top. }
+    decomp h_ex.
+    rename x into top_CE.
 
+    !!enough(exists δ_lvl', transl_variable st CE a nme =: build_loads δ_lvl' δ_id).
+    { decomp h_ex.
+      eapply h_nonul_ofs;eauto. }
+    unfold transl_variable in heq_transl_variable.
+    cbn in heq_transl_variable.
+    rewrite h1, h2 in heq_transl_variable. 
+    cbn.
+    unfold transl_variable.
+    cbn.
+    rewrite heq_lvloftop_CE_x.
+    rewrite heq_nat in heq_transl_variable.
+    !!destruct (CompilEnv.fetchG nme CE) eqn:?;destruct (CompilEnv.frameG nme CE) eqn:?;cbn in * ;eauto.
+    destruct f;cbn in *.
+    apply OK_inv in heq_transl_variable.
+    !!pose proof build_loads_inj_2 _ _ _ _ heq_transl_variable.
+    decomp h_and.
+    exists (top_CE - s0)%nat.
+    f_equal.
+    unfold build_loads.
+    rewrite heq0.
+    reflexivity.
+Qed.
 
 
 
@@ -4804,16 +5026,17 @@ Proof.
           eapply exec_store_params_unchanged_on;eauto.
           - eapply build_compilenv_exact_lvl with (2:=heq1);eauto.
             eapply exact_lvlG_cut_until;eauto.
-          - 
-
-            
-          - eassumption.
-          - !inversion h_exec_stmt_locvarinit.
-          !assert (exists s', match_env st s' CE_proc sp e_chain g m_chain).
-          { eapply strong_match_env_match_env_sublist.
-
-
-          }
+          - eapply build_compilenv_stack_no_null_offset with (CE:=CE_sufx).
+            + eapply exact_lvlG_cut_until;eauto.
+            + admit. (* xxx *)
+            + eauto.
+          - xxx
+            !inversion h_exec_stmt_locvarinit.
+            !assert (exists s', match_env st s' CE_proc sp e_chain g m_chain).
+            { eapply strong_match_env_match_env_sublist.
+              
+              
+            }
           decomp h_ex.
           eapply exec_store_params_unchanged_on; eauto.
           eapply build_compilenv_exact_lvl. 

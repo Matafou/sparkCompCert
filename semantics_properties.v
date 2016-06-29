@@ -191,6 +191,22 @@ Proof.
     auto.
 Qed.
 
+Lemma compilenv_fetches_resides: forall nme x,
+    (exists res, CompilEnv.fetches nme x = Some res) <->
+    CompilEnv.resides nme x = true.
+Proof.
+  !!intros ? ?.
+  !functional induction (CompilEnv.fetches nme x);cbn;!intros;subst.
+  - rewrite hbeqnat_true.
+    split;eauto.
+  - rewrite hbeqnat_false.
+    assumption.
+  - split;!intros; try discriminate.
+    decompose [ex] h_ex.
+    discriminate.
+Qed.
+
+
 Lemma fetches_ok_none: forall id sto, fetches id sto = None -> resides id sto = false.
 Proof.
   intros id sto.
@@ -245,7 +261,6 @@ Proof.
     + apply IHo in heq_SfetchG_id_s'.
       assumption.
 Qed.
-
 
 Lemma updates_ok_same: forall sto id v sto',
     updates sto id v = Some sto'

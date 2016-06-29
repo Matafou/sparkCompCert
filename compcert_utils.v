@@ -1,5 +1,5 @@
 Require Import LibHypsNaming spark2Cminor.
-Import ZArith Memory Cminor Integers.
+Import ZArith Memory Cminor Integers Errors.
 Open Scope Z_scope.
 
 Ltac rename_hyp1 h th :=
@@ -93,6 +93,15 @@ Ltac rename_hyp1 h th :=
     | Globalenvs.Genv.find_funct ?g ?paddr = None => fresh "heq_find_func_" paddr "_NONE"
     | Globalenvs.Genv.find_funct ?g ?paddr = None => fresh "heq_find_func_None"
   end.
+
+(* Sometme inversion unfolds to much things under OK (like Int.repr for instance).
+   Then this lemma is useful. *)
+Lemma OK_inv: forall A (x y:A), OK x = OK y -> x = y.
+Proof.
+  intros A x y H.
+  inversion H.
+  reflexivity.
+Qed.
 
 
 (* Auxiliary lemmas, should go in Compcert? *)
