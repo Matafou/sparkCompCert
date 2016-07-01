@@ -1749,7 +1749,7 @@ Proof.
 Qed.
 
 
-Lemma strong_match_env_match_env_sublist : forall st s CE sp locenv g  m,
+Lemma strong_match_env_match_env_sublist_aux1 : forall st s CE sp locenv g  m,
     strong_match_env st s CE sp locenv g m ->
     invariant_compile CE st ->
     forall CE' CE'' s' s'' sp'' lvl δ,
@@ -1860,6 +1860,149 @@ Proof.
         assumption.
 Qed.
 
+(* A stronger version of previous lemma, actually hypothesis
+   [STACK.cut_until s lvl s' s''] is deducible from others, then s' and s'' can be  *)
+Lemma strong_match_env_match_env_sublist_aux2  : ∀ (st : symboltable.symboltable) (s : STACK.stack) (CE : compilenv) (sp : Values.val) (locenv : env) (g : genv) 
+               (m : mem),
+    strong_match_env st s CE sp locenv g m
+    → invariant_compile CE st
+    → ∀ (CE' CE'' : CompilEnv.stack) (sp'' : Values.val) (lvl : CompilEnv.scope_level) 
+        (δ : nat),
+        CompilEnv.cut_until CE lvl CE' CE''
+        → (∃ toplvl : CompilEnv.scope_level, CompilEnv.level_of_top CE = Some toplvl ∧ δ = (toplvl + 1 - lvl)%nat)
+          ∨ CE = [ ] ∧ δ = 0%nat
+        → repeat_Mem_loadv AST.Mint32 m δ sp sp'' →
+        exists s' s'', STACK.cut_until s lvl s' s'' 
+                       ∧ ∀ locenv0 : env, match_env st s'' CE'' sp'' locenv0 g m.
+Proof.
+  !intros.
+  !assert (exists s' s'', STACK.cut_until s lvl s' s'').
+  { pose proof strong_match_env_lgth st sp locenv g m s CE h_strg_mtch_s_CE_m h_inv_comp_CE_st _ _ _ h_CEcut_CE_lvl.
+    decomp H.
+    exists x.
+    exists x0.
+    assumption. }
+  destruct h_ex as [s' [s'']].
+  exists s';exists s'';split;auto.
+  eapply strong_match_env_match_env_sublist_aux1;eauto.
+Qed.
+
+(* Yet another hypothesis deducibility *)
+Lemma strong_match_env_match_env_sublist_aux3  : ∀ (st : symboltable.symboltable) (s : STACK.stack) (CE : compilenv) (sp : Values.val) (locenv : env) (g : genv) 
+               (m : mem),
+    strong_match_env st s CE sp locenv g m
+    → invariant_compile CE st
+    → ∀ (CE' CE'' : CompilEnv.stack) (lvl : CompilEnv.scope_level),
+        CompilEnv.cut_until CE lvl CE' CE''
+        → forall (δ : nat),
+          (∃ toplvl : CompilEnv.scope_level, CompilEnv.level_of_top CE = Some toplvl ∧ δ = (toplvl + 1 - lvl)%nat)
+          ∨ CE = [ ] ∧ δ = 0%nat
+          → exists sp'', repeat_Mem_loadv AST.Mint32 m δ sp sp''.
+Proof.
+  !!intros until 1.
+  !!induction h_strg_mtch_s_CE_m;!intros;up_type.
+  - rename v into sp.
+    inversion h_match_env.
+    exists sp.
+    decomp h_or.
+    + cbn in heq_lvloftop_x.
+      discriminate.
+    + subst.
+      constructor.
+  - rename v' into sp.
+    rename v into sp'.
+    decomp h_or.
+    + !assert (invariant_compile CE st).
+      { eapply invariant_compile_subcons;eauto. }
+      specialize (IHh_strg_mtch_s_CE_m h_inv_comp_CE_st).
+      !inversion h_CEcut;up_type. (* cut reached or not *)
+      * (* Reached *)
+        cbn in *.
+        !invclear heq_lvloftop_x.
+        subst.
+        assert (x + 1 - lvl0 = 0)%nat.
+        { omega. }
+        exists sp.
+        rewrite H.
+        constructor 1;auto.
+      * (* not reached *)
+        rename s' into CE'.
+        specialize (IHh_strg_mtch_s_CE_m CE' CE'' lvl0).
+        specialize (IHh_strg_mtch_s_CE_m h_CEcut_CE_lvl0).
+        (* decide if CE = [ ] or not *)
+        !assert (exists δ,
+                       (∃ toplvl : CompilEnv.scope_level, CompilEnv.level_of_top CE = Some toplvl ∧ δ = (toplvl + 1 - lvl0)%nat)
+                       ∨ CE = [ ] ∧ δ = 0%nat).
+        { destruct (CompilEnv.level_of_top CE) eqn:heq_lvl.
+          - exists (s0 + 1 - lvl0)%nat.
+            left.
+            exists s0;eauto.
+          - exists 0%nat;right;split;eauto.
+            apply exact_lvlG_lgth_none in heq_lvl;auto.
+            + apply length_invnil;auto.
+            + apply h_inv_comp_CE_st. }
+        !!destruct h_ex as [δ' ?].
+        specialize (IHh_strg_mtch_s_CE_m δ' h_or).
+        !!destruct IHh_strg_mtch_s_CE_m as [sp'' ?].
+        exists sp''.
+        !assert (δ = S δ').
+        { cbn in *; !invclear heq_lvloftop_x;up_type.
+        decomp h_or.
+        -- rename x0 into lvl'.
+           !assert (x = S lvl').
+           { inversion h_inv_comp_st.
+             inversion ci_exact_lvls0;subst.
+             apply exact_lvlG_lgth;auto. }
+           subst.
+           omega.
+        -- subst.
+           enough (x=0)%nat.
+           { omega. }
+           inversion h_inv_comp_st.
+           inversion ci_exact_lvls0.
+           subst;auto. }
+        subst.
+        rewrite heq_δ0. 
+        econstructor;eauto.
+    + discriminate heq.
+Qed.
+
+(* Yet another hypothesis deducibility *)
+Lemma strong_match_env_match_env_sublist: 
+  forall (st : symboltable.symboltable) (s : STACK.stack) (CE : compilenv)
+         (sp : Values.val) (locenv : env) (g : genv) (m : mem),
+    strong_match_env st s CE sp locenv g m
+    → invariant_compile CE st
+    → ∀ (CE' CE'' : CompilEnv.stack) (lvl : CompilEnv.scope_level),
+        CompilEnv.cut_until CE lvl CE' CE''
+        → exists δ sp'' s' s'',
+          ((∃ toplvl : CompilEnv.scope_level, CompilEnv.level_of_top CE = Some toplvl ∧ δ = (toplvl + 1 - lvl)%nat)
+           ∨ CE = [ ] ∧ δ = 0%nat)
+          ∧ repeat_Mem_loadv AST.Mint32 m δ sp sp''
+          ∧ STACK.cut_until s lvl s' s'' 
+          ∧ ∀ locenv0 : env, match_env st s'' CE'' sp'' locenv0 g m.
+Proof.
+  !intros.
+  !assert (exists δ ,
+          ((∃ toplvl : CompilEnv.scope_level, CompilEnv.level_of_top CE = Some toplvl ∧ δ = (toplvl + 1 - lvl)%nat)
+           ∨ CE = [ ] ∧ δ = 0%nat)).
+  { destruct (CompilEnv.level_of_top CE) eqn:heq_lvl.
+    - exists (s0 + 1 - lvl)%nat.
+      left.
+      exists s0;eauto.
+    - exists 0%nat;right;split;eauto.
+      apply exact_lvlG_lgth_none in heq_lvl;auto.
+      + apply length_invnil;auto.
+      + apply h_inv_comp_CE_st. }
+  !!destruct h_ex as [δ ?].
+  exists δ.
+  !!pose proof strong_match_env_match_env_sublist_aux3 _ _ _ _ _ _ _ h_strg_mtch_s_CE_m h_inv_comp_CE_st _ _ _ h_CEcut_CE_lvl δ h_or.
+  destruct h_ex;eauto.
+  exists x.
+  !!edestruct strong_match_env_match_env_sublist_aux2;eauto.
+  destruct h_ex.
+  exists x0 x1;eauto.
+Qed.
 
 (** Property of the translation: Since chain variables have always zero
    offset, the offset of a variable in CE is the same as its offset in
@@ -4959,9 +5102,13 @@ Proof.
 
       (* splitting the execution of proc in 5: chain_param, initparam, initlocvar, bdy and cpout. *)
       !!inversion_clear h_exec_stmt;subst.
+      2: admit. (* prematurate error, this should work with parts of the normal case *)
       !!inversion_clear h_exec_stmt;subst.
+      2: admit. (* prematurate error, this should work with parts of the normal case *)
       !!inversion_clear h_exec_stmt;subst.
+      2: admit. (* prematurate error, this should work with parts of the normal case *)
       !!inversion_clear h_exec_stmt0;subst.
+      2: admit. (* prematurate error, this should work with parts of the normal case *)
 
       * (* RENAMING *)
         (* Case where No error occured during the whole function call *)
@@ -5030,83 +5177,46 @@ Proof.
             + eapply exact_lvlG_cut_until;eauto.
             + admit. (* xxx *)
             + eauto.
-          - xxx
-            !inversion h_exec_stmt_locvarinit.
-            !assert (exists s', match_env st s' CE_proc sp e_chain g m_chain).
-            { eapply strong_match_env_match_env_sublist.
-              
-              
-            }
-          decomp h_ex.
-          eapply exec_store_params_unchanged_on; eauto.
-          eapply build_compilenv_exact_lvl. 
-          - eapply exact_lvlG_cut_until; eauto.
-          - eassumption. }
+          - !!pose proof
+              strong_match_env_match_env_sublist _ _ _ _ _ _ _ h_strg_mtch_s_CE_m
+              h_inv_comp_CE_st _ _ _ h_CEcut_CE_proc_lvl.
+            !!destruct h_ex as [δ [sp'' [s' [s'' [? [? [? h_mtchenv]]]]]]].
 
+            assert (stack_localstack_aligned CE_sufx e g m).
+            { apply h_mtchenv. }
+            admit. (* Lemma  about build_compilenv and stack_localstack_aligned *)
+        }
 
         assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_initparams sp_proc m_init_params m_init_params)
                                  m_init_params m_locvarinit).
-        {  xxx use init_locals_params_unchanged_on
- 
-
-
-
+        {  admit. (* xxx use init_locals_params_unchanged_on *)
         }
 
-        rewrite eval_expr_transl_variable_inv_locenv in 
+        assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_locvarinit sp_proc m_locvarinit m_locvarinit)
+                                 m_locvarinit m_bdy).
+        { admit. }
+        assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_locvarinit sp_proc m_bdy m_bdy)
+                                 m_bdy m_cpout).
+        { admit. }
 
-        !assert (Mem.unchanged_on (forbidden st CE g astnum e sp m m_chain) m_chain m_bdy).
-        { !assert (Mem.unchanged_on (forbidden st CE g astnum e sp m_chain m_chain) m_chain m_bdy).
-          { !inversion h_exec_stmt_init;subst.
-            rename m1 into m_initparams.
-            !assert (Mem.unchanged_on (forbidden st CE g astnum e sp m_chain m_chain) m_chain m_initparams).
-            { rewrite store_params_ok in heq_store_prms_lparams_x3.
-              !functional induction (function_utils.store_params st CE_proc lparams);
-                try discriminate.
-              - !inversion heq_store_prms_lparams_x3;subst.
-                !inversion h_exec_stmt_initparams.
-                apply Mem.unchanged_on_refl.
-              - 
-                fold tlparams in IHr.
-                fold proc_t in IHr.
-                  set (porc_t' :=
-                         {|
-                           fn_sig := x5;
-                           fn_params := chaining_param 
-                                          :: transl_lparameter_specification_to_lident st lparams';
-                           fn_vars := transl_decl_to_lident st decl;
-                           fn_stackspace := proc_sz_locals;
-                           fn_body := pbody_t |})
-                  in *.
-            }
+        
 
-          }
-        }
-
-        assert (Mem.unchanged_on
-                  (λ sp_id ofs_id,
-                   invisible_cminor_addr st CE_proc g astnum e sp m sp_id ofs_id)
-                  m m1).
-        { admit. (* Should be the induction hyp? *)
-        }
         admit. (* associativity of unchanged_on? No, more
                                 complex: the unchanged_on on the body part
                                 correpsond to either visible parts from sp or from
                                 freeed space (outcome_free_mem m2 ... m'). *)
-
-      * eq_same_clear.
-      * (* init phase raised an error. *)
-        admit.
     + (* functional inversion would be cleaner here. *)
       admit. (* No External function *)
   - destruct b.
     + eapply IHh_exec_stmt_stmt_t_outc;eauto.
     + eapply IHh_exec_stmt_stmt_t_outc;eauto.
-  - specialize (IHh_exec_stmt_stmt_t_outc1 _ _ _ h_stk_mtch_fun heq1).
+  - specialize (IHh_exec_stmt_stmt_t_outc1 _ _ _ _ h_strg_mtch_s_CE_m h_inv_comp_CE_st heq1).
     (* Needing match_env preserved here. *)
-    specialize (IHh_exec_stmt_stmt_t_outc2 _ _ _ ? heq0).
-    admit. (* transitivity of unchanged_on is proved in recent
-              Compcert, by changing its definition. *)
+    admit.
+  (* specialize (IHh_exec_stmt_stmt_t_outc2 _ _ _ _ ?  heq0). *)
+  (* transitivity of unchanged_on is proved in recent
+     Compcert, by changing its definition. *)
+
   - eapply IHh_exec_stmt_stmt_t_outc;eauto.
 Qed.
 
