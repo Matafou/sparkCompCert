@@ -235,10 +235,22 @@ Tactic Notation "!!!" tactic3(Tac) := !! (subst_new_hyps Tac).
  notation. Hence the special definitions below for this kind of
  tactics: induction ddestruct inversion etc. *)
 
+
+Ltac decomp_ex h :=
+  match type of h with
+  | @ex _ (fun x => _) => let x' := fresh x in let h1 := fresh in destruct h as [x' h1]; decomp_ex h1
+  | and _ _ => let h1 := fresh in let h2 := fresh in destruct h as [h1 h2]; decomp_ex h1; decomp_ex h2
+  | or _ _ => let h' := fresh in destruct h as [h' | h']; [decomp_ex h' | decomp_ex h' ]
+  | _ => idtac
+  end.
+
+
+
 (* decompose and ex and or at once. TODO: generalize. *)
 (* clear may fail if h is not a hypname *)
-Tactic Notation "decomp" constr(h) :=
-       !! (decompose [and ex or] h; try clear h).
+ Tactic Notation "decomp" hyp(h) :=
+   (!! (idtac;decomp_ex h)). (* Why do I need this idtac? Without it no rename happens. *)
+
 
 Tactic Notation "!induction" constr(h) := !! (induction h).
 Tactic Notation "!functional" "induction" constr(h) :=

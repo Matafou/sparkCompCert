@@ -199,8 +199,9 @@ Lemma transl_value_tot: forall v,
     -> exists tv, transl_value v tv.
 Proof.
   !intros.
-  decomp (H 0%nat);subst.
-  - destruct x;eexists;econstructor.
+  specialize (H 0%nat).
+  decomp_ex H;subst.
+  - destruct b;eexists;econstructor.
   - eexists;econstructor.
 Qed.
 
@@ -1477,17 +1478,11 @@ Proof.
     red in h_stk_mtch_fun.
     specialize (h_stk_mtch_fun _ _ _ h_fetch_proc_p).
     !!decomp h_stk_mtch_fun.
-    rename x into CE'.
-    rename x0 into CE''.
-    rename x1 into paddr.
-    rename x2 into pnum.
-    rename x3 into fdef.
-    rename x4 into fdef_t.
     up_type.
-    exists CE' CE'' paddr pnum fdef fdef_t.
+    exists CE' CE'' paddr pnum fction lglobdef.
     repeat split;auto.
     constructor.
-    inversion h_CM_eval_expr_x1;subst; simpl in *.
+    inversion h_CM_eval_expr_paddr;subst; simpl in *.
     assumption.
   + red;!intros.
     functional inversion heq_transl_name.
@@ -1715,9 +1710,7 @@ Proof.
       { eapply invariant_compile_subcons.
         eauto. }
       specialize (IHh_strg_mtch_s_CE_m h_inv_comp_CE_st (@nil CompilEnv.frame) CE lvl0  h_CEcut_CE_lvl0).
-      !!decompose [and ex] IHh_strg_mtch_s_CE_m.
-      rename x into s1.
-      rename x0 into s2.
+      decomp IHh_strg_mtch_s_CE_m.
       simpl in *.
       exists s1.
       exists ((lvl, sto) :: s).
@@ -1786,7 +1779,7 @@ Proof.
         apply match_env_inv_locenv with locenv'.
         !assert (v' = sp'').
         { cbn in *.
-          !invclear heq_lvloftop_x.
+          !invclear heq_lvloftop_toplvl.
           !assert (δ = 0)%nat.
           { subst. apply Nat.sub_0_le ;omega. }
           rewrite heq_δ0 in *.
@@ -1801,7 +1794,6 @@ Proof.
       !!assert (lvl0 <= lvl)%nat by omega; clear H1.
       !!pose proof (strong_match_env_lgth _ _ _ _ _ _ _ h_strg_mtch_s_CE_m h_inv_comp_CE_st _ _ _ h_CEcut_CE_lvl0).
       decomp h_ex.
-      rename x into s1. rename x0 into s2.
       up_type.
       !!destruct h_or as [[? [? ?]] | [? ?] ];try discriminate.
       !invclear heq.
@@ -1879,8 +1871,8 @@ Proof.
   !assert (exists s' s'', STACK.cut_until s lvl s' s'').
   { pose proof strong_match_env_lgth st sp locenv g m s CE h_strg_mtch_s_CE_m h_inv_comp_CE_st _ _ _ h_CEcut_CE_lvl.
     decomp H.
-    exists x.
-    exists x0.
+    exists s1.
+    exists s2.
     assumption. }
   destruct h_ex as [s' [s'']].
   exists s';exists s'';split;auto.
@@ -1905,7 +1897,7 @@ Proof.
     inversion h_match_env.
     exists sp.
     decomp h_or.
-    + cbn in heq_lvloftop_x.
+    + cbn in heq_lvloftop_toplvl.
       discriminate.
     + subst.
       constructor.
@@ -1918,9 +1910,9 @@ Proof.
       !inversion h_CEcut;up_type. (* cut reached or not *)
       * (* Reached *)
         cbn in *.
-        !invclear heq_lvloftop_x.
+        !invclear heq_lvloftop_toplvl.
         subst.
-        assert (x + 1 - lvl0 = 0)%nat.
+        assert (toplvl + 1 - lvl0 = 0)%nat.
         { omega. }
         exists sp.
         rewrite H.
@@ -1946,17 +1938,17 @@ Proof.
         !!destruct IHh_strg_mtch_s_CE_m as [sp'' ?].
         exists sp''.
         !assert (δ = S δ').
-        { cbn in *; !invclear heq_lvloftop_x;up_type.
+        { cbn in *; !invclear heq_lvloftop_toplvl;up_type.
         decomp h_or.
-        -- rename x0 into lvl'.
-           !assert (x = S lvl').
+        -- rename toplvl0 into lvl'.
+           !assert (toplvl = S lvl').
            { inversion h_inv_comp_st.
              inversion ci_exact_lvls0;subst.
              apply exact_lvlG_lgth;auto. }
            subst.
            omega.
         -- subst.
-           enough (x=0)%nat.
+           enough (toplvl=0)%nat.
            { omega. }
            inversion h_inv_comp_st.
            inversion ci_exact_lvls0.
@@ -2082,7 +2074,7 @@ Proof.
       rewrite heq_fetch_exp_type.
       reflexivity.
     + discriminate.
-  - decomp (IHr _ heq_tr_expr_e _ _ _ _ _ _ h_eval_expr_e_e_v h_match_env).
+  - xxx decomp (IHr _ heq_tr_expr_e _ _ _ _ _ _ h_eval_expr_e_e_v h_match_env).
     decomp (IHr0 _ heq_tr_expr_e0 _ _ _ _ _ _ h_eval_expr_e0_e0_v h_match_env).
     assert (hex:or (exists b, v = Bool b) (exists n, v = Int n)). {
       apply do_run_time_check_on_binop_ok in h_do_rtc_binop.
