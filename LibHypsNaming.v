@@ -239,6 +239,18 @@ Tactic Notation "!!!" tactic3(Tac) := !! (subst_new_hyps Tac).
 Ltac decomp_ex h :=
   match type of h with
   | @ex _ (fun x => _) => let x' := fresh x in let h1 := fresh in destruct h as [x' h1]; decomp_ex h1
+  | @sig _ (fun x => _) => let x' := fresh x in let h1 := fresh in destruct h as [x' h1]; decomp_ex h1
+  | @sig2 _ (fun x => _) (fun _ => _) => let x' := fresh x in
+                                         let h1 := fresh in 
+                                         let h2 := fresh in
+                                         destruct h as [x' h1 h2];
+                                         decomp_ex h1;
+                                         decomp_ex h2
+  | @sigT _ (fun x => _) => let x' := fresh x in let h1 := fresh in destruct h as [x' h1]; decomp_ex h1
+  | @sigT2 _ (fun x => _) (fun _ => _) => let x' := fresh x in
+                                          let h1 := fresh in
+                                          let h2 := fresh in
+                                          destruct h as [x' h1 h2]; decomp_ex h1; decomp_ex h2
   | and _ _ => let h1 := fresh in let h2 := fresh in destruct h as [h1 h2]; decomp_ex h1; decomp_ex h2
   | or _ _ => let h' := fresh in destruct h as [h' | h']; [decomp_ex h' | decomp_ex h' ]
   | _ => idtac
@@ -248,9 +260,36 @@ Ltac decomp_ex h :=
 
 (* decompose and ex and or at once. TODO: generalize. *)
 (* clear may fail if h is not a hypname *)
- Tactic Notation "decomp" hyp(h) :=
-   (!! (idtac;decomp_ex h)). (* Why do I need this idtac? Without it no rename happens. *)
+(* Tactic Notation "decomp" hyp(h) :=
+   (!! (idtac;decomp_ex h)). *) (* Why do I need this idtac? Without it no rename happens. *)
 
+ Tactic Notation "decomp" constr(c) :=
+   match goal with
+   | _ => 
+     let h := fresh "h_decomp" in
+     pose proof c as h;
+     (!! (idtac;decomp_ex c)); try clear h (* Why do I need this idtac? Without it no rename happens. *)
+   end.
+(*
+Lemma foo : forall x, { aa:nat | (aa = x /\ x=aa) & (aa = aa /\ aa= x) } -> False.
+Proof.
+  intros x H. 
+  decomp H.
+Abort.
+
+Lemma foo : { aa:False & True  } -> False.
+Proof.
+  intros H. 
+  decomp H.
+Abort.
+
+
+Lemma foo : { aa:False & True & False  } -> False.
+Proof.
+  intros H. 
+  decomp H.
+Abort.
+*)
 
 Tactic Notation "!induction" constr(h) := !! (induction h).
 Tactic Notation "!functional" "induction" constr(h) :=

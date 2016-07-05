@@ -1,5 +1,6 @@
 
-Require Import semantics LibHypsNaming.
+Require Import semantics LibHypsNaming Memory.
+
 
 Open Scope Z_scope.
 
@@ -583,6 +584,19 @@ Proof.
   reflexivity.
 Qed.
 
+
+(* Definition compute_size:= Eval lazy beta iota delta [compute_size bind] in compute_size. *)
+Function compute_size stbl typ :=  match compute_chnk_of_type stbl typ with
+                                     | OK x => OK (size_chunk x)
+                                     | Error msg => Error msg
+                                     end.
+Lemma compute_size_ok : forall stbl typ ,
+    compute_size stbl typ = spark2Cminor.compute_size stbl typ.
+Proof.
+  intros;reflexivity.
+Qed.
+
+
 (* Definition build_frame_lparams:= Eval lazy beta iota delta [build_frame_lparams bind] in build_frame_lparams. *)
 
 Function build_frame_lparams (stbl : Symbol_Table_Module.symboltable) (fram_sz : localframe * Z) (lparam : list parameter_specification)
@@ -612,7 +626,7 @@ Function build_frame_decl (stbl : symboltable) (fram_sz : localframe * Z)
   | D_Null_Declaration => OK fram_sz
   | D_Type_Declaration _ _ => Error (msg "build_frame_decl: type decl no implemented yet")
   | D_Object_Declaration _ objdecl =>
-      match compute_size stbl (object_nominal_subtype objdecl) with
+      match spark2Cminor.compute_size stbl (object_nominal_subtype objdecl) with
       | OK x =>
           let new_size := sz + x in
           if new_size >=? compcert.lib.Integers.Int.modulus
@@ -627,7 +641,6 @@ Function build_frame_decl (stbl : symboltable) (fram_sz : localframe * Z)
       | Error msg => Error msg
       end
   end.
-
 
 Lemma build_frame_decl_ok : spark2Cminor.build_frame_decl = build_frame_decl.
 Proof.
