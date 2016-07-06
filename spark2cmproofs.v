@@ -1997,7 +1997,7 @@ Qed.
 (** Property of the translation: Since chain variables have always zero
    offset, the offset of a variable in CE is the same as its offset in
    CMinor memory. *)
-Lemma eval_build_loads_offset: forall CE g stkptr locenv m δ_lvl δ_id b ofs,
+Lemma eval_build_loads_offset: forall (CE : compilenv) g stkptr locenv m δ_lvl δ_id b ofs,
     stack_localstack_aligned CE locenv g m ->
     (δ_lvl < Datatypes.length CE)%nat
     -> Cminor.eval_expr g stkptr locenv m (build_loads δ_lvl δ_id) (Values.Vptr b ofs) ->
@@ -3921,77 +3921,59 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma assignment_preserve_chained_stack_structure:
-  forall stbl CE g locenv stkptr m a chk id id_t e_v e_t_v idaddr m' n,
+Lemma assignment_preserve_chained_stack_structure_aux:
+  forall stkptr m chk e_t_v addr_blck addr_ofs m' n,
     chained_stack_structure m n stkptr ->
-    stack_localstack_aligned CE locenv g m -> 
+    4 <= (Int.unsigned addr_ofs) ->
+    Mem.storev chk m (Values.Vptr addr_blck addr_ofs) e_t_v = Some m' ->
+    chained_stack_structure m' n stkptr.
+Proof.
+  !intros.
+  induction h_chain_n_stkptr.
+  - constructor.
+  - econstructor.
+    all:swap 1 2.
+    + unfold Mem.loadv.
+      unfold Mem.storev in heq_storev_e_t_v_m'.
+      erewrite Mem.load_store_other with (m1:=m);eauto.
+    + assumption.
+Qed.
+
+
+Lemma foo: forall CE locenv g m n stkptr,
+  chained_stack_structure m n stkptr ->
+  (Datatypes.length CE <= n)%nat -> 
+  stack_localstack_aligned CE locenv g m.
+Proof.
+  !!intros un til 1.
+  red.
+  !intros;up_type.
+  cbn in *.
+  pose proof   (Econst (Oaddrstack Int.zero)) δ_lvl.
+  eapply chain_struct_build_loads_ofs in h_chain_n_stkptr.
+Qed.
+
+
+Lemma assignment_preserve_chained_stack_structure:
+  forall stbl CE g locenv stkptr m a chk id id_t e_t_v idaddr m' n,
+    chained_stack_structure m n stkptr ->
+(*     stack_localstack_aligned CE locenv g m ->  *)
     stack_no_null_offset stbl CE -> 
     exact_levelG CE ->
-    all_frm_increasing CE ->
     (* translating the variabe to a Cminor load address *)
     transl_variable stbl CE a id = OK id_t ->
-    (* translating the value, we may need a overflow hypothesis on e_v/e_t_v *)
-    transl_value e_v e_t_v ->
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g stkptr locenv m id_t idaddr ->
     (* Size of variable in Cminor memorry *)
     compute_chnk stbl (E_Identifier a id) = OK chk ->
     Mem.storev chk m idaddr e_t_v = Some m' ->
-(*     match_env stbl s CE stkptr locenv g m -> *)
     chained_stack_structure m' n stkptr.
 Proof.
-  !!intros until 1.
-  revert stbl CE g locenv a chk id id_t e_v e_t_v idaddr m'.
-  !!(induction h_chain_n_stkptr;intros);up_type.
-  - constructor.
-  - eapply chained_S with (b':= b');eauto.
-    xxx FINISH.
-
-    + unfold Mem.loadv.
-      unfold Mem.storev in heq_storev_e_t_v_m'.
-      destruct id_t_v;try discriminate.
-      erewrite Mem.load_store_other with (m1:=m);eauto.
-      cbn.
-      rewrite Int.unsigned_zero.
-      cbn.
-      right;left.
-      eapply eval_build_loads_offset_non_null_var;eauto.
-Qed.
-    
-
-  !assert (exists b ofs, id_t_v =Values.Vptr b ofs /\ 4 <= Int.unsigned ofs)%Z.
-  { unfold Mem.storev in heq_storev_e_t_v_m'.
-    destruct id_t_v; try discriminate.
-    exists b i;split;auto.
-    eapply eval_build_loads_offset_non_null_var;eauto. }
-  decomp h_ex.
-
-
-  revert dependent h_le.
-  revert dependent stbl.
-  revert dependent CE.
-  revert dependent g.
-  revert dependent id_t_v.
-  revert dependent e_t_v.
-  revert a id_t  e_v chk id  m' locenv b ofs.
-  !!(induction h_chain_n_stkptr;intros);up_type.
-  - constructor.
-  - eapply chained_S with (b':= b');eauto.
-    + eapply IHh_chain_n_stkptr; eauto.
-      assert (chained_stack_structure m n (Values.Vptr b' Int.zero)).
-      { eapply IHh_chain_n_stkptr with (m':=m); eauto.
-
-      7:eassumption.
-      admit.
-    + unfold Mem.loadv.
-      unfold Mem.storev in heq_storev_e_t_v_m'.
-      destruct id_t_v;try discriminate.
-      erewrite Mem.load_store_other with (m1:=m);eauto.
-      cbn.
-      rewrite Int.unsigned_zero.
-      cbn.
-      right;left.
-      eapply eval_build_loads_offset_non_null_var;eauto.
+  !intros.
+  destruct id_t_v;try discriminate.
+  assert (4 <= (Int.unsigned i)).
+  { eapply eval_build_loads_offset_non_null_var;eauto. }
+  eapply assignment_preserve_chained_stack_structure_aux;eauto.
 Qed.
 
 
@@ -4599,11 +4581,19 @@ Lemma exec_init_locals_preserve_forbidden:
       chained_stack_structure m lvl sp ->
       stack_localstack_aligned CE e_chain g m ->
       exec_stmt g proc_t sp e_chain m locvarinit t2 e_chain' m' Out_normal ->
-      unchange_forbidden st CE g astnum e_chain e_chain' sp m m'.
+      chained_stack_structure m' lvl sp ∧ unchange_forbidden st CE g astnum e_chain e_chain' sp m m'.
 Proof.
   !!intros until CE.
   rewrite init_locals_ok.
-  !!functional induction function_utils.init_locals st CE decl;try rewrite <- init_locals_ok in *;cbn;!intros;try discriminate;eq_same_clear; up_type ; try now (inversion h_exec_stmt_locvarinit; red; reflexivity).
+  
+
+
+
+  !!functional induction function_utils.init_locals st CE decl;try rewrite <- init_locals_ok in *;cbn;!intros;try discriminate;eq_same_clear; up_type;split; try now (inversion h_exec_stmt_locvarinit; try red; try reflexivity;subst;try assumption).
+
+  - inversion h_exec_stmt_locvarinit;subst.
+    eapply assignment_preserve_chained_stack_structure;eauto.
+
   - rename x1 into objname_t.
     rename x into chk_objdecl.
     red. 
@@ -4684,14 +4674,20 @@ Proof.
         intro abs2.
         apply (Mem.perm_store_2 _ _ _ _ _ _ heq_storev_e_t_v_m') in abs2.
         specialize (abs perm);contradiction.
-
+  - !inversion h_exec_stmt_locvarinit.
+    + eapply IHr0 with (m:=m1);eauto.
+      * eapply IHr;eauto.
+      * 
+      * 
+      eapply h_exec_stmt_x.
+    eapply IHr;eauto.
   - !inversion h_exec_stmt_locvarinit.
     + rename m1 into m_mid.
       rename e1 into e_mid.
       apply unchange_forbidden_trans with (e2:=e_mid) (m2:=m_mid).
       * eapply IHr;eauto.
       * eapply IHr0;eauto.
-        -- 
+        -- eapply assignment_preserve_chained_stack_structure;eauto.
       * 
 Qed.
 
