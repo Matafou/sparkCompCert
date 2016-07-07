@@ -3939,16 +3939,117 @@ Proof.
     + assumption.
 Qed.
 
-
-Lemma foo: forall CE locenv g m n stkptr,
+xxx
+Lemma foo: forall m n stkptr,
   chained_stack_structure m n stkptr ->
-  (Datatypes.length CE <= n)%nat -> 
-  stack_localstack_aligned CE locenv g m.
+  forall  lgth_CE CE locenv g,
+    lgth_CE = Datatypes.length CE -> 
+    (lgth_CE <= n)%nat -> 
+    stack_localstack_aligned CE locenv g m.
 Proof.
-  !!intros un til 1.
+  !!intros until 1.
+  unfold stack_localstack_aligned.
+  !induction h_chain_n_stkptr;!intros.
+  - exfalso. omega.
+  - 
+
+
+
+
+
+  intro lgth_CE.
+  unfold stack_localstack_aligned.
+  !induction lgth_CE;!intros.
+  - exfalso;omega.
+  - !!destruct CE eqn:heq_CE.
+    + subst.
+      cbn in h_lt_δ_lvl; inversion h_lt_δ_lvl.
+    + rename l into CE'.
+      cbn in *.
+      destruct δ_lvl.
+      * admit.
+      * !invclear heq_nat.
+        specialize (IHlgth_CE CE').
+        !destruct n; try now  inversion h_le.
+        rewrite <- Nat.succ_le_mono in h_le.
+        rewrite <- Nat.succ_lt_mono in h_lt_δ_lvl.
+        !inversion h_chain_n_stkptr.
+        specialize (IHlgth_CE n locenv g m (Values.Vptr b' Int.zero) eq_refl h_le h_chain_n).
+        replace (S δ_lvl) with ((S δ_lvl) + 0)%nat in h_CM_eval_expr_v.
+        all:swap 2 1.
+        -- auto with arith.
+        -- pose proof chained_stack_structure_decomp_S_3 _ _ _ _ h_CM_eval_expr_v.
+      
+      
+    
+    destruct (Datatypes.length CE) eqn:heq_lgthCE;try discriminate.
+    !invclear heq_nat.
+    eapply IHlgth_CE;eauto.
+
+
+    admit.
+  - apply IHh_le.
+    eapply chained_stack_structure_le;eauto.
+    
+  unfold stack_localstack_aligned.
+  revert CE g locenv.
+  !induction h_chain_n_stkptr;!intros.
+  - exfalso;omega.
+  - !inversion h_le;cbn in *.
+    + rewrite heq_nat in *.
+    + eapply IHh_chain_n_stkptr with (3:=h_CM_eval_expr_v);eauto.
+
+
+      specialize (fun H => IHh_chain_n_stkptr _ _ _ H _ _ _ h_lt_δ_lvl h_CM_eval_expr_v).
+    inversion h_le;cbn in *.
+    + exfalso;omega.
+    + rewrite <- Nat.succ_lt_mono in h_lt_δ_lvl.
+
+    
+
+    !assert (chained_stack_structure m (S n) (Values.Vptr b Int.zero)).
+    { econstructor;eauto. }
+    pose proof chained_stack_structure_decomp_S_3 n m (Values.Vptr b Int.zero) 0%nat as h_decomp.
+    rewrite <- plus_n_O in h_decomp.
+    specialize (h_decomp h_chain).
+    cbn in h_decomp.
+    specialize (h_decomp g locenv).
+    
+
+  
+  unfold stack_localstack_aligned in *.
+  intro n.
+  !induction n;unfold stack_localstack_aligned in *;!intros.
+  - exfalso;omega.
+  - destruct CE.
+    + cbn in h_lt_δ_lvl. exfalso;omega.
+    + cbn in h_le , h_lt_δ_lvl.
+      rewrite <- Nat.succ_le_mono in h_le.
+      !inversion h_chain_stkptr.
+      destruct δ_lvl.
+      * admit.
+      * assert (Cminor.eval_expr g (Values.Vptr b' Int.zero) locenv m (build_loads_ (Econst (Oaddrstack Int.zero)) δ_lvl) v).
+        { inversion h_CM_eval_expr_v;subst.
+          
+        edestruct IHn.
+        
+        -- rewrite <- Nat.succ_lt_mono in h_lt_δ_lvl.
+           eassumption.
+        -- eassumption.
+      * eauto.
+      
+      destruct δ_lvl.
+      *
+        cbn in h_CM_eval_expr_v.
+        !inversion h_CM_eval_expr_v;subst.
+        cbn in h_eval_constant.
+        inversion h_eval_constant.
+        subst.
+        !!pose proof cm_eval_addrstack_zero_chain _ _ _ h_chain_n_stkptr g locenv.
+        
+
   red.
   !intros;up_type.
-  cbn in *.
   pose proof   (Econst (Oaddrstack Int.zero)) δ_lvl.
   eapply chain_struct_build_loads_ofs in h_chain_n_stkptr.
 Qed.
