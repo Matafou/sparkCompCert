@@ -901,10 +901,11 @@ Definition stack_no_null_offset stbl CE := forall a nme δ_lvl δ_id,
     4 <= Int.unsigned (Int.repr δ_id).
 
 (* CE gives the maximum number of loads. *)
-Definition stack_localstack_aligned (CE:compilenv) locenv g m := forall b δ_lvl v,
+Definition stack_localstack_aligned (CE:compilenv) locenv g m sp :=
+  forall δ_lvl,
     (δ_lvl < Datatypes.length CE)%nat -> 
-    Cminor.eval_expr g b locenv m (build_loads_ (Econst (Oaddrstack Integers.Int.zero)) δ_lvl) v ->
-    exists b', v = Values.Vptr b' Int.zero.
+    exists b_δ,
+      Cminor.eval_expr g sp locenv m (build_loads_ (Econst (Oaddrstack Int.zero)) δ_lvl) (Values.Vptr b_δ Int.zero).
 
 (* The spark dynamic and the compiler static stack have the same structure. *)
 Definition stack_match_CE (s : STACK.stack) (CE : compilenv) :=
@@ -1049,7 +1050,7 @@ Record safe_cm_env st CE sp locenv g m: Prop :=
   mk_safe_cm_env {
       me_stack_match_functions: stack_match_functions st sp CE locenv g m ;
       me_stack_separate: stack_separate st CE sp locenv g m;
-      me_stack_localstack_aligned: stack_localstack_aligned CE locenv g m;
+      me_stack_localstack_aligned: stack_localstack_aligned CE locenv g m sp;
       me_stack_no_null_offset: stack_no_null_offset st CE;
       me_stack_freeable: stack_freeable st CE sp g locenv m;
     }.
@@ -1124,9 +1125,9 @@ Ltac rename_hyp3 h th :=
   | stack_complete _ ?s ?CE => fresh "h_stk_cmpl_" s "_" CE
   | stack_complete _ ?s _ => fresh "h_stk_cmpl_" s
   | stack_complete _ _ _ => fresh "h_stk_cmpl"
-  | stack_localstack_aligned _ _ ?g ?m => fresh "h_aligned_" g "_" m
-  | stack_localstack_aligned _ _ _ ?m => fresh "h_aligned_" m
-  | stack_localstack_aligned _ _ ?g _ => fresh "h_aligned_" g
+  | stack_localstack_aligned _ _ ?g ?m ?sp => fresh "h_aligned_" g "_" m
+  | stack_localstack_aligned _ _ _ ?m ?sp => fresh "h_aligned_" m
+  | stack_localstack_aligned _ _ ?g _ ?sp => fresh "h_aligned_" g
   | stack_no_null_offset _ _ => fresh "h_nonul_ofs"
   | stack_no_null_offset _ ?CE => fresh "h_nonul_ofs_" CE
   | stack_no_null_offset ?s _ => fresh "h_nonul_ofs_" s
@@ -1640,9 +1641,10 @@ Proof.
     red in h_align.
     red.
     !intros.
-    assert (Cminor.eval_expr g b locenv m (build_loads_ (Econst (Oaddrstack Int.zero)) δ_lvl) v).
-    { eapply eval_expr_build_load_const_inv_locenv;eauto. }
-    eapply h_align;eauto.
+    specialize (h_align _ h_lt_δ_lvl).
+    decomp h_align;eauto.
+    exists b_δ. 
+    eapply eval_expr_build_load_const_inv_locenv;eauto.
   - !!pose proof me_stack_freeable (me_safe_cm_env h_match_env).
     red in h_freeable_CE_m.
     red;!intros.
@@ -1998,7 +2000,7 @@ Qed.
    offset, the offset of a variable in CE is the same as its offset in
    CMinor memory. *)
 Lemma eval_build_loads_offset: forall (CE : compilenv) g stkptr locenv m δ_lvl δ_id b ofs,
-    stack_localstack_aligned CE locenv g m ->
+    stack_localstack_aligned CE locenv g m stkptr ->
     (δ_lvl < Datatypes.length CE)%nat
     -> Cminor.eval_expr g stkptr locenv m (build_loads δ_lvl δ_id) (Values.Vptr b ofs) ->
     ofs = Int.repr δ_id.
@@ -2009,15 +2011,16 @@ Proof.
   !inversion h_CM_eval_expr_v2.
   simpl in *.
   red in h_aligned_g_m.
-  specialize (fun x => h_aligned_g_m _ _ _ x h_CM_eval_expr_v1). (* TODO: especialize *)
+  specialize (h_aligned_g_m _ h_lt_δ_lvl). (* TODO: especialize *)
   edestruct h_aligned_g_m;eauto.
+  assert (v1 = Values.Vptr x Int.zero).
+  { admit. }
   subst.
-  destruct v2;try discriminate.
-  simpl in *.
-  !invclear h_eval_binop;subst.
+  cbn  in *.
+  destruct v2;cbn in *;try discriminate.
+  inversion h_eval_binop.
   inversion h_eval_constant.
-  rewrite Int.add_zero_l.
-  reflexivity.
+  apply Int.add_zero_l.
 Qed.
 
 
@@ -2027,7 +2030,7 @@ Lemma eval_build_loads_offset_non_null_var:
   forall stbl CE g stkptr locenv m nme a bld_lds b ofs,
     exact_levelG CE ->
     stack_no_null_offset stbl CE ->
-    stack_localstack_aligned CE locenv g m ->
+    stack_localstack_aligned CE locenv g m stkptr ->
     transl_variable stbl CE a nme = OK bld_lds ->
     Cminor.eval_expr g stkptr locenv m bld_lds (Values.Vptr b ofs) ->
     4 <= Int.unsigned ofs.
@@ -2894,7 +2897,7 @@ Ltac simplify_do :=
      never change. *)
 Lemma wf_chain_load'2:forall CE g locenv stkptr chk m m' b ofs e_t_v vaddr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
-    -> stack_localstack_aligned CE locenv g m
+    -> stack_localstack_aligned CE locenv g m stkptr
     -> 4 <= Int.unsigned ofs (*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
     -> forall lvl,
         (lvl < Datatypes.length CE)%nat ->
@@ -2926,9 +2929,11 @@ Proof.
       transitivity 4.
       * !assert (lvl < Datatypes.length CE)%nat.
         { omega. }
-        !destruct (h_aligned_g_m _ _ _ h_lt_lvl0 h_CM_eval_expr_on_m).
+        !destruct (h_aligned_g_m _ h_lt_lvl0).
+        !assert ((Values.Vptr b0 i) = (Values.Vptr x Int.zero)).
+        { eapply det_eval_expr;eauto. }
         !invclear heq.
-        intro abs;discriminate.
+        discriminate.
       * apply h_ofs_non_zero.
 Qed.
 
@@ -2939,7 +2944,7 @@ Qed.
      never change. *)
 Lemma wf_chain_load'3:forall CE g locenv stkptr chk m m' b ofs e_t_v vaddr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
-    -> stack_localstack_aligned CE locenv g m'
+    -> stack_localstack_aligned CE locenv g m' stkptr
     -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
     -> forall lvl,
         (lvl < Datatypes.length CE)%nat ->
@@ -2968,18 +2973,64 @@ Proof.
       transitivity 4.
       * !assert (lvl < Datatypes.length CE)%nat.
         { omega. }
-        !destruct (h_aligned_g_m' _ _ _ h_lt_lvl0 h_CM_eval_expr_on_m').
+        !destruct (h_aligned_g_m' _ h_lt_lvl0).
+        !assert ((Values.Vptr b0 i) = (Values.Vptr x Int.zero)).
+        { eapply det_eval_expr;eauto. }
         !invclear heq.
         vm_compute.
         intro abs;discriminate.
       * apply h_ofs_non_zero.
 Qed.
 
+(* Well-formedness of the chained stack: store never modify the
+     address of a variable. Reason: since variable addresses are
+     expressions of the form ((Load(Load(...(Load 0))))+δ) with δ >= 4
+     and that stores never touch the addresses 0, variables addresses
+     never change. *)
+Lemma wf_chain_load'4:forall CE g locenv stkptr chk m m' b ofs e_t_v vaddr,
+    Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
+    -> stack_localstack_aligned CE locenv g m stkptr
+    -> 4 <= Int.unsigned ofs (*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
+    -> forall lvl,
+        (lvl < Datatypes.length CE)%nat ->
+        let load_id := build_loads_ (Econst (Oaddrstack Int.zero)) lvl in
+        Cminor.eval_expr g stkptr locenv m load_id vaddr
+        -> Cminor.eval_expr g stkptr locenv m' load_id vaddr.
+Proof.
+  !intros.
+  rename h_le into h_ofs_non_zero.
+  simpl in *.
+  subst load_id.
+  generalize dependent load_id_v.
+  induction lvl;!intros;simpl in *.
+  - !inversion h_CM_eval_expr_load_id_v;econstructor;eauto.
+  - !invclear h_CM_eval_expr_load_id_v.
+    assert (h_CM_eval_expr_on_m:
+              Cminor.eval_expr g stkptr locenv m' (build_loads_ (Econst (Oaddrstack Int.zero)) lvl) vaddr).
+    { eapply IHlvl; eauto.
+      omega. }
+    econstructor.
+    + eassumption.
+    + destruct vaddr;simpl in *;try discriminate.
+      rewrite <- h_loadv_vaddr_load_id_v.
+      eapply Mem.load_store_other;eauto.
+      !!assert ((lvl < Datatypes.length CE)%nat) by omega.
+      !!pose proof h_aligned_g_m lvl h_lt_lvl0.
+      decomp h_ex.
+      !assert ((Values.Vptr b0 i) = (Values.Vptr b_δ Int.zero)).
+      { eapply det_eval_expr;eauto. }
+      !invclear heq.
+      right.
+      left.
+      rewrite Int.unsigned_zero.
+      cbn.
+      omega.
+Qed.
 
 Lemma wf_chain_load'':forall CE g locenv stkptr chk m m' b ofs e_t_v vaddr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
-    -> (stack_localstack_aligned CE locenv g m)
-    -> (stack_localstack_aligned CE locenv g m')
+    -> (stack_localstack_aligned CE locenv g m stkptr)
+    -> (stack_localstack_aligned CE locenv g m' stkptr)
     -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
     -> forall lvl,
         (lvl < Datatypes.length CE)%nat ->
@@ -3000,7 +3051,7 @@ Qed.
      never change. *)
 Lemma wf_chain_load':forall CE g locenv stkptr chk m m' b ofs e_t_v vaddr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
-    -> (stack_localstack_aligned CE locenv g m')
+    -> (stack_localstack_aligned CE locenv g m' stkptr)
     -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
     -> forall lvl δ_lvl,
         (lvl < Datatypes.length CE)%nat ->
@@ -3027,7 +3078,7 @@ Qed.
      never change. *)
 Lemma wf_chain_load'_2:forall CE g locenv stkptr chk m m' b ofs e_t_v vaddr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
-    -> (stack_localstack_aligned CE locenv g m)
+    -> (stack_localstack_aligned CE locenv g m stkptr)
     -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
     -> forall lvl δ_lvl,
         (lvl < Datatypes.length CE)%nat ->
@@ -3056,7 +3107,7 @@ Lemma wf_chain_load_var:
   forall stbl CE g locenv stkptr astnum chk m m' b ofs e_t_v id load_id vaddr,
     exact_levelG CE ->
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
-    -> (stack_localstack_aligned CE locenv g m')
+    -> (stack_localstack_aligned CE locenv g m' stkptr)
     -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
     -> transl_variable stbl CE astnum id =: load_id
     -> Cminor.eval_expr g stkptr locenv m load_id vaddr
@@ -3084,7 +3135,7 @@ Lemma wf_chain_load_var':
   forall stbl CE g locenv stkptr astnum chk m m' b ofs e_t_v id load_id vaddr,
     exact_levelG CE ->
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
-    -> (stack_localstack_aligned CE locenv g m)
+    -> (stack_localstack_aligned CE locenv g m stkptr)
     -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
     -> transl_variable stbl CE astnum id =: load_id
     -> Cminor.eval_expr g stkptr locenv m' load_id vaddr
@@ -3106,39 +3157,63 @@ Qed.
 
 (* INVARIANT OF STORE/STOREV: if we do not touch on addresses zero
      of blocks, chaining variables all poitn to zero ofsets. *)
-Lemma wf_chain_load_aligned:forall CE g locenv chk m m' b ofs e_t_v,
+Lemma wf_chain_load_aligned: forall CE g locenv chk m m' b ofs e_t_v stkptr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
     -> (4 <= (Int.unsigned ofs))
-    -> stack_localstack_aligned CE locenv g m
-    -> stack_localstack_aligned CE locenv g m'.
+    -> stack_localstack_aligned CE locenv g m stkptr
+    -> stack_localstack_aligned CE locenv g m' stkptr.
 Proof.
   unfold stack_localstack_aligned at 2.
   !intros.
-  revert g locenv chk m m' b ofs e_t_v heq_storev_e_t_v_m' h_le h_aligned_g_m b0 v h_CM_eval_expr_v.
-  destruct δ_lvl;simpl;!intros.
-  - edestruct (h_aligned_g_m b0 O v).
-    + assumption.
-    + simpl.
-      constructor.
-      !inversion h_CM_eval_expr_v.
-      assumption.
-    + eauto.
-  - !inversion h_CM_eval_expr_v.
-    generalize h_CM_eval_expr_vaddr.
-    !intro.
-    eapply wf_chain_load'2 in h_CM_eval_expr_vaddr;eauto;try omega.
-    generalize h_CM_eval_expr_vaddr.
-    !intro.
-    eapply h_aligned_g_m in h_CM_eval_expr_vaddr1;try omega.
-    destruct h_CM_eval_expr_vaddr1.
-    subst.
-    assert (heq_ld_m:Mem.loadv AST.Mint32 m (Values.Vptr x Int.zero) = Some v). {
-      simpl.
-      erewrite <- (Mem.load_store_other);eauto. }
-    red in h_aligned_g_m.
-    eapply (h_aligned_g_m _ (S δ_lvl));try omega.
-    simpl.
+  generalize h_aligned_g_m.
+  !intros.
+  specialize (h_aligned_g_m (δ_lvl) h_lt_δ_lvl).
+  decomp h_aligned_g_m.
+  exists b_δ.
+  !destruct δ_lvl.
+  - simpl.
+    !inversion h_CM_eval_expr.
     econstructor;eauto.
+  - cbn.
+    !inversion h_CM_eval_expr.
+    eapply eval_Eload with (vaddr:=vaddr).
+    eapply wf_chain_load'4 with (CE:=CE);eauto; try omega.
+    rewrite <- h_loadv.
+    destruct vaddr;cbn;try discriminate.
+    eapply Mem.load_store_other;eauto.
+    cbn.
+    red in h_aligned_g_m0.
+    !!assert ((δ_lvl < Datatypes.length CE)%nat) by omega.
+    specialize (h_aligned_g_m0 δ_lvl h_lt_δ_lvl0).
+    decomp h_aligned_g_m0.
+    !assert ((Values.Vptr b0 i) = (Values.Vptr b_δ0 Int.zero)).
+    { eapply det_eval_expr;eauto. }
+    !invclear heq.
+    right.
+    left.
+    rewrite Int.unsigned_zero.
+    cbn.
+    omega.
+Qed.
+
+Lemma wf_chain_load_aligned':forall sp CE g locenv m,
+    stack_localstack_aligned CE locenv g m sp ->
+    CE = [] ∨ exists b, sp = (Values.Vptr b Int.zero).
+Proof.
+  intros sp CE g locenv m h_aligned_g_m.
+  red in h_aligned_g_m.
+  !destruct CE.
+  - left;reflexivity.
+  - right.
+    !!edestruct h_aligned_g_m with (δ_lvl:=0%nat);cbn;try omega.
+    cbn in *.
+    !inversion h_CM_eval_expr;subst.
+    cbn in *.
+    !invclear h_eval_constant.
+    !destruct sp; cbn in *; try discriminate.
+    rewrite Int.add_zero in h_val_add_sp.
+    !inversion h_val_add_sp.
+    eauto.
 Qed.
 
 
@@ -3264,7 +3339,7 @@ Proof.
     subst.
     exists cm_v.
     split;auto.
-    assert (h_aligned_m' : stack_localstack_aligned CE locenv g m'). {
+    assert (h_aligned_m' : stack_localstack_aligned CE locenv g m' stkptr). {
       eapply wf_chain_load_aligned;eauto. }
     !functional inversion heq_make_load;subst.
     !inversion cm_eval_m_v_other.
@@ -3613,7 +3688,7 @@ Lemma assignment_preserve_loads_offset_non_null:
     transl_name stbl CE (E_Identifier x x0) =: nme_t ->
     Cminor.eval_expr g (Values.Vptr spb ofs) locenv' m nme_t nme_t_addr ->
     Mem.storev nme_chk m nme_t_addr e_t_v = Some m' ->
-    stack_localstack_aligned CE locenv' g m'.
+    stack_localstack_aligned CE locenv' g m' (Values.Vptr spb ofs).
 Proof.
   !intros.
   decomp (storev_inv _ _ _ _ _ heq_storev_e_t_v_m') ;subst.
@@ -3755,31 +3830,6 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma chained_stack_structure_decomp_S m sp : forall n,
-    chained_stack_structure m (S n) sp ->
-    forall g e v,
-      Cminor.eval_expr g sp e m (Eload AST.Mint32 (Econst (Oaddrstack Int.zero))) v ->
-      exists sp',
-        Cminor.eval_expr g sp e m (Eload AST.Mint32 (Econst (Oaddrstack Int.zero))) sp' /\
-        Cminor.eval_expr g sp' e m (Econst (Oaddrstack Int.zero)) v.
-Proof.
-  !intros.
-  !!pose proof (chained_stack_structure_aux _ _ _ h_chain_sp g e).
-  decomp h_ex.
-  exists (Values.Vptr b' Int.zero);split;auto.
-  !invclear h_CM_eval_expr_v;subst.
-  constructor.
-  !invclear h_CM_eval_expr_vaddr;subst.
-  cbn in *.
-  !invclear h_eval_constant.
-  rewrite <- h_loadv_vaddr_v.
-  rewrite Int.add_zero.  
-  rewrite <- h_loadv.
-  destruct sp;try discriminate;cbn.
-  rewrite Int.add_zero.  
-  reflexivity.
-Qed.
-
 Lemma chained_stack_structure_decomp_S_2: forall n m sp,
     chained_stack_structure m (S n) sp ->
     forall g e v,
@@ -3802,6 +3852,64 @@ Proof.
   - !intros.
     cbn in h_CM_eval_expr_v.
     !inversion h_CM_eval_expr_v;subst.
+    change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Int.zero)) n)) with (build_loads_ (Econst (Oaddrstack Int.zero)) (S n)) in h_CM_eval_expr_vaddr.
+    !assert (chained_stack_structure m (S n) sp).
+    { eapply chained_stack_structure_le;eauto. }
+    specialize (IHn m sp h_chain_sp0 _ _ _ h_CM_eval_expr_vaddr).
+    decomp IHn.
+    exists sp';split;auto.
+    cbn.
+    econstructor;eauto.
+Qed.
+
+(*
+Lemma add_Vint_zero: forall m vaddr x,
+    Mem.loadv AST.Mint32 m vaddr = Some x ->
+    Values.Val.add x (Values.Vint Int.zero) = x.
+Proof.
+  !intros. 
+  destruct vaddr;cbn in *; try discriminate.
+  cbn.
+Qed.
+ *)
+
+
+Lemma chained_stack_structure_decomp_S_2': forall n m sp,
+    chained_stack_structure m (S n) sp ->
+    forall g e v sp',
+      Cminor.eval_expr g sp e m (Eload AST.Mint32 (Econst (Oaddrstack Int.zero))) sp' ->
+      Cminor.eval_expr g sp' e m (build_loads_ (Econst (Oaddrstack Int.zero)) n) v ->
+      Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Int.zero)) (S n)) v.
+Proof.
+  intro n.
+  !induction n.
+  - !intros.
+    cbn in *.
+    !inversion h_CM_eval_expr_sp'.
+    !inversion h_CM_eval_expr_vaddr.
+    !inversion h_CM_eval_expr_v.
+    cbn in *.
+    !invclear h_eval_constant.
+    !invclear h_eval_constant0;subst;eq_same_clear.
+    assert (exists b, sp' = Values.Vptr b Int.zero).
+    { !inversion h_chain_sp.
+      cbn in *.
+      rewrite Int.add_zero in h_loadv_vaddr_sp'.
+      rewrite h_loadv_vaddr_sp' in h_loadv.
+      inversion h_loadv.
+      eauto. }
+    decomp H;subst.
+    econstructor;cbn;eauto.
+  - !intros.
+    cbn in h_CM_eval_expr_v.
+    xxx
+    !invclear h_CM_eval_expr_v;subst.
+    !assert (chained_stack_structure m (S n) sp').
+    { admit. }
+    
+    specialize (fun x => IHn m sp' h_chain_sp' _ _ _ _ x h_CM_eval_expr_vaddr).
+
+    
     change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Int.zero)) n)) with (build_loads_ (Econst (Oaddrstack Int.zero)) (S n)) in h_CM_eval_expr_vaddr.
     !assert (chained_stack_structure m (S n) sp).
     { eapply chained_stack_structure_le;eauto. }
@@ -3939,19 +4047,59 @@ Proof.
     + assumption.
 Qed.
 
-xxx
+
 Lemma foo: forall m n stkptr,
   chained_stack_structure m n stkptr ->
-  forall  lgth_CE CE locenv g,
+  forall lgth_CE CE locenv g,
     lgth_CE = Datatypes.length CE -> 
     (lgth_CE <= n)%nat -> 
-    stack_localstack_aligned CE locenv g m.
+    stack_localstack_aligned CE locenv g m stkptr.
 Proof.
   !!intros until 1.
   unfold stack_localstack_aligned.
   !induction h_chain_n_stkptr;!intros.
   - exfalso. omega.
-  - 
+  - !!destruct CE eqn:heq_CE.
+    + subst.
+      cbn in h_lt_δ_lvl; inversion h_lt_δ_lvl.
+    + rename l into CE'.
+      cbn in *.
+      subst.
+      specialize (IHh_chain_n_stkptr (Datatypes.length CE') CE' locenv g eq_refl).
+      !!assert (Datatypes.length CE' ≤ n) by omega.
+      specialize (IHh_chain_n_stkptr h_le).
+      destruct δ_lvl.
+      * cbn.
+        exists b.
+        constructor.
+        cbn.
+        rewrite Int.add_zero.
+        reflexivity.
+      * !!assert (δ_lvl < Datatypes.length CE')%nat by omega.
+        specialize (IHh_chain_n_stkptr δ_lvl h_lt_δ_lvl0).
+        decomp IHh_chain_n_stkptr.
+        exists b_δ.
+        change (S δ_lvl) with (1 + δ_lvl)%nat.
+        !assert (chained_stack_structure m (1 + δ_lvl) (Values.Vptr b Int.zero)).
+        { econstructor.
+          eapply chained_stack_structure_le;eauto;omega.
+          cbn.
+          assumption. }
+        edestruct chain_structure_cut with (1:=h_chain).
+        econstructor.
+        
+      !invclear heq_nat.
+      specialize (IHlgth_CE CE').
+      !destruct n; try now  inversion h_le.
+      rewrite <- Nat.succ_le_mono in h_le.
+      rewrite <- Nat.succ_lt_mono in h_lt_δ_lvl.
+      !inversion h_chain_n_stkptr.
+      specialize (IHlgth_CE n locenv g m (Values.Vptr b' Int.zero) eq_refl h_le h_chain_n).
+      replace (S δ_lvl) with ((S δ_lvl) + 0)%nat in h_CM_eval_expr_v.
+      all:swap 2 1.
+      -- auto with arith.
+      -- pose proof chained_stack_structure_decomp_S_3 _ _ _ _ h_CM_eval_expr_v.
+      
 
 
 
