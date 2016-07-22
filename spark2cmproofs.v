@@ -4392,7 +4392,7 @@ Definition invisible_cminor_addr st CE g astnum locenv stkptr (m:mem) spb ofs :=
    at calling time. This exception is mainly to allow the modification
    of the chaining variable in the local stack. This chaining variable
    is invisible (it does not correspond to a spark variable) but it
-   will be changed during functino initialization. In the future this
+   will be changed during function initialization. In the future this
    may also include things allocated during the function called, and
    also maybe local variables (not in stack). Moreover at the end of
    the function call, the frame used for is indeed free at call
@@ -4490,14 +4490,16 @@ Definition strict_unchanged_on st CE g astnum e_chain e_chain' sp m m' :=
   unchange_forbidden st CE g astnum e_chain e_chain' sp m m'.
 
 Lemma stack_localstack_aligned_locenv:
-  forall CE  g m e1,
-    stack_localstack_aligned CE e1 g m -> 
-    forall e2, stack_localstack_aligned CE e2 g m.
+  forall CE  g m e1 sp,
+    stack_localstack_aligned CE e1 g m sp -> 
+    forall e2, stack_localstack_aligned CE e2 g m sp.
 Proof.
-  intros CE g m e1 H e2. 
+  !intros.
   unfold stack_localstack_aligned in *;!intros.
-  apply eval_expr_build_load_const_inv_locenv with (locenv' := e1) in h_CM_eval_expr_v.
-  eapply H;eauto.
+  specialize (h_aligned_g_m _ h_lt_δ_lvl).
+  decomp h_aligned_g_m.
+  exists b_δ.
+  apply eval_expr_build_load_const_inv_locenv with (1:=h_CM_eval_expr).
 Qed.
 
 
@@ -4524,7 +4526,7 @@ Lemma exec_store_params_preserve_forbidden:
     stack_no_null_offset st CE ->
     store_params st CE lparams = OK initparams -> 
     forall astnum g proc_t sp e_chain e_chain' m t2 m',
-      stack_localstack_aligned CE e_chain g m ->
+      stack_localstack_aligned CE e_chain g m sp ->
       exec_stmt g proc_t sp e_chain m initparams t2 e_chain' m' Out_normal ->
       unchange_forbidden st CE g astnum e_chain e_chain' sp m m'.
 Proof.
@@ -4547,12 +4549,12 @@ Proof.
     !invclear h_exec_stmt.
     up_type.
 
-    !assert (stack_localstack_aligned CE e_mid g m_mid).
+    !assert (stack_localstack_aligned CE e_mid g m_mid sp).
     { unfold Mem.storev in heq_storev_v_m_mid.
       destruct x1_v; try discriminate.
       eapply wf_chain_load_aligned;eauto.
       eapply eval_build_loads_offset_non_null_var;eauto. }
-    !assert (stack_localstack_aligned CE e_chain' g m).
+    !assert (stack_localstack_aligned CE e_chain' g m sp).
     { eapply stack_localstack_aligned_locenv;eauto. }
     specialize (IHr h_aligned_g_m_mid).
     eapply unchange_forbidden_trans with (m2:=m_mid); [| eapply IHr].
@@ -4638,12 +4640,12 @@ Proof.
     !invclear h_exec_stmt.
     up_type.
 
-    !assert (stack_localstack_aligned CE e_mid g m_mid).
+    !assert (stack_localstack_aligned CE e_mid g m_mid sp).
     { unfold Mem.storev in heq_storev_v_m_mid.
       destruct x1_v; try discriminate.
       eapply wf_chain_load_aligned;eauto.
       eapply eval_build_loads_offset_non_null_var;eauto. }
-    !assert (stack_localstack_aligned CE e_chain' g m).
+    !assert (stack_localstack_aligned CE e_chain' g m sp).
     { eapply stack_localstack_aligned_locenv;eauto. }
     specialize (IHr h_aligned_g_m_mid).
     eapply unchange_forbidden_trans with (m2:=m_mid); [| eapply IHr].
@@ -4729,12 +4731,12 @@ Proof.
     !invclear h_exec_stmt.
     up_type.
 
-    !assert (stack_localstack_aligned CE e_mid g m_mid).
+    !assert (stack_localstack_aligned CE e_mid g m_mid sp).
     { unfold Mem.storev in heq_storev_v_m_mid.
       destruct x1_v; try discriminate.
       eapply wf_chain_load_aligned;eauto.
       eapply eval_build_loads_offset_non_null_var;eauto. }
-    !assert (stack_localstack_aligned CE e_chain' g m).
+    !assert (stack_localstack_aligned CE e_chain' g m sp).
     { eapply stack_localstack_aligned_locenv;eauto. }
     specialize (IHr h_aligned_g_m_mid).
     eapply unchange_forbidden_trans with (m2:=m_mid); [| eapply IHr].
@@ -4821,7 +4823,7 @@ Lemma exec_store_params_unchanged_on:
     stack_no_null_offset st CE ->
     store_params st CE lparams =: initparams ->
     forall astnum g proc_t sp e_chain m t2 e_postchain m',
-      stack_localstack_aligned CE e_chain g m -> 
+      stack_localstack_aligned CE e_chain g m sp -> 
       exec_stmt g proc_t sp e_chain m initparams t2 e_postchain m' Out_normal ->
       Mem.unchanged_on (forbidden st CE g astnum e_chain sp m m) m m'.
 Proof.
@@ -4841,7 +4843,7 @@ Proof.
     rename x1 into prm_name_t.
     !invclear heq1.
     !invclear h_exec_stmt_initparams; eq_same_clear.
-    !assert (stack_localstack_aligned CE e1 g m1).
+    !assert (stack_localstack_aligned CE e1 g m1 sp).
     { !inversion h_exec_stmt.
       destruct prm_name_t_v;try now (cbn in heq_storev_v_m1; discriminate).
       eapply wf_chain_load_aligned;eauto.
@@ -4878,7 +4880,7 @@ Proof.
     rename x1 into prm_name_t.
     !invclear heq1.
     !invclear h_exec_stmt_initparams; eq_same_clear.
-    !assert (stack_localstack_aligned CE e1 g m1).
+    !assert (stack_localstack_aligned CE e1 g m1 sp).
     { !inversion h_exec_stmt.
       destruct prm_name_t_v;try now (cbn in heq_storev_v_m1; discriminate).
       eapply wf_chain_load_aligned;eauto.
@@ -4915,7 +4917,7 @@ Proof.
     rename x1 into prm_name_t.
     !invclear heq1.
     !invclear h_exec_stmt_initparams; eq_same_clear.
-    !assert (stack_localstack_aligned CE e1 g m1).
+    !assert (stack_localstack_aligned CE e1 g m1 sp).
     { !inversion h_exec_stmt.
       destruct prm_name_t_v;try now (cbn in heq_storev_v_m1; discriminate).
       eapply wf_chain_load_aligned;eauto.
@@ -4961,13 +4963,13 @@ Lemma exec_init_locals_preserve_forbidden:
     forall astnum g proc_t sp e_chain e_chain' m t2 m' lvl,
       CompilEnv.level_of_top CE = Some lvl -> 
       chained_stack_structure m lvl sp ->
-      stack_localstack_aligned CE e_chain g m ->
+      stack_localstack_aligned CE e_chain g m sp ->
       exec_stmt g proc_t sp e_chain m locvarinit t2 e_chain' m' Out_normal ->
       chained_stack_structure m' lvl sp ∧ unchange_forbidden st CE g astnum e_chain e_chain' sp m m'.
 Proof.
   !!intros until CE.
   rewrite init_locals_ok.
-  
+  xxx
 
 
 
