@@ -76,7 +76,8 @@ Ltac rename_hyp_prev h th :=
   match th with
   | NoDupA _ ?l => fresh "h_NoDupA_" l
   | NoDupA _ _ => fresh "h_NoDupA"
-  | _ => (semantics_properties.rename_hyp1 h th)
+  | _ => (STACK.rename_hyp1 h th)
+  | _ => (semantics_properties.rename_hyp_sem h th)
   | _ => (spark2Cminor.rename_hyp1 h th)
   | _ => (compcert_utils.rename_hyp1 h th)
   end.
@@ -1046,6 +1047,27 @@ Definition stbl_var_types_ok st :=
 (* See CminorgenProof.v@205. *)
 
 
+(* The AST provided by gnat/sireum are supposed to have no two variables sharing
+   the same name. This should imply that there are no duplication of name in CE. *)
+(* intra-store *)
+Definition stack_CE_NoDup (CE : compilenv) := 
+(*   List.Forall (fun x => match x with (lvl,sto) => NoDupA eq sto end) CE. *)
+  forall nme lvl sto (sto' sto'':localframe),
+    CompilEnv.frameG nme CE = Some (lvl,sto) ->
+    CompilEnv.cuts_to nme sto = (sto',sto'') ->
+    CompilEnv.resides nme sto'' = false.
+
+(* extra-store *)
+Definition stack_CE_NoDup_G (CE : compilenv) := 
+  forall nme lvl sto CE' CE'',
+    CompilEnv.frameG nme CE = Some (lvl,sto) ->
+    CompilEnv.cut_until CE lvl CE' CE'' ->
+    CompilEnv.resideG nme CE'' = false.
+
+(* Record CE_well_formed CE := *)
+(*   { ce_wf_intra:> stack_CE_NoDup CE; *)
+(*     ce_wf_extra:> stack_CE_NoDup_G CE }. *)
+
 Record safe_cm_env st CE sp locenv g m: Prop :=
   mk_safe_cm_env {
       me_stack_match_functions: stack_match_functions st sp CE locenv g m ;
@@ -1077,7 +1099,6 @@ Record match_env st s CE sp locenv g m: Prop :=
       me_stack_complete: stack_complete st s CE;
       me_safe_cm_env: safe_cm_env st CE sp locenv g m;
       me_overflow: safe_stack s; (* Put this somewhere else, concerns only s *)
-(*       me_nodup_stack: NoDupA  *)
     }.
 
 Arguments me_stack_match : default implicits.
@@ -1099,14 +1120,59 @@ Record invariant_compile CE stbl :=
   { ci_exact_lvls: exact_levelG CE ;
     ci_increasing_ids: all_frm_increasing CE ;
     ci_no_overflow: all_addr_no_overflow CE ;
-    ci_stbl_var_types_ok: stbl_var_types_ok stbl }.
+    ci_stbl_var_types_ok: stbl_var_types_ok stbl;
+    ce_wf_intra: stack_CE_NoDup CE;
+    ce_wf_extra: stack_CE_NoDup_G CE }.
 
 Arguments ci_increasing_ids : default implicits.
 Arguments ci_no_overflow : default implicits.
 Arguments ci_stbl_var_types_ok : default implicits.
+Arguments ce_wf_intra: default implicits.
+Arguments ce_wf_extra: default implicits.
 
-Hint Resolve ci_exact_lvls ci_increasing_ids ci_no_overflow ci_stbl_var_types_ok.
+Hint Resolve ci_exact_lvls ci_increasing_ids ci_no_overflow ci_stbl_var_types_ok ce_wf_extra ce_wf_extra.
 Hint Resolve me_stack_match me_stack_match_CE me_stack_match_functions me_stack_complete me_stack_separate me_stack_localstack_aligned me_stack_no_null_offset me_overflow me_safe_cm_env.
+
+
+Inductive strong_P (P: symboltable.symboltable -> STACK.stack → compilenv → Values.val → env → genv → mem → Prop) stbl: STACK.stack → compilenv → Values.val → env → genv → mem → Prop :=
+| strg1: forall v locenv g m,
+    P stbl [] [] v locenv g m ->
+    strong_P P stbl [] [] v locenv g m
+| strg2: forall lvl sto s stoCE CE v v' locenv locenv' g m,
+    strong_P P stbl s CE v locenv g m ->
+    Mem.loadv AST.Mint32 m v' = Some v ->
+    P stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m ->
+    strong_P P stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m.
+
+
+Inductive strong_match_env stbl: STACK.stack → compilenv → Values.val → env → genv → mem → Prop :=
+| C1: forall v locenv g m,
+    match_env stbl [] [] v locenv g m ->
+    strong_match_env stbl [] [] v locenv g m
+| C2: forall lvl sto s stoCE CE v v' locenv locenv' g m,
+    strong_match_env stbl s CE v locenv g m ->
+    Mem.loadv AST.Mint32 m v' = Some v ->
+    match_env stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m ->
+    strong_match_env stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m.
+
+
+Inductive repeat_Mem_loadv (chk:AST.memory_chunk) (m : mem): forall (lvl:STACK.scope_level) (sp sp' : Values.val), Prop :=
+| Repeat_loadv1: forall sp, repeat_Mem_loadv chk m O sp sp
+| Repeat_loadv2: forall lvl sp sp' sp'',
+    repeat_Mem_loadv chk m lvl sp' sp'' ->
+    Mem.loadv AST.Mint32 m sp = Some sp' ->
+    repeat_Mem_loadv chk m (S lvl) sp sp''.
+
+
+Definition strong_match_env_2 (st : symboltable.symboltable) (s : STACK.stack) (CE : compilenv)
+           (sp : Values.val) (locenv : env) (g : genv) (m : mem) : Prop :=
+  forall lvl CE' CE'',
+    CompilEnv.cut_until CE lvl CE' CE'' ->
+    Datatypes.length CE'' = lvl ->
+    exists sp'',
+      (* following chaining params starting from the current one *)
+      repeat_Mem_loadv AST.Mint32 m lvl sp sp''
+      ∧ exists s' s'' locenv'', STACK.cut_until s lvl s' s''  ∧  match_env st s'' CE'' sp'' locenv'' g m.
 
 
 (** Hypothesis renaming stuff *)
@@ -1176,6 +1242,47 @@ Ltac rename_hyp4 h th :=
   end.
 Ltac rename_hyp ::= rename_hyp4.
 
+Ltac rename_hyp_cut h th :=
+  match th with
+  | exact_levelG ?CE => fresh "h_exct_lvl_" CE
+  | exact_levelG ?CE => fresh "h_exct_lvl"
+  | CompilEnv.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_CEcut_" CE "_" lvl
+  | CompilEnv.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_CEcut_" CE
+  | CompilEnv.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_CEcut"
+  | STACK.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_stkcut_" CE "_" lvl
+  | STACK.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_stkcut_" CE
+  | STACK.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_stkcut"
+(*   | CE_well_formed ?CE => fresh "h_CEwf_" CE *)
+(*   | CE_well_formed ?CE => fresh "h_CEwf" *)
+  | stack_CE_NoDup ?CE => fresh "h_CEnodup_" CE
+  | stack_CE_NoDup ?CE => fresh "h_CEnodup"
+  | stack_CE_NoDup_G ?CE => fresh "h_CEnodupG" CE
+  | stack_CE_NoDup_G ?CE => fresh "h_CEnodupG"
+  | _ => rename_hyp4 h th                                
+  end.
+Ltac rename_hyp ::= rename_hyp_cut.
+
+
+Ltac rename_hyp_strong h th :=
+  match th with
+
+  | repeat_Mem_loadv _ ?m ?lvl ?v ?sp => fresh "h_repeat_loadv_" lvl "_" v
+  | repeat_Mem_loadv _ ?m ?lvl ?v ?sp => fresh "h_repeat_loadv_" lvl
+  | repeat_Mem_loadv _ ?m ?lvl ?v ?sp => fresh "h_repeat_loadv"
+  | strong_match_env ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch_" s "_" CE "_" m
+  | strong_match_env ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch_" s "_" CE
+  | strong_match_env ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch_" s
+  | strong_match_env ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch"
+
+  | strong_match_env_2 ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch2_" s "_" CE "_" m
+  | strong_match_env_2 ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch2_" s "_" CE
+  | strong_match_env_2 ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch2_" s
+  | strong_match_env_2 ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch2"
+
+  | _ => rename_hyp_cut h th
+  end.
+Ltac rename_hyp ::= rename_hyp_strong.
+
 Definition eq_param_name p1 p2 := p1.(parameter_name) = p2.(parameter_name).
 
 (* Properties of compile_env *)
@@ -1220,9 +1327,9 @@ Lemma cut_until_exact_levelG_2:
 Proof.
   intros s pb_lvl s' s'' h_exactlvlG.
   !destruct h_exactlvlG;simpl;!intros.
-  - inversion H0.
+  - inversion h_CEcut.
     reflexivity.
-  - inversion H0;simpl in *;subst.
+  - inversion h_CEcut;simpl in *;subst.
     + reflexivity.
     + exfalso;omega.
 Qed.
@@ -1235,143 +1342,318 @@ Proof.
   inversion H;cbn in *;auto.
 Qed.
 
+Definition stack_push_all_new sto CE:= (forall id, CompilEnv.reside id sto = true -> CompilEnv.resideG id CE = false).
+
+
 Lemma all_addr_no_overflow_sublist: forall x CE,
-    all_addr_no_overflow (x::CE)
+    stack_push_all_new x CE
+    -> all_addr_no_overflow (x::CE)
     -> all_addr_no_overflow CE.
 Proof.
-  intros x CE H.
-  red in H.
+  !!intros ? ? h halladdr.
+  red in halladdr.
   red.
-  intros id δ H0.
-  apply H with id.
-  simpl.
-  destruct (CompilEnv.fetch id x).
-  - admit. (* We need the fact that there are no clash of names in CE *)
+  !intros.
+  apply halladdr with id.
+  cbn.
+  !!destruct (CompilEnv.fetch id x) eqn:?.
+  - apply CompilEnv.fetch_ok in heq_CEfetch_id_x.
+    apply h in heq_CEfetch_id_x.
+    apply CompilEnv.fetchG_ok in heq_CEfetchG_id_CE.
+    rewrite heq_CEfetch_id_x in heq_CEfetchG_id_CE.
+    discriminate.
   - assumption.
 Qed.
+
+Lemma stack_push_all_new_subcons:
+  forall a CE,
+    stack_CE_NoDup_G (a :: CE) ->
+    exact_levelG (a :: CE) ->
+    stack_push_all_new a CE.
+Proof.
+  !intros.
+  red;!intros.
+  red in h_CEnodupG.
+  specialize (h_CEnodupG id (CompilEnv.level_of a) (CompilEnv.store_of a) [a] CE).
+  !assert (CompilEnv.frameG id (a :: CE) = Some (CompilEnv.level_of a, CompilEnv.store_of a)).
+  { cbn.
+    rewrite heq_bool_true.
+    destruct a;auto. }
+  specialize (h_CEnodupG heq_CEframeG_id).
+  !assert (CompilEnv.cut_until (a :: CE) (CompilEnv.level_of a) [a] CE).
+  { econstructor 3.
+    - omega.
+    - !!destruct CE eqn:?.
+      + constructor.
+      + !!inversion h_exct_lvl;subst.
+        cbn.
+        constructor 2.
+        inversion h_exct_lvl0.
+        cbn.
+        omega. }
+  specialize (h_CEnodupG h_CEcut).
+  assumption.
+Qed.
+
+Lemma exact_lvl_level_of_top:
+  forall l',
+    exact_levelG  l' ->
+    forall nme lvl_nme fr_nme,
+      CompilEnv.frameG nme l' = Some (lvl_nme, fr_nme) -> 
+      exists top,
+        CompilEnv.level_of_top l' = Some top /\
+        (lvl_nme ≤ top)%nat.
+Proof.
+  !!intros until 1.
+  induction h_exct_lvl_l';!intros;subst.
+  - discriminate.
+  - cbn in heq_CEframeG_nme.
+    destruct (CompilEnv.resides nme fr) eqn:heq.
+    + !inversion heq_CEframeG_nme.
+      cbn.
+      eauto with arith.
+    + cbn.
+      exists (Datatypes.length stk);split;auto.
+      !!edestruct IHh_exct_lvl_l';eauto.
+      decomp h_and.
+      destruct stk;cbn in heq_lvloftop_stk_x;try discriminate.
+      !destruct f.
+      !invclear heq_lvloftop_stk_x.
+      cbn.
+      inversion h_exct_lvl_l';subst.
+      auto with arith.
+Qed.
+
+Lemma nodup_G_cons :
+  forall a l nme ,
+    exact_levelG (a::l) ->
+    stack_CE_NoDup_G (a::l) -> CompilEnv.resideG nme l = true -> CompilEnv.reside nme a = false.
+Proof.
+  !intros.
+  !!destruct (CompilEnv.reside nme a) eqn:?;auto.
+  specialize (h_CEnodupG nme (CompilEnv.level_of a) (CompilEnv.store_of a) [a] l).
+  cbn in h_CEnodupG.
+  rewrite heq_bool_true,heq_bool_true0 in h_CEnodupG.
+  !assert (Some a = Some (CompilEnv.level_of a, CompilEnv.store_of a)).
+  { destruct a;auto. }
+  specialize (h_CEnodupG heq).
+  clear heq.
+  !assert (CompilEnv.cut_until (a :: l) (CompilEnv.level_of a) [a] l).
+  { constructor 3.
+    - omega.
+    - destruct l.
+      + constructor 1.
+      + constructor 2.
+        !inversion h_exct_lvl.
+        inversion h_exct_lvl0.
+        subst.
+        cbn.
+        omega.  }
+  specialize (h_CEnodupG h_CEcut).
+  discriminate.
+Qed.
+
+Lemma nodup_G_cons_2 :
+  forall a l nme ,
+    exact_levelG (a::l) ->
+    stack_CE_NoDup_G (a::l) -> CompilEnv.reside nme a = true -> CompilEnv.resideG nme l = false.
+Proof.
+  !intros.
+  !!destruct (CompilEnv.resideG nme l) eqn:?;try discriminate;auto.
+
+  specialize (h_CEnodupG nme (CompilEnv.level_of a) (CompilEnv.store_of a) [a] l).
+  cbn in h_CEnodupG.
+  rewrite heq_bool_true,heq_bool_true0 in h_CEnodupG.
+  !assert (Some a = Some (CompilEnv.level_of a, CompilEnv.store_of a)).
+  { destruct a;auto. }
+  specialize (h_CEnodupG heq).
+  clear heq.
+  !assert (CompilEnv.cut_until (a :: l) (CompilEnv.level_of a) [a] l).
+  { constructor 3.
+    - omega.
+    - destruct l.
+      + constructor 1.
+      + constructor 2.
+        !inversion h_exct_lvl.
+        inversion h_exct_lvl0.
+        subst.
+        cbn.
+        omega.  }
+  specialize (h_CEnodupG h_CEcut).
+  discriminate.
+Qed.
+
+Lemma stack_CE_NoDup_G_cons: forall l',
+    exact_levelG l' ->
+    forall l a,
+      l'= a::l ->
+      stack_CE_NoDup_G (a::l) -> stack_CE_NoDup_G l.
+Proof.
+  !!intros ? ?.
+  !induction h_exct_lvl_l';subst; !intros; unfold stack_CE_NoDup_G in *;!intros;up_type.
+  - inversion heq.
+  - !invclear heq.
+    remember (Datatypes.length l, fr) as a0.
+    !assert (exact_levelG (a0 :: l)).
+    { subst a0.
+      constructor;auto. }
+    !assert (CompilEnv.reside nme a0 = false).
+    { eapply nodup_G_cons;eauto.
+      eapply  CompilEnv.frameG_resideG;eauto. }
+
+    !assert (CompilEnv.frameG nme (a0 :: l) = Some (lvl_nme, fr_nme)).
+    { cbn.
+      rewrite heq_bool_false.
+      apply heq_CEframeG_nme_l. }
+
+    eapply h_CEnodupG with (1:= heq_CEframeG_nme) (CE':= a0 :: CE').
+    constructor 3.
+    + pose proof exact_lvl_level_of_top (a0::l) as h.
+      specialize (h h_exct_lvl).
+      specialize (h _ _ _ heq_CEframeG_nme).
+      decomp h.
+      enough (lvl_nme ≤ CompilEnv.level_of a0)%nat by omega.
+
+      assert (top = CompilEnv.level_of a0).
+      { cbn in heq_lvloftop_top.
+        destruct a0;cbn.
+        inversion heq_lvloftop_top;reflexivity. }
+      subst top;auto with arith.
+    + assumption.
+Qed.
+
+Lemma stack_CE_NoDup_cons: forall l',
+    exact_levelG l' ->
+    stack_CE_NoDup_G l' ->
+    stack_CE_NoDup l' ->
+    forall l a,
+      l'= a::l ->
+      stack_CE_NoDup l.
+Proof.
+  !intros.
+  red.
+  !intros.
+  red in h_CEnodup_l'.
+  apply (h_CEnodup_l' nme lvl_nme fr_nme sto' sto'').
+  - subst.
+    simpl.
+    red in h_CEnodupGl'.
+    !assert (CompilEnv.reside nme a = false).
+    { eapply nodup_G_cons;eauto.
+      eapply  CompilEnv.frameG_resideG;eauto. }
+    rewrite heq_bool_false.
+    assumption.
+  - assumption.
+Qed.
+
+
+Lemma stack_CE_NoDup_G_sublist: forall CE1 CE2,
+    exact_levelG (CE1 ++ CE2) ->
+    stack_CE_NoDup_G (CE1++CE2) ->
+    stack_CE_NoDup_G CE2.
+Proof.
+  !!induction CE1;!intros.
+  - simpl List.app in h_CEnodupG.
+    assumption.
+  - apply IHCE1.
+    { eapply exact_levelG_sublist;eauto. }
+    cbn in h_CEnodupG.
+    eapply stack_CE_NoDup_G_cons;eauto;cbn;auto.
+Qed.
+
+Lemma stack_CE_NoDup_sublist: forall CE1 CE2,
+    exact_levelG (CE1 ++ CE2) ->
+    stack_CE_NoDup_G (CE1++CE2) ->
+    stack_CE_NoDup (CE1++CE2) ->
+    stack_CE_NoDup CE2.
+Proof.
+  !!induction CE1;!intros.
+  - simpl List.app in h_CEnodup.
+    assumption.
+  - apply IHCE1.
+    + eapply exact_levelG_sublist;eauto.
+    + eapply stack_CE_NoDup_G_cons;eauto;reflexivity.
+    + cbn in h_CEnodup.
+      eapply stack_CE_NoDup_cons;eauto;cbn;auto.
+Qed.
+
+(* 
+Lemma CE_well_formed_sublist: forall CE1 CE2,
+    exact_levelG (CE1 ++ CE2) ->
+    stack_CE_NoDup_G (CE1++CE2) ->
+    CE_well_formed (CE1++CE2) ->
+    CE_well_formed CE2.
+Proof.
+  !intros.
+  inversion h_CEwf.
+  constructor.
+  - eapply stack_CE_NoDup_sublist;eauto.
+  - eapply stack_CE_NoDup_G_sublist;eauto.
+Qed.
+ *)
+
+Lemma cut_until_exct_lvl:
+  forall CE lvl x,
+    exact_levelG ((lvl,x)::CE) ->
+    CompilEnv.cut_until CE lvl [] CE.
+Proof.
+  !intros.
+  destruct CE;cbn in *.
+  - constructor 1.
+  - constructor 2.
+    !inversion h_exct_lvl;subst.
+    !inversion h_exct_lvl0.
+    cbn.
+    omega.
+Qed.
+
+Lemma stack_CE_NoDup_G_stack_push_all_new: forall x CE,
+    exact_levelG (x::CE) ->
+    stack_CE_NoDup_G (x::CE) -> 
+    stack_push_all_new x CE.
+Proof.
+  !intros.
+  red;!intros.
+  red in h_CEnodupG.
+  cbn in h_CEnodupG.
+  destruct x.
+  eapply h_CEnodupG with (nme:= id).
+  - rewrite heq_bool_true.
+    reflexivity.
+  - constructor 3;auto with arith.
+    eapply cut_until_exct_lvl;eauto.
+Qed.
+
 
 Lemma invariant_compile_subcons: forall st x CE,
     invariant_compile (x::CE) st
     -> invariant_compile CE st.
 Proof.
-  intros st x CE H.
-  inversion H;cbn in *.
+  !intros.
+  inversion h_inv_comp_st;cbn in *.
   split;eauto.
   - eapply exact_levelG_sublist;eauto.
   - eapply all_frm_increasing_sublist;eauto.
   - eapply all_addr_no_overflow_sublist;eauto.
+    apply stack_CE_NoDup_G_stack_push_all_new;auto.
+  - eapply stack_CE_NoDup_cons;eauto.
+  - eapply stack_CE_NoDup_G_cons;eauto.
 Qed.
+
+
+
 
 Lemma invariant_compile_sublist: forall st CE1 CE2,
     invariant_compile (CE1 ++ CE2) st
     -> invariant_compile CE2 st.
 Proof.
-  induction CE1;simpl.
+  !!induction CE1;simpl;!intros.
   - auto.
-  - intros CE2 H.
-    apply IHCE1.
-    apply invariant_compile_subcons with (x:=a).
-    assumption.
+  - apply IHCE1;auto.
+    eapply invariant_compile_subcons;eauto.
 Qed.
 
 
-
-(* The AST provided by gnat/sireum are supposed to have no two variables sharing
-   the same name. This should imply that there are no duplication of name in CE. *)
-(* intra-store *)
-Definition stack_CE_NoDup (CE : compilenv) := 
-(*   List.Forall (fun x => match x with (lvl,sto) => NoDupA eq sto end) CE. *)
-  forall nme lvl sto (sto' sto'':localframe),
-    CompilEnv.frameG nme CE = Some (lvl,sto) ->
-    CompilEnv.cuts_to nme sto = (sto',sto'') ->
-    CompilEnv.resides nme sto'' = false.
-
-(* extra-store *)
-Definition stack_CE_NoDup_G (CE : compilenv) := 
-  forall nme lvl sto CE' CE'',
-    CompilEnv.frameG nme CE = Some (lvl,sto) ->
-    CompilEnv.cut_until CE lvl CE' CE'' ->
-    CompilEnv.resideG nme CE'' = false.
-
-Record CE_well_formed CE :=
-  { ce_wf_intra:> stack_CE_NoDup CE;
-    ce_wf_extra:> stack_CE_NoDup_G CE }.
-
-Arguments ce_wf_intra : default implicits.
-Arguments ce_wf_extra : default implicits.
-
-Hint Resolve ce_wf_extra ce_wf_extra.
-
-Inductive strong_P (P: symboltable.symboltable -> STACK.stack → compilenv → Values.val → env → genv → mem → Prop) stbl: STACK.stack → compilenv → Values.val → env → genv → mem → Prop :=
-| strg1: forall v locenv g m,
-    P stbl [] [] v locenv g m ->
-    strong_P P stbl [] [] v locenv g m
-| strg2: forall lvl sto s stoCE CE v v' locenv locenv' g m,
-    strong_P P stbl s CE v locenv g m ->
-    Mem.loadv AST.Mint32 m v' = Some v ->
-    P stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m ->
-    strong_P P stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m.
-
-
-Inductive strong_match_env stbl: STACK.stack → compilenv → Values.val → env → genv → mem → Prop :=
-| C1: forall v locenv g m,
-    match_env stbl [] [] v locenv g m ->
-    strong_match_env stbl [] [] v locenv g m
-| C2: forall lvl sto s stoCE CE v v' locenv locenv' g m,
-    strong_match_env stbl s CE v locenv g m ->
-    Mem.loadv AST.Mint32 m v' = Some v ->
-    match_env stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m ->
-    strong_match_env stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m.
-
-
-Inductive repeat_Mem_loadv (chk:AST.memory_chunk) (m : mem): forall (lvl:STACK.scope_level) (sp sp' : Values.val), Prop :=
-| Repeat_loadv1: forall sp, repeat_Mem_loadv chk m O sp sp
-| Repeat_loadv2: forall lvl sp sp' sp'',
-    repeat_Mem_loadv chk m lvl sp' sp'' ->
-    Mem.loadv AST.Mint32 m sp = Some sp' ->
-    repeat_Mem_loadv chk m (S lvl) sp sp''.
-
-
-Definition strong_match_env_2 (st : symboltable.symboltable) (s : STACK.stack) (CE : compilenv)
-           (sp : Values.val) (locenv : env) (g : genv) (m : mem) : Prop :=
-  forall lvl CE' CE'',
-    CompilEnv.cut_until CE lvl CE' CE'' ->
-    Datatypes.length CE'' = lvl ->
-    exists sp'',
-      (* following chaining params starting from the current one *)
-      repeat_Mem_loadv AST.Mint32 m lvl sp sp''
-      ∧ exists s' s'' locenv'', STACK.cut_until s lvl s' s''  ∧  match_env st s'' CE'' sp'' locenv'' g m.
-
-
-Ltac rename_hyp_strong h th :=
-  match th with
-  | exact_levelG ?CE => fresh "h_exct_lvl_" CE
-  | exact_levelG ?CE => fresh "h_exct_lvl"
-
-  | repeat_Mem_loadv _ ?m ?lvl ?v ?sp => fresh "h_repeat_loadv_" lvl "_" v
-  | repeat_Mem_loadv _ ?m ?lvl ?v ?sp => fresh "h_repeat_loadv_" lvl
-  | repeat_Mem_loadv _ ?m ?lvl ?v ?sp => fresh "h_repeat_loadv"
-
-  | CompilEnv.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_CEcut_" CE "_" lvl
-  | CompilEnv.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_CEcut_" CE
-  | CompilEnv.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_CEcut"
-  | STACK.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_stkcut_" CE "_" lvl
-  | STACK.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_stkcut_" CE
-  | STACK.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_stkcut"
-
-  | strong_match_env ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch_" s "_" CE "_" m
-  | strong_match_env ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch_" s "_" CE
-  | strong_match_env ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch_" s
-  | strong_match_env ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch"
-
-  | strong_match_env_2 ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch2_" s "_" CE "_" m
-  | strong_match_env_2 ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch2_" s "_" CE
-  | strong_match_env_2 ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch2_" s
-  | strong_match_env_2 ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "h_strg_mtch2"
-
-  | _ => rename_hyp4 h th
-  end.
-Ltac rename_hyp ::= rename_hyp_strong.
 
 
 Lemma exact_lvlG_lgth: forall CE lvl,
@@ -1705,28 +1987,24 @@ Proof.
     * constructor.
     * inversion h_CEcut.
       reflexivity.
-  - !inversion h_CEcut;subst.
+  - !assert (invariant_compile CE st).
+    { eapply invariant_compile_subcons;eauto. }
+    !inversion h_CEcut;subst.
     + !assert (CompilEnv.cut_until CE lvl0 [ ] CE).
       { eapply cut_until_exact_lvl;eauto. }
-      !assert (invariant_compile CE st).
-      { eapply invariant_compile_subcons.
-        eauto. }
-      specialize (IHh_strg_mtch_s_CE_m h_inv_comp_CE_st (@nil CompilEnv.frame) CE lvl0  h_CEcut_CE_lvl0).
+      cbn in *.
+      specialize (IHh_strg_mtch_s_CE_m h_inv_comp_CE_st (@nil CompilEnv.frame) CE lvl0 h_CEcut_CE_lvl0 ).
       decomp IHh_strg_mtch_s_CE_m.
       simpl in *.
       exists s1.
       exists ((lvl, sto) :: s).
-      split.
+      split;auto.
       * assert (s1 =[]).
         { now apply length_zero_iff_nil. }
         subst.
         constructor 2.
         simpl;auto.
-      * auto.
     + rename s' into CE1.
-      !assert (invariant_compile CE st).
-      { eapply invariant_compile_subcons.
-        eauto. }
       specialize (IHh_strg_mtch_s_CE_m h_inv_comp_CE_st CE1 CE2 lvl0 h_CEcut_CE_lvl0).
       decomp IHh_strg_mtch_s_CE_m.
       simpl in *.
@@ -1761,8 +2039,7 @@ Proof.
     !invclear h_stkcut.
     eapply match_env_empty;eauto.
   - !assert (invariant_compile CE st).
-    { eapply invariant_compile_subcons.
-      eauto. }
+    { eapply invariant_compile_subcons;eauto. }
     specialize (IHh_strg_mtch_s_CE_m h_inv_comp_CE_st).
     !inversion h_CEcut.
     + assert (s'=[]).
@@ -1901,12 +2178,12 @@ Proof.
       discriminate.
     + subst.
       constructor.
-  - rename v' into sp.
+  - !assert (invariant_compile CE st).
+    { eapply invariant_compile_subcons;eauto. }
+    rename v' into sp.
     rename v into sp'.
     decomp h_or.
-    + !assert (invariant_compile CE st).
-      { eapply invariant_compile_subcons;eauto. }
-      specialize (IHh_strg_mtch_s_CE_m h_inv_comp_CE_st).
+    + specialize (IHh_strg_mtch_s_CE_m h_inv_comp_CE_st).
       !inversion h_CEcut;up_type. (* cut reached or not *)
       * (* Reached *)
         cbn in *.
@@ -1996,6 +2273,12 @@ Proof.
   exists x0 x1;eauto.
 Qed.
 
+(* Is this true? *)
+Axiom det_eval_expr: forall g stkptr locenv m e v v',
+    Cminor.eval_expr g stkptr locenv m e v
+    -> Cminor.eval_expr g stkptr locenv m e v'
+    -> v = v'.
+
 (** Property of the translation: Since chain variables have always zero
    offset, the offset of a variable in CE is the same as its offset in
    CMinor memory. *)
@@ -2014,7 +2297,7 @@ Proof.
   specialize (h_aligned_g_m _ h_lt_δ_lvl). (* TODO: especialize *)
   edestruct h_aligned_g_m;eauto.
   assert (v1 = Values.Vptr x Int.zero).
-  { admit. }
+  { eapply det_eval_expr;eauto. }
   subst.
   cbn  in *.
   destruct v2;cbn in *;try discriminate.
@@ -2175,11 +2458,6 @@ Defined.
 
 
 Import STACK.
-(* Is this true? *)
-Axiom det_eval_expr: forall g stkptr locenv m e v v',
-    Cminor.eval_expr g stkptr locenv m e v
-    -> Cminor.eval_expr g stkptr locenv m e v'
-    -> v = v'.
 
 Inductive le_loads (lds: Cminor.expr): Cminor.expr -> Prop :=
   le_loads_n: le_loads lds lds
@@ -3873,7 +4151,6 @@ Proof.
 Qed.
  *)
 
-
 Lemma chained_stack_structure_decomp_S_2': forall n m sp,
     chained_stack_structure m (S n) sp ->
     forall g e v sp',
@@ -3902,22 +4179,11 @@ Proof.
     econstructor;cbn;eauto.
   - !intros.
     cbn in h_CM_eval_expr_v.
-    xxx
-    !invclear h_CM_eval_expr_v;subst.
-    !assert (chained_stack_structure m (S n) sp').
-    { admit. }
-    
-    specialize (fun x => IHn m sp' h_chain_sp' _ _ _ _ x h_CM_eval_expr_vaddr).
-
-    
-    change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Int.zero)) n)) with (build_loads_ (Econst (Oaddrstack Int.zero)) (S n)) in h_CM_eval_expr_vaddr.
-    !assert (chained_stack_structure m (S n) sp).
-    { eapply chained_stack_structure_le;eauto. }
-    specialize (IHn m sp h_chain_sp0 _ _ _ h_CM_eval_expr_vaddr).
-    decomp IHn.
-    exists sp';split;auto.
     cbn.
+    inversion h_CM_eval_expr_v;subst.
     econstructor;eauto.
+    eapply IHn;eauto.
+    eapply chained_stack_structure_le;eauto.
 Qed.
 
 Fixpoint build_loads_tail (acc : expr) (m : nat) {struct m} : expr :=
@@ -4059,7 +4325,9 @@ Proof.
   unfold stack_localstack_aligned.
   !induction h_chain_n_stkptr;!intros.
   - exfalso. omega.
-  - !!destruct CE eqn:heq_CE.
+  - 
+xxx
+    !!destruct CE eqn:heq_CE.
     + subst.
       cbn in h_lt_δ_lvl; inversion h_lt_δ_lvl.
     + rename l into CE'.
@@ -4201,7 +4469,7 @@ Proof.
   pose proof   (Econst (Oaddrstack Int.zero)) δ_lvl.
   eapply chain_struct_build_loads_ofs in h_chain_n_stkptr.
 Qed.
-
+*)
 
 Lemma assignment_preserve_chained_stack_structure:
   forall stbl CE g locenv stkptr m a chk id id_t e_t_v idaddr m' n,
@@ -4221,7 +4489,8 @@ Proof.
   !intros.
   destruct id_t_v;try discriminate.
   assert (4 <= (Int.unsigned i)).
-  { eapply eval_build_loads_offset_non_null_var;eauto. }
+  { eapply eval_build_loads_offset_non_null_var;eauto.
+  }
   eapply assignment_preserve_chained_stack_structure_aux;eauto.
 Qed.
 

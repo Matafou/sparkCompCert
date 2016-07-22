@@ -150,7 +150,7 @@ Module OffsetEntry <: environment.ENTRY.
   Definition T := Z.
 End OffsetEntry.
 
-Module CompilEnv := environment.STORE OffsetEntry.
+Module CompilEnv := more_store.STORE_PROP OffsetEntry.
 Definition compilenv := CompilEnv.stack.
 Notation localframe := CompilEnv.store.
 Definition frame := CompilEnv.frame.
