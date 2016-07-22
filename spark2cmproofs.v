@@ -1577,21 +1577,6 @@ Proof.
       eapply stack_CE_NoDup_cons;eauto;cbn;auto.
 Qed.
 
-(* 
-Lemma CE_well_formed_sublist: forall CE1 CE2,
-    exact_levelG (CE1 ++ CE2) ->
-    stack_CE_NoDup_G (CE1++CE2) ->
-    CE_well_formed (CE1++CE2) ->
-    CE_well_formed CE2.
-Proof.
-  !intros.
-  inversion h_CEwf.
-  constructor.
-  - eapply stack_CE_NoDup_sublist;eauto.
-  - eapply stack_CE_NoDup_G_sublist;eauto.
-Qed.
- *)
-
 Lemma cut_until_exct_lvl:
   forall CE lvl x,
     exact_levelG ((lvl,x)::CE) ->
@@ -4314,167 +4299,46 @@ Proof.
 Qed.
 
 
-Lemma foo: forall m n stkptr,
+Lemma chain_aligned: forall m n stkptr,
   chained_stack_structure m n stkptr ->
-  forall lgth_CE CE locenv g,
+  forall lgth_CE CE,
     lgth_CE = Datatypes.length CE -> 
     (lgth_CE <= n)%nat -> 
-    stack_localstack_aligned CE locenv g m stkptr.
+    forall locenv g,
+      stack_localstack_aligned CE locenv g m stkptr.
 Proof.
   !!intros until 1.
   unfold stack_localstack_aligned.
   !induction h_chain_n_stkptr;!intros.
   - exfalso. omega.
-  - 
-xxx
-    !!destruct CE eqn:heq_CE.
-    + subst.
-      cbn in h_lt_δ_lvl; inversion h_lt_δ_lvl.
-    + rename l into CE'.
-      cbn in *.
-      subst.
-      specialize (IHh_chain_n_stkptr (Datatypes.length CE') CE' locenv g eq_refl).
-      !!assert (Datatypes.length CE' ≤ n) by omega.
-      specialize (IHh_chain_n_stkptr h_le).
-      destruct δ_lvl.
-      * cbn.
-        exists b.
-        constructor.
-        cbn.
-        rewrite Int.add_zero.
-        reflexivity.
-      * !!assert (δ_lvl < Datatypes.length CE')%nat by omega.
-        specialize (IHh_chain_n_stkptr δ_lvl h_lt_δ_lvl0).
-        decomp IHh_chain_n_stkptr.
-        exists b_δ.
-        change (S δ_lvl) with (1 + δ_lvl)%nat.
-        !assert (chained_stack_structure m (1 + δ_lvl) (Values.Vptr b Int.zero)).
-        { econstructor.
-          eapply chained_stack_structure_le;eauto;omega.
-          cbn.
-          assumption. }
-        edestruct chain_structure_cut with (1:=h_chain).
-        econstructor.
-        
-      !invclear heq_nat.
-      specialize (IHlgth_CE CE').
-      !destruct n; try now  inversion h_le.
-      rewrite <- Nat.succ_le_mono in h_le.
-      rewrite <- Nat.succ_lt_mono in h_lt_δ_lvl.
-      !inversion h_chain_n_stkptr.
-      specialize (IHlgth_CE n locenv g m (Values.Vptr b' Int.zero) eq_refl h_le h_chain_n).
-      replace (S δ_lvl) with ((S δ_lvl) + 0)%nat in h_CM_eval_expr_v.
-      all:swap 2 1.
-      -- auto with arith.
-      -- pose proof chained_stack_structure_decomp_S_3 _ _ _ _ h_CM_eval_expr_v.
-      
-
-
-
-
-
-  intro lgth_CE.
-  unfold stack_localstack_aligned.
-  !induction lgth_CE;!intros.
-  - exfalso;omega.
-  - !!destruct CE eqn:heq_CE.
-    + subst.
-      cbn in h_lt_δ_lvl; inversion h_lt_δ_lvl.
-    + rename l into CE'.
-      cbn in *.
-      destruct δ_lvl.
-      * admit.
-      * !invclear heq_nat.
-        specialize (IHlgth_CE CE').
-        !destruct n; try now  inversion h_le.
-        rewrite <- Nat.succ_le_mono in h_le.
-        rewrite <- Nat.succ_lt_mono in h_lt_δ_lvl.
-        !inversion h_chain_n_stkptr.
-        specialize (IHlgth_CE n locenv g m (Values.Vptr b' Int.zero) eq_refl h_le h_chain_n).
-        replace (S δ_lvl) with ((S δ_lvl) + 0)%nat in h_CM_eval_expr_v.
-        all:swap 2 1.
-        -- auto with arith.
-        -- pose proof chained_stack_structure_decomp_S_3 _ _ _ _ h_CM_eval_expr_v.
-      
-      
-    
-    destruct (Datatypes.length CE) eqn:heq_lgthCE;try discriminate.
-    !invclear heq_nat.
-    eapply IHlgth_CE;eauto.
-
-
-    admit.
-  - apply IHh_le.
-    eapply chained_stack_structure_le;eauto.
-    
-  unfold stack_localstack_aligned.
-  revert CE g locenv.
-  !induction h_chain_n_stkptr;!intros.
-  - exfalso;omega.
-  - !inversion h_le;cbn in *.
-    + rewrite heq_nat in *.
-    + eapply IHh_chain_n_stkptr with (3:=h_CM_eval_expr_v);eauto.
-
-
-      specialize (fun H => IHh_chain_n_stkptr _ _ _ H _ _ _ h_lt_δ_lvl h_CM_eval_expr_v).
-    inversion h_le;cbn in *.
-    + exfalso;omega.
-    + rewrite <- Nat.succ_lt_mono in h_lt_δ_lvl.
-
-    
-
-    !assert (chained_stack_structure m (S n) (Values.Vptr b Int.zero)).
-    { econstructor;eauto. }
-    pose proof chained_stack_structure_decomp_S_3 n m (Values.Vptr b Int.zero) 0%nat as h_decomp.
-    rewrite <- plus_n_O in h_decomp.
-    specialize (h_decomp h_chain).
-    cbn in h_decomp.
-    specialize (h_decomp g locenv).
-    
-
-  
-  unfold stack_localstack_aligned in *.
-  intro n.
-  !induction n;unfold stack_localstack_aligned in *;!intros.
-  - exfalso;omega.
-  - destruct CE.
-    + cbn in h_lt_δ_lvl. exfalso;omega.
-    + cbn in h_le , h_lt_δ_lvl.
-      rewrite <- Nat.succ_le_mono in h_le.
-      !inversion h_chain_stkptr.
-      destruct δ_lvl.
-      * admit.
-      * assert (Cminor.eval_expr g (Values.Vptr b' Int.zero) locenv m (build_loads_ (Econst (Oaddrstack Int.zero)) δ_lvl) v).
-        { inversion h_CM_eval_expr_v;subst.
-          
-        edestruct IHn.
-        
-        -- rewrite <- Nat.succ_lt_mono in h_lt_δ_lvl.
-           eassumption.
-        -- eassumption.
-      * eauto.
-      
-      destruct δ_lvl.
-      *
-        cbn in h_CM_eval_expr_v.
-        !inversion h_CM_eval_expr_v;subst.
-        cbn in h_eval_constant.
-        inversion h_eval_constant.
-        subst.
-        !!pose proof cm_eval_addrstack_zero_chain _ _ _ h_chain_n_stkptr g locenv.
-        
-
-  red.
-  !intros;up_type.
-  pose proof   (Econst (Oaddrstack Int.zero)) δ_lvl.
-  eapply chain_struct_build_loads_ofs in h_chain_n_stkptr.
+  - destruct δ_lvl.
+    + cbn.
+      exists b.
+      apply cm_eval_addrstack_zero.
+    + cbn.
+      !!destruct CE;[cbn in h_lt_δ_lvl;exfalso;omega|].
+      subst;up_type.
+      specialize (IHh_chain_n_stkptr (Datatypes.length CE) CE eq_refl).
+      !!assert (Datatypes.length CE ≤ n) by (cbn in h_le_lgth_CE;omega).
+      !!assert (δ_lvl < Datatypes.length CE)%nat by (cbn in h_lt_δ_lvl;omega).
+      specialize (fun locenv g => IHh_chain_n_stkptr h_le locenv g δ_lvl h_lt_δ_lvl0).
+      specialize (IHh_chain_n_stkptr locenv g).
+      decomp IHh_chain_n_stkptr.
+      exists b_δ.
+      assert (chained_stack_structure m (S δ_lvl) (Values.Vptr b Int.zero)).
+      { econstructor; eauto.
+        eapply chained_stack_structure_le;eauto.
+        omega. }
+      eapply chained_stack_structure_decomp_S_2';eauto.
+      econstructor;eauto.
+      eapply cm_eval_addrstack_zero_chain;eauto.
 Qed.
-*)
 
 Lemma assignment_preserve_chained_stack_structure:
   forall stbl CE g locenv stkptr m a chk id id_t e_t_v idaddr m' n,
     chained_stack_structure m n stkptr ->
-(*     stack_localstack_aligned CE locenv g m ->  *)
+    Datatypes.length CE ≤ n -> (* the chaining structure must be at least a deep as CE *)
+    (*     stack_localstack_aligned CE locenv g m ->  *)
     stack_no_null_offset stbl CE -> 
     exact_levelG CE ->
     (* translating the variabe to a Cminor load address *)
@@ -4490,7 +4354,7 @@ Proof.
   destruct id_t_v;try discriminate.
   assert (4 <= (Int.unsigned i)).
   { eapply eval_build_loads_offset_non_null_var;eauto.
-  }
+    eapply chain_aligned;eauto. }
   eapply assignment_preserve_chained_stack_structure_aux;eauto.
 Qed.
 
