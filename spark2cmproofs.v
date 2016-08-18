@@ -1684,8 +1684,6 @@ Proof.
     + eapply IHh_exct_lvl_CE;eauto.
 Qed.
 
-
-
 Lemma exact_lvlG_nil_left: forall CE,
   exact_levelG CE ->
   CompilEnv.cut_until CE (Datatypes.length CE) [ ] CE.
@@ -4991,7 +4989,7 @@ Qed.
 
 (* The forbidden *addresses* remain the same when storing values of
    parameters in the local stack.  *)
-Lemma exec_init_locals_preserve_forbidden:
+Lemma exec_init_locals_preserve_forbidden_subproof:
   forall decl st CE locvarinit,
     exact_levelG CE ->    
     stack_no_null_offset st CE ->
@@ -5114,7 +5112,7 @@ Proof.
     + elim hneq;auto.
 Qed.
 
-Lemma init_locals_unchanged_on:
+Lemma init_locals_unchanged_on_subproof:
   forall decl st CE locvarinit,
     exact_levelG CE ->
     stack_no_null_offset st CE ->
@@ -5128,9 +5126,9 @@ Lemma init_locals_unchanged_on:
 Proof.
   !intros.
   up_type.
-  !!pose proof (exec_init_locals_preserve_forbidden _ _ _ _ h_exact_lvlG_CE h_nonul_ofs heq_init_lcl_decl_locvarinit
-                                                     astnum _ proc_t _ _ _ _ _ _ lvl heq_nat h_chain_lvl_sp
-                                                     h_aligned_g_m h_exec_stmt_locvarinit).
+  !!pose proof (exec_init_locals_preserve_forbidden_subproof
+                  _ _ _ _ h_exact_lvlG_CE h_nonul_ofs heq_init_lcl_decl_locvarinit astnum _ proc_t
+                  _ _ _ _ _ _ lvl heq_nat h_chain_lvl_sp h_aligned_g_m h_exec_stmt_locvarinit).
   decomp h_and.
   revert locvarinit h_exact_lvlG_CE h_nonul_ofs heq_init_lcl_decl_locvarinit astnum g proc_t sp e_chain m t2 e_postchain m' h_aligned_g_m
          lvl heq_nat h_exec_stmt_locvarinit h_unch_forbid_m_m' h_chain_lvl_sp h_chain_lvl_sp0.
@@ -5164,10 +5162,10 @@ Proof.
     rename m1 into m_mid.
     rename e1 into e_mid.
     !assert (chained_stack_structure m_mid lvl sp ∧ unchange_forbidden st CE g astnum e_chain e_mid sp m m_mid).
-    { eapply exec_init_locals_preserve_forbidden with (locvarinit:=stmt1);eauto. }
+    { eapply exec_init_locals_preserve_forbidden_subproof with (locvarinit:=stmt1);eauto. }
     decomp h_and.
     !assert (chained_stack_structure m' lvl sp ∧ unchange_forbidden st CE g astnum e_mid e_postchain sp m_mid m').
-    { eapply exec_init_locals_preserve_forbidden with (locvarinit:=stmt2);eauto.
+    { eapply exec_init_locals_preserve_forbidden_subproof with (locvarinit:=stmt2);eauto.
       eapply chain_aligned;eauto.
       omega. }
     decomp h_and.
@@ -5184,6 +5182,27 @@ Proof.
       apply h_unch_forbid_m_m_mid.
 Qed.
 
+
+
+Lemma init_locals_preserves_structure:
+  forall decl st CE locvarinit,
+    exact_levelG CE ->
+    stack_no_null_offset st CE ->
+    init_locals st CE decl =: locvarinit ->
+    forall astnum g proc_t sp e_chain m t2 e_chain' m' lvl,
+      Datatypes.length CE = lvl -> 
+      chained_stack_structure m lvl sp ->
+      stack_localstack_aligned CE e_chain g m sp -> 
+      exec_stmt g proc_t sp e_chain m locvarinit t2 e_chain' m' Out_normal ->
+      Mem.unchanged_on (forbidden st CE g astnum e_chain sp m m) m m'
+      ∧ chained_stack_structure m' lvl sp
+      ∧ unchange_forbidden st CE g astnum e_chain e_chain' sp m m'.
+Proof.
+  split.
+  - eapply init_locals_unchanged_on_subproof;eauto.
+  - eapply exec_init_locals_preserve_forbidden_subproof;eauto.
+Qed.
+
 Lemma build_compilenv_exact_lvl:
   forall st CE proc_lvl lparams decl CE' sz,
     exact_levelG CE ->
@@ -5195,6 +5214,7 @@ Proof.
   functional inversion heq.
   constructor;auto.
 Qed.  
+
 
 
 Lemma compute_size_pos : forall st subtyp_mrk x, spark2Cminor.compute_size st subtyp_mrk =: x -> (x>0).
@@ -5493,11 +5513,11 @@ Proof.
       unfold Int.max_unsigned.
       omega.
   - !assert (CompilEnv.resides nme x0 = true). {
-      apply (compilenv_fetches_resides nme x0).
+      apply (CompilEnv.fetches_resides nme x0).
       exists t;auto. }
     rewrite h2 in heq_bool_true;discriminate.
   - !assert (exists t, CompilEnv.fetches nme x0 = Some t). {
-      apply (compilenv_fetches_resides nme x0).
+      apply (CompilEnv.fetches_resides nme x0).
       assumption. }
     !!decompose [ex] h_ex.
     rewrite h1 in heq_CEfetches_nme_x0;discriminate.
@@ -5545,39 +5565,46 @@ Proof.
     reflexivity.
 Qed.
 
-
-
+(* TODO: Adapt the proof thh changed statement.  *)
 Lemma exec_preserve_invisible:
   ∀ g func stkptr locenv m stmt_t tr locenv' m' outc,
     exec_stmt g func stkptr locenv m stmt_t tr locenv' m' outc -> 
-    ∀ st CE stmt s,
+    ∀ st CE stmt s lvl,
+      lvl = Datatypes.length CE ->
       strong_match_env st s CE stkptr locenv g m ->
+      chained_stack_structure m lvl stkptr ->
       invariant_compile CE st ->
       transl_stmt st CE stmt =: stmt_t ->
+      chained_stack_structure m' lvl stkptr ∧ 
       forall astnum,
-        (* eval_stmt st s stmt s' -> *)
-        Mem.unchanged_on
-          (fun sp_id ofs_id => invisible_cminor_addr st CE g astnum locenv stkptr m sp_id ofs_id)
-          m m'.
+          (* eval_stmt st s stmt s' -> *)
+          Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m'.
 Proof.
   !!intros until 1.
   !induction h_exec_stmt_stmt_t_outc;!intros;
     rewrite <- transl_stmt_ok in heq_transl_stmt_stmt;
     !functional inversion heq_transl_stmt_stmt;
-    rewrite transl_stmt_ok in *;subst.
+    rewrite transl_stmt_ok in *;subst;split;try assumption;!intros.
+  (* Skip => unchanged on forbidden *)
   - apply Mem.unchanged_on_refl.
+  (* Sstore => chained_struct *)
+  - admit.
+  (* Store => unchanged on forbidden *)
   - destruct addr_v;try discriminate. 
     up_type.
     simpl in heq_storev_a_v_m'.
     eapply Mem.store_unchanged_on;eauto.
     !intros.
-    intro abs.
-    red in abs.
+    intros [abs1 abs2].
+    red in abs1.
     !functional inversion heq_transl_name;subst.
     simpl in heq_compute_chnk_nme_chunk.
     rewrite <- transl_variable_astnum with (a:=astnum) (1:=heq_transl_variable) in heq_transl_variable.
-    specialize (abs id addr chunk b i heq_transl_variable heq_compute_chnk_nme_chunk h_CM_eval_expr_addr_addr_v). 
-    destruct abs;auto;omega.
+    specialize (abs1 id addr chunk b i heq_transl_variable heq_compute_chnk_nme_chunk h_CM_eval_expr_addr_addr_v). 
+    destruct abs1;auto;omega.
+  (* Scall => chained_struct *)
+  - admit.
+  (* Scall => unchanged on forbidden *)
   - rename x1 into chaining_arg.
     rename x into args_t.
     rename lexp into args.
@@ -5622,7 +5649,7 @@ Proof.
           rewrite heq_find_func_a_v_fd in heq_find_func_paddr_fction.
           !invclear heq_find_func_paddr_fction.
           assumption. }
-      decomp h_ex.
+      decomp h_ex;up_type.
 
 (*      rename f0 into proc_t.
       rename x into CE_prfx.
@@ -5695,6 +5722,11 @@ Proof.
           eapply Mem.alloc_unchanged_on.
           eauto. }
 
+        !!pose proof
+        strong_match_env_match_env_sublist _ _ _ _ _ _ _ h_strg_mtch_s_CE_m
+        h_inv_comp_CE_st _ _ _ h_CEcut_CE_proc_lvl.
+        !!destruct h_ex as [δ [sp'' [s' [s'' [? [? [? h_mtchenv]]]]]]].
+
         (* Since the chaining param is not the translation of a spark variable, 
            we stay in callers environment, that is: from m1 to m4 there is no change
            in the addresses visible in m. *)
@@ -5716,31 +5748,109 @@ Proof.
           intro.
           eapply fresh_block_alloc_perm;eauto. }
 
+        (* This is from m_chain only. *)
         (* TODO: prove that (forbidden m_chain m_chain) x y <=>
         (forbidden m m_chain) x y, everything that is visible from
         m_chain is either visible from m or free from m. *)
         !assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_chain sp_proc m_chain m_chain) m_chain m_init_params).
-        { 
-          eapply exec_store_params_unchanged_on;eauto.
+        { eapply exec_store_params_unchanged_on;eauto.
           - eapply build_compilenv_exact_lvl with (2:=heq1);eauto.
             eapply exact_lvlG_cut_until;eauto.
           - eapply build_compilenv_stack_no_null_offset with (CE:=CE_sufx).
             + eapply exact_lvlG_cut_until;eauto.
-            + admit. (* xxx *)
+            + specialize (h_mtchenv e).
+              eapply me_safe_cm_env.
+              eapply h_mtchenv.
             + eauto.
-          - !!pose proof
-              strong_match_env_match_env_sublist _ _ _ _ _ _ _ h_strg_mtch_s_CE_m
-              h_inv_comp_CE_st _ _ _ h_CEcut_CE_proc_lvl.
-            !!destruct h_ex as [δ [sp'' [s' [s'' [? [? [? h_mtchenv]]]]]]].
+          - (* malloc+chaining link preserve stack_localstack_aligned. *)
+            red.
+            !intros.
+            destruct δ_lvl.
+            + cbn.
+              eexists.
+              eapply cm_eval_addrstack_zero.
+            + (*First prove that after one load we are back on sp.*)
+              (* Then prove that nothing visible from there has change (use unchanged_on forbidden hyps)  *)
+              xxx
+              stack_localstack_aligned CE_proc e_chain g m_chain sp_proc
 
-            assert (stack_localstack_aligned CE_sufx e g m).
+
+
+
+            !!pose proof (chain_structure_cut (current_lvl - proc_lvl) proc_lvl m sp) as h.
+            !assert (proc_lvl <= current_lvl)%nat.
+            { admit. }
+            !!assert (proc_lvl + (current_lvl - proc_lvl) = current_lvl)%nat by omega.
+            !assert (chained_stack_structure m (proc_lvl + (current_lvl - proc_lvl)) sp).
+            { rewrite heq_nat.
+              unfold current_lvl.
+              eapply chained_stack_structure_le ;eauto;omega. }
+            specialize (h h_chain_sp).
+            rewrite heq_nat in h.
+            eapply chain_aligned.
+            
+            !assert (stack_localstack_aligned CE_sufx e g m sp'').
             { apply h_mtchenv. }
+            (* malloc+chaining link preserve stack_localstack_aligned. *)
+            red.
+            !intros.
+            destruct δ_lvl.
+            + cbn.
+              eexists.
+              eapply cm_eval_addrstack_zero.
+            + assert (chained_stack_structure m_chain (S δ_lvl) sp_proc). {
+                admit. 
+              }
+
+
+
+              pose proof chained_stack_structure_decomp_S_2' δ_lvl m_chain sp_proc.
+              
+              cbn.
+              red in h_aligned_g_m.
+              !assert (δ_lvl ≤ Datatypes.length CE_sufx).
+              { rewrite <- build_compilenv_ok in heq1.
+                functional inversion heq1;subst.
+                cbn in h_le_δ_lvl;omega. }
+              specialize (h_aligned_g_m _ h_le_δ_lvl0).
+              decomp h_aligned_g_m.
+              exists b_δ.
+              apply eval_Eload with (Values.Vptr b_δ Int.zero).
+              * 
+
+              admit.
+            }
+            
+
+            Lemma build_compilenv_stack_localstack_aligned:
+              forall st CE locenv g m sp proc_lvl lparams decl CE' sz,
+                stack_localstack_aligned CE locenv g m sp ->
+                repeat_Mem_loadv AST.Mint32 m δ sp sp'' ->
+                build_compilenv st CE proc_lvl lparams decl =: (CE',sz) ->
+                stack_localstack_aligned CE' locenv g m sp.
+
+
+            eapply chain_aligned;eauto.
+            
             admit. (* Lemma  about build_compilenv and stack_localstack_aligned *)
         }
-
         assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_initparams sp_proc m_init_params m_init_params)
                                  m_init_params m_locvarinit).
-        {  admit. (* xxx use init_locals_params_unchanged_on *)
+        { eapply init_locals_unchanged_on;auto.
+          6: eapply h_exec_stmt_locvarinit.
+          - eapply build_compilenv_exact_lvl with (2:=heq1) ;eauto.
+            eapply exact_lvlG_cut_until;eauto.
+          - eapply build_compilenv_stack_no_null_offset with (3:=heq1);eauto.
+            eapply exact_lvlG_cut_until;eauto.
+          - instantiate (1 := D_Seq_Declaration astnum decl D_Null_Declaration).
+            cbn.
+            rewrite heq_init_lcl_decl_x2;auto.
+          - eapply exec_init_locals_preserve_forbidden.
+            8: eapply h_exec_stmt_initparams.
+            5: rewrite <- plus_n_O;reflexivity.
+            + admit.
+            + pose proof (strong_match_env_match_env_sublist _ _ _ _ _ _ _ h_strg_mtch_s_CE_m h_inv_comp_CE_st _ _ _ h_CEcut_CE_proc_lvl).
+            admit.
         }
 
         assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_locvarinit sp_proc m_locvarinit m_locvarinit)
@@ -7603,71 +7713,6 @@ Proof.
               up_type.
               eapply IHh_copy_out_s_opt_s';eauto.
               intros locenv_caller. 
-
-
-
-
-
-
-(* BAD induction *)
-
-              Lemma exec_preserve_invisible:
-                ∀ st CE stmt stmt_t,
-                  transl_stmt st CE stmt =: stmt_t ->
-                  ∀ g func tr outc locenv stkptr m locenv',
-                  (* s s' *)
-                  forall m' astnum,
-                    (* eval_stmt st s stmt s' -> *)
-                    exec_stmt g func stkptr locenv m stmt_t tr locenv' m' outc ->
-                    Mem.unchanged_on
-                      (fun sp_id ofs_id => invisible_cminor_addr st CE g astnum locenv stkptr m sp_id ofs_id)
-                      m m'.
-              Proof.
-                intros st CE stmt.
-                !functional induction (transl_stmt st CE stmt);!intros;try discriminate; try !invclear heq.
-                - inversion h_exec_stmt;subst.
-                  apply Mem.unchanged_on_refl.
-                - !!inversion_clear h_exec_stmt;subst.
-                  destruct nme_t_v;try discriminate. 
-                  up_type.
-                  simpl in heq_storev_e_t_v_m'.
-                  eapply Mem.store_unchanged_on;eauto.
-                  !intros.
-                  intro abs.
-                  red in abs.
-                  unfold visible_cminor_addr in abs.
-                  apply abs. clear abs.
-                  !functional inversion heq_transl_name.
-                  exists id nme_t;split;auto.
-                  { erewrite transl_variable_astnum;eauto. }
-                  subst.
-                  simpl in heq_compute_chnk_nme_nme_chk.
-                  exists nme_chk; split;auto.
-                  exists i;split;auto.
-                  !destruct h_and.
-                  omega.
-                - !!inversion_clear h_exec_stmt;subst.
-                  destruct b.
-                  + eapply IHr;eauto.
-                  + eapply IHr0;eauto.
-                - admit.
-                - specialize (IHr _ heq_transl_stmt_stmt_x).
-                  specialize (IHr0 _ heq_transl_stmt_stmt0_x0).
-                  !!inversion_clear h_exec_stmt;subst.
-                  + assert (Mem.unchanged_on (λ sp_id ofs_id, invisible_cminor_addr st CE g astnum locenv stkptr m sp_id ofs_id) m m1).
-                    { eapply IHr;eauto. }
-                    assert (Mem.unchanged_on (λ sp_id ofs_id, invisible_cminor_addr st CE g astnum e1 stkptr m1 sp_id ofs_id) m1 m').
-                    { eapply IHr0;eauto. }
-                    admit. (* transitivity of unchanged_on is proved in recent Compcert, by changing its definition. *)
-                  + eapply IHr;eauto.
-              Qed.
-                  
-                
-                H g func tr outc locenv stkptr m locenv' m' astnum H0.
-                
-                
-              Qed.
-
 
 
               admit. 
