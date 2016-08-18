@@ -5383,7 +5383,7 @@ Lemma build_frame_decl_mon: forall st stosz lparams sto' sz',
         stosz = (stoszchainparam,sz) -> 
         (* k is the lesser bound of addresses (typically 4 to let room for the chaining arg *)
         forall k,
-          (forall nme x, CompilEnv.fetches nme stoszchainparam = Some x -> k <= x < sz) -> 
+          (forall nme x, CompilEnv.fetches nme stoszchainparam = Some x -> k <= x < sz) ->  
           k <= sz -> 
           forall nme v,
             CompilEnv.fetches nme sto' = Some v ->
@@ -5395,27 +5395,45 @@ Proof.
   all: try rewrite <- build_frame_decl_ok in *.
   - split;[split|].
     + inversion heq;reflexivity.
-    + admit.
-    + admit.
-  - split;[split|].
+    + inversion heq;cbn in *;omega.
+    + !invclear heq;subst;cbn in *.
+      !intros.
+      !invclear heq.
+      eauto.
+  - !!pose proof compute_size_pos _ _ _ heq_cmpt_size.
+    split;[split|].
     + !invclear heq.
       cbn.
-      !!pose proof compute_size_pos _ _ _ heq_cmpt_size.
       omega.
-    + admit.
-    + admit.
-  - xxx split;[split|].
-    + destruct x.
-      specialize (IHr0 _ _ heq0).
-      specialize (IHr _ _ heq).
-      etransitivity;eauto.
+    + !invclear heq;cbn in *.
+      destruct (Z.geb_spec (sz + x) Int.modulus);try discriminate;omega.
+    + !invclear heq;subst;cbn in *.
       !intros.
-      split.
-      split.
-  - replace sz' with (snd (sto', sz')) by auto.
-    eapply build_frame_decl_mon_sz;eauto.
-  - 
-  admit.
+      !invclear heq.
+      !destruct (Nat.eqb_spec nme (object_name objdecl));subst.
+      * !invclear heq0.
+        omega.
+      * specialize (H0 _ _ heq0).
+        omega.
+  - destruct x.
+    specialize (IHr _ _ heq h_le).
+    decomp IHr.
+    rename H0 into IHr_3.
+    specialize (IHr0 _ _ heq0 h_le_z).
+    decomp IHr0.
+    rename H0 into IHr0_3.
+    split;[split|].
+    + cbn in *;omega.
+    + assumption.
+    + !intros.
+      rename H0 into h_lelt.
+      !invclear heq1;subst.
+      cbn in*.
+      specialize (IHr_3 _ _ eq_refl _ h_lelt h_le_k_sz0).
+      rename z into sz.
+      !!assert (k<=sz) by omega.
+      specialize (IHr0_3 _ _ eq_refl k IHr_3 h_le_k_sz _ _ heq_CEfetches_nme_sto').
+      assumption.
 Qed.
 
 
