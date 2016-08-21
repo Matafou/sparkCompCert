@@ -893,6 +893,27 @@ Qed.
 
 Hint Resolve eval_expr_overf2.
 
+(* [make_load] does not fail on transl_type a translated variable coming
+   from stbl *)
+Lemma make_load_no_fail: forall stbl t nme_t x2,
+    transl_type stbl t = OK x2 ->
+    exists load_addr_nme, make_load nme_t x2 = OK load_addr_nme.
+Proof.
+  !intros.
+  unfold make_load.
+  destruct t;simpl in * ; simpl; try discriminate;eauto.
+  - inversion heq_transl_type. subst.
+    simpl.
+    unfold make_load.
+    simpl.
+    eauto.
+  - inversion heq_transl_type. subst.
+    simpl.
+    unfold make_load.
+    simpl.
+    eauto.
+Qed.
+
 Definition stack_complete stbl s CE := forall a nme addr_nme,
     transl_variable stbl CE a nme = OK addr_nme
     -> exists v, eval_name stbl s (E_Identifier a nme) (Normal v).
@@ -1068,6 +1089,22 @@ Definition stack_CE_NoDup_G (CE : compilenv) :=
 (*   { ce_wf_intra:> stack_CE_NoDup CE; *)
 (*     ce_wf_extra:> stack_CE_NoDup_G CE }. *)
 
+
+(** The Chaining structure of the stacks.
+
+In this section we describe the way the first element of each local
+stack points to another local stack up to a given depth. This give a
+stack of stacks that is isomrphic to Spark's stack of stacks. *)
+
+(* We need this structural invariant at least to prove that execution
+   never modifies the chaining pointers. *)
+Inductive chained_stack_structure m : nat -> Values.val -> Prop :=
+| chained_0: forall b, chained_stack_structure m 0 (Values.Vptr b Int.zero) (* Should b null? *)
+| chained_S: forall n b' b,
+    chained_stack_structure m n (Values.Vptr b' Int.zero) ->
+    Mem.loadv AST.Mint32 m (Values.Vptr b Int.zero) = Some (Values.Vptr b' Int.zero) ->
+    chained_stack_structure m (S n) (Values.Vptr b Int.zero).
+
 Record safe_cm_env st CE sp locenv g m: Prop :=
   mk_safe_cm_env {
       me_stack_match_functions: stack_match_functions st sp CE locenv g m ;
@@ -1075,7 +1112,11 @@ Record safe_cm_env st CE sp locenv g m: Prop :=
       me_stack_localstack_aligned: stack_localstack_aligned CE locenv g m sp;
       me_stack_no_null_offset: stack_no_null_offset st CE;
       me_stack_freeable: stack_freeable st CE sp g locenv m;
+      me_chain_struct: chained_stack_structure m (Datatypes.length CE) sp 
     }.
+
+
+
 
 (** The Memory bisimilarity/invariant property states that
 
@@ -1111,6 +1152,7 @@ Arguments me_stack_separate : default implicits.
 Arguments me_stack_freeable : default implicits.
 Arguments me_stack_complete : default implicits.
 Arguments me_safe_cm_env : default implicits.
+Arguments me_chain_struct : default implicits.
 
 (** The compilation environment has some intrinsic properties:
  - Frame are numbered in increasing order in the global store
@@ -1131,19 +1173,7 @@ Arguments ce_wf_intra: default implicits.
 Arguments ce_wf_extra: default implicits.
 
 Hint Resolve ci_exact_lvls ci_increasing_ids ci_no_overflow ci_stbl_var_types_ok ce_wf_extra ce_wf_extra.
-Hint Resolve me_stack_match me_stack_match_CE me_stack_match_functions me_stack_complete me_stack_separate me_stack_localstack_aligned me_stack_no_null_offset me_overflow me_safe_cm_env.
-
-
-Inductive strong_P (P: symboltable.symboltable -> STACK.stack → compilenv → Values.val → env → genv → mem → Prop) stbl: STACK.stack → compilenv → Values.val → env → genv → mem → Prop :=
-| strg1: forall v locenv g m,
-    P stbl [] [] v locenv g m ->
-    strong_P P stbl [] [] v locenv g m
-| strg2: forall lvl sto s stoCE CE v v' locenv locenv' g m,
-    strong_P P stbl s CE v locenv g m ->
-    Mem.loadv AST.Mint32 m v' = Some v ->
-    P stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m ->
-    strong_P P stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m.
-
+Hint Resolve me_stack_match me_stack_match_CE me_stack_match_functions me_stack_complete me_stack_separate me_stack_localstack_aligned me_stack_no_null_offset me_overflow me_safe_cm_env me_chain_struct.
 
 Inductive strong_match_env stbl: STACK.stack → compilenv → Values.val → env → genv → mem → Prop :=
 | C1: forall v locenv g m,
@@ -1791,6 +1821,7 @@ Proof.
     exfalso.
     !functional inversion heq_transl_variable.
     functional inversion heq_CEfetchG_id.
+  + cbn. subst. constructor.
   + red;!intros.
     functional inversion heq_SfetchG_id.
 Qed.
@@ -3365,6 +3396,7 @@ Proof.
   eapply wf_chain_load'3;eauto.
 Qed.
 
+
 (* Well-formedness of the chained stack: store never modify the
      address of a variable. Reason: since variable addresses are
      expressions of the form ((Load(Load(...(Load 0))))+δ) with δ >= 4
@@ -4013,6 +4045,14 @@ Proof.
 Qed.
 
 
+Hint Resolve
+     assignment_preserve_stack_match
+     assignment_preserve_stack_match_function
+     assignment_preserve_stack_complete
+     assignment_preserve_stack_separate assignment_preserve_loads_offset_non_null
+     assignment_preserve_stack_no_null_offset assignment_preserve_stack_safe
+     assignment_preserve_stack_freeable.
+
 (* TODO: prove and  move somewhere else. *)
 Lemma exec_stmt_assoc: forall g the_proc stackptr locenv m prog1 prog2 prog3 trace locenv' m' Out_normal,
     exec_stmt g the_proc stackptr locenv m (Sseq (Sseq prog1 prog2) prog3 )  trace locenv' m' Out_normal ->
@@ -4032,20 +4072,6 @@ Lemma exec_stmt_assoc_2: forall g the_proc stackptr locenv m prog1 prog2 prog3 p
 Proof.
 Admitted.
 
-(** The Chaining structure of the stacks.
-
-In this section we describe the way the first element of each local
-stack points to another local stack up to a given depth. This give a
-stack of stacks that is isomrphic to Spark's stack of stacks. *)
-
-(* We need this structural invariant at least to prove that execution
-   never modifies the chaining pointers. *)
-Inductive chained_stack_structure m : nat -> Values.val -> Prop :=
-| chained_0: forall b, chained_stack_structure m 0 (Values.Vptr b Int.zero) (* Should b null? *)
-| chained_S: forall n b' b,
-    chained_stack_structure m n (Values.Vptr b' Int.zero) ->
-    Mem.loadv AST.Mint32 m (Values.Vptr b Int.zero) = Some (Values.Vptr b' Int.zero) ->
-    chained_stack_structure m (S n) (Values.Vptr b Int.zero).
 
 Ltac rename_hyp_chain h th :=
   match th with
@@ -5564,392 +5590,34 @@ Proof.
     rewrite heq0.
     reflexivity.
 Qed.
-
-(* TODO: Adapt the proof thh changed statement.  *)
-Lemma exec_preserve_invisible:
-  ∀ g func stkptr locenv m stmt_t tr locenv' m' outc,
-    exec_stmt g func stkptr locenv m stmt_t tr locenv' m' outc -> 
-    ∀ st CE stmt s lvl,
-      lvl = Datatypes.length CE ->
-      strong_match_env st s CE stkptr locenv g m ->
-      chained_stack_structure m lvl stkptr ->
-      invariant_compile CE st ->
-      transl_stmt st CE stmt =: stmt_t ->
-      chained_stack_structure m' lvl stkptr ∧ 
-      forall astnum,
-          (* eval_stmt st s stmt s' -> *)
-          Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m'.
-Proof.
-  !!intros until 1.
-  !induction h_exec_stmt_stmt_t_outc;!intros;
-    rewrite <- transl_stmt_ok in heq_transl_stmt_stmt;
-    !functional inversion heq_transl_stmt_stmt;
-    rewrite transl_stmt_ok in *;subst;split;try assumption;!intros.
-  (* Skip => unchanged on forbidden *)
-  - apply Mem.unchanged_on_refl.
-  (* Sstore => chained_struct *)
-  - admit.
-  (* Store => unchanged on forbidden *)
-  - destruct addr_v;try discriminate. 
-    up_type.
-    simpl in heq_storev_a_v_m'.
-    eapply Mem.store_unchanged_on;eauto.
-    !intros.
-    intros [abs1 abs2].
-    red in abs1.
-    !functional inversion heq_transl_name;subst.
-    simpl in heq_compute_chnk_nme_chunk.
-    rewrite <- transl_variable_astnum with (a:=astnum) (1:=heq_transl_variable) in heq_transl_variable.
-    specialize (abs1 id addr chunk b i heq_transl_variable heq_compute_chnk_nme_chunk h_CM_eval_expr_addr_addr_v). 
-    destruct abs1;auto;omega.
-  (* Scall => chained_struct *)
-  - admit.
-  (* Scall => unchanged on forbidden *)
-  - rename x1 into chaining_arg.
-    rename x into args_t.
-    rename lexp into args.
-    rename bl into all_args_t.
-    rename a_v into proc_addr.
-    rename fd into proc_value.
-    rename y into proc_lvl.
-    !assert (match_env st s CE sp e g m).
-    { inversion h_strg_mtch_s_CE_m;auto. }
-    !inversion h_evalfuncall_fd_vargs_vres;subst.
-    + (* internal function *)
-      !assert (
-         (* [transl_procsig] gives [f0,proc_lvl], so f0 is the result
-            of a translation with the right CE. All procedures in
-            memory are supposed to come from compilation. *)
-         ∃ CE_prfx CE_sufx pbdy X lotherproc,
-           CompilEnv.cut_until CE proc_lvl CE_prfx CE_sufx /\
-           transl_procedure st CE_sufx proc_lvl pbdy (* prov_lvl+1? *)
-           = OK ((X, AST.Gfun (AST.Internal f0))::lotherproc)).
-      { unfold transl_procsig in heq_transl_procsig_pnum.
-        !!assert (stack_match_functions st sp CE e g m) by eauto.
-        red in h_stk_mtch_fun.
-        unfold symboltable.fetch_proc in h_stk_mtch_fun.
-        specialize (h_stk_mtch_fun pnum).
-        !!destruct (fetch_proc pnum st) eqn:?;try discriminate.
-        !destruct t0.
-        specialize (h_stk_mtch_fun l p eq_refl).
-        decomp h_stk_mtch_fun.
-        exists CE' CE''.
-        !!destruct 
-          (transl_lparameter_specification_to_procsig
-             st l (procedure_parameter_profile p)) eqn:?;try discriminate.
-        simpl in heq_transl_procsig_pnum.
-        !invclear heq_transl_procsig_pnum.
-        exists p pnum0 lglobdef.
-        split.
-        + assumption.
-        + assert (paddr = proc_addr).
-          { eapply det_eval_expr with (1:=h_CM_eval_expr_paddr)
-                                        (2:=h_CM_eval_expr_a_a_v). }
-          subst.
-          rewrite heq_find_func_a_v_fd in heq_find_func_paddr_fction.
-          !invclear heq_find_func_paddr_fction.
-          assumption. }
-      decomp h_ex;up_type.
-
-(*      rename f0 into proc_t.
-      rename x into CE_prfx.
-      rename x0 into CE_sufx.
-      rename x3 into sub_proces.
-      rename x1 into pbdy.
-      rename x2 into proc_id_t.*)
-(*       decomp H. *)
-      rewrite transl_procedure_ok in heq_transl_proc_pbdy.
-      !functional inversion heq_transl_proc_pbdy;up_type.
-      rewrite <- transl_procedure_ok in *.
-      rename x3 into initparams.
-      rename x2 into locvarinit.
-      rename x1 into bdy.
-      rename x4 into copyout.
-      subst.
-      rename proc_t into pbody_t.
-      set (proc_t := {|
-                      fn_sig := x5;
-                      fn_params := chaining_param :: tlparams;
-                      fn_vars := transl_decl_to_lident st decl;
-                      fn_stackspace := y;
-                      fn_body := pbody_t |}) in *.
-      rename x into CE_proc.
-      rename y into proc_sz_locals.
-      up_type.
-      cbn [ proc_t fn_vars fn_params fn_body pbody_t] in h_exec_stmt.
-
-      (* splitting the execution of proc in 5: chain_param, initparam, initlocvar, bdy and cpout. *)
-      !!inversion_clear h_exec_stmt;subst.
-      2: admit. (* prematurate error, this should work with parts of the normal case *)
-      !!inversion_clear h_exec_stmt;subst.
-      2: admit. (* prematurate error, this should work with parts of the normal case *)
-      !!inversion_clear h_exec_stmt;subst.
-      2: admit. (* prematurate error, this should work with parts of the normal case *)
-      !!inversion_clear h_exec_stmt0;subst.
-      2: admit. (* prematurate error, this should work with parts of the normal case *)
-
-      * (* RENAMING *)
-        (* Case where No error occured during the whole function call *)
-        rename h_exec_stmt into h_exec_stmt_init.
-        match goal with
-        | H: exec_stmt _ _ _ _ ?ma chain_param _ ?e ?mb _ |- _ =>
-          rename mb into m_chain; rename e into e_chain;
-            rename ma into m_pre_chain
-        end.
-        match goal with
-        | H: exec_stmt _ _ _ _ _ initparams _ ?e ?mb _ |- _ =>
-          rename mb into m_init_params;rename e into e_initparams;
-            rename H into h_exec_stmt_initparams
-        end.
-        match goal with
-        | H: exec_stmt _ _ _ _ _ (Sseq locvarinit Sskip) _ ?e ?mb _ |- _ => 
-          rename mb into m_locvarinit; rename e into e_locvarinit;
-            rename H into h_exec_stmt_locvarinit
-        end.
-        match goal with
-        | H: exec_stmt _ _ _ _ _ bdy _ ?e ?mb _ |- _ => 
-          rename mb into m_bdy; rename e into e_bdy
-        end.
-        match goal with
-        | H: exec_stmt _ _ _ _ _ copyout _ ?e ?mb _ |- _ => 
-          rename mb into m_cpout; rename e into e_cpout
-        end.
-        (* END RENAMING *)
-        set (sp_proc := Values.Vptr sp0 Int.zero) in *.
-        up_type.
-        !assert (Mem.unchanged_on (forbidden st CE g astnum e sp m m_chain) m m_pre_chain).
-        { (* Lemma about invisible and alloc. *)
-          eapply Mem.alloc_unchanged_on.
-          eauto. }
-
-        !!pose proof
-        strong_match_env_match_env_sublist _ _ _ _ _ _ _ h_strg_mtch_s_CE_m
-        h_inv_comp_CE_st _ _ _ h_CEcut_CE_proc_lvl.
-        !!destruct h_ex as [δ [sp'' [s' [s'' [? [? [? h_mtchenv]]]]]]].
-
-        (* Since the chaining param is not the translation of a spark variable, 
-           we stay in callers environment, that is: from m1 to m4 there is no change
-           in the addresses visible in m. *)
-        !assert (Mem.unchanged_on (forbidden st CE g astnum e sp m m_chain) m_pre_chain m_chain).
-        { unfold chain_param in h_exec_stmt_chain_param.
-          !inversion h_exec_stmt_chain_param.
-          unfold Mem.storev in heq_storev_v_m_chain.
-          destruct vaddr;try discriminate.
-          apply Mem.store_unchanged_on with (1:=heq_storev_v_m_chain).
-          !intros.
-          unfold sp_proc in h_CM_eval_expr_vaddr.
-          !destruct h_and.
-          !inversion h_CM_eval_expr_vaddr;subst.
-          !inversion h_eval_constant;subst.
-          intro abs. red in abs. destruct abs as [abs1 abs2].
-          red in abs2.
-          apply abs2.
-          red.
-          intro.
-          eapply fresh_block_alloc_perm;eauto. }
-
-        (* This is from m_chain only. *)
-        (* TODO: prove that (forbidden m_chain m_chain) x y <=>
-        (forbidden m m_chain) x y, everything that is visible from
-        m_chain is either visible from m or free from m. *)
-        !assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_chain sp_proc m_chain m_chain) m_chain m_init_params).
-        { eapply exec_store_params_unchanged_on;eauto.
-          - eapply build_compilenv_exact_lvl with (2:=heq1);eauto.
-            eapply exact_lvlG_cut_until;eauto.
-          - eapply build_compilenv_stack_no_null_offset with (CE:=CE_sufx).
-            + eapply exact_lvlG_cut_until;eauto.
-            + specialize (h_mtchenv e).
-              eapply me_safe_cm_env.
-              eapply h_mtchenv.
-            + eauto.
-          - (* malloc+chaining link preserve stack_localstack_aligned. *)
-            red.
-            !intros.
-            destruct δ_lvl.
-            + cbn.
-              eexists.
-              eapply cm_eval_addrstack_zero.
-            + (*First prove that after one load we are back on sp.*)
-              (* Then prove that nothing visible from there has change (use unchanged_on forbidden hyps)  *)
-              xxx
-              stack_localstack_aligned CE_proc e_chain g m_chain sp_proc
-
-
-
-
-            !!pose proof (chain_structure_cut (current_lvl - proc_lvl) proc_lvl m sp) as h.
-            !assert (proc_lvl <= current_lvl)%nat.
-            { admit. }
-            !!assert (proc_lvl + (current_lvl - proc_lvl) = current_lvl)%nat by omega.
-            !assert (chained_stack_structure m (proc_lvl + (current_lvl - proc_lvl)) sp).
-            { rewrite heq_nat.
-              unfold current_lvl.
-              eapply chained_stack_structure_le ;eauto;omega. }
-            specialize (h h_chain_sp).
-            rewrite heq_nat in h.
-            eapply chain_aligned.
-            
-            !assert (stack_localstack_aligned CE_sufx e g m sp'').
-            { apply h_mtchenv. }
-            (* malloc+chaining link preserve stack_localstack_aligned. *)
-            red.
-            !intros.
-            destruct δ_lvl.
-            + cbn.
-              eexists.
-              eapply cm_eval_addrstack_zero.
-            + assert (chained_stack_structure m_chain (S δ_lvl) sp_proc). {
-                admit. 
-              }
-
-
-
-              pose proof chained_stack_structure_decomp_S_2' δ_lvl m_chain sp_proc.
-              
-              cbn.
-              red in h_aligned_g_m.
-              !assert (δ_lvl ≤ Datatypes.length CE_sufx).
-              { rewrite <- build_compilenv_ok in heq1.
-                functional inversion heq1;subst.
-                cbn in h_le_δ_lvl;omega. }
-              specialize (h_aligned_g_m _ h_le_δ_lvl0).
-              decomp h_aligned_g_m.
-              exists b_δ.
-              apply eval_Eload with (Values.Vptr b_δ Int.zero).
-              * 
-
-              admit.
-            }
-            
-
-            Lemma build_compilenv_stack_localstack_aligned:
-              forall st CE locenv g m sp proc_lvl lparams decl CE' sz,
-                stack_localstack_aligned CE locenv g m sp ->
-                repeat_Mem_loadv AST.Mint32 m δ sp sp'' ->
-                build_compilenv st CE proc_lvl lparams decl =: (CE',sz) ->
-                stack_localstack_aligned CE' locenv g m sp.
-
-
-            eapply chain_aligned;eauto.
-            
-            admit. (* Lemma  about build_compilenv and stack_localstack_aligned *)
-        }
-        assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_initparams sp_proc m_init_params m_init_params)
-                                 m_init_params m_locvarinit).
-        { eapply init_locals_unchanged_on;auto.
-          6: eapply h_exec_stmt_locvarinit.
-          - eapply build_compilenv_exact_lvl with (2:=heq1) ;eauto.
-            eapply exact_lvlG_cut_until;eauto.
-          - eapply build_compilenv_stack_no_null_offset with (3:=heq1);eauto.
-            eapply exact_lvlG_cut_until;eauto.
-          - instantiate (1 := D_Seq_Declaration astnum decl D_Null_Declaration).
-            cbn.
-            rewrite heq_init_lcl_decl_x2;auto.
-          - eapply exec_init_locals_preserve_forbidden.
-            8: eapply h_exec_stmt_initparams.
-            5: rewrite <- plus_n_O;reflexivity.
-            + admit.
-            + pose proof (strong_match_env_match_env_sublist _ _ _ _ _ _ _ h_strg_mtch_s_CE_m h_inv_comp_CE_st _ _ _ h_CEcut_CE_proc_lvl).
-            admit.
-        }
-
-        assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_locvarinit sp_proc m_locvarinit m_locvarinit)
-                                 m_locvarinit m_bdy).
-        { admit. }
-        assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_locvarinit sp_proc m_bdy m_bdy)
-                                 m_bdy m_cpout).
-        { admit. }
-
-        
-
-        admit. (* associativity of unchanged_on? No, more
-                                complex: the unchanged_on on the body part
-                                correpsond to either visible parts from sp or from
-                                freeed space (outcome_free_mem m2 ... m'). *)
-    + (* functional inversion would be cleaner here. *)
-      admit. (* No External function *)
-  - destruct b.
-    + eapply IHh_exec_stmt_stmt_t_outc;eauto.
-    + eapply IHh_exec_stmt_stmt_t_outc;eauto.
-  - specialize (IHh_exec_stmt_stmt_t_outc1 _ _ _ _ h_strg_mtch_s_CE_m h_inv_comp_CE_st heq1).
-    (* Needing match_env preserved here. *)
-    admit.
-  (* specialize (IHh_exec_stmt_stmt_t_outc2 _ _ _ _ ?  heq0). *)
-  (* transitivity of unchanged_on is proved in recent
-     Compcert, by changing its definition. *)
-
-  - eapply IHh_exec_stmt_stmt_t_outc;eauto.
-Qed.
-
-
-
-
-Hint Resolve
-     assignment_preserve_stack_match
-     assignment_preserve_stack_match_function
-     assignment_preserve_stack_complete
-     assignment_preserve_stack_separate assignment_preserve_loads_offset_non_null
-     assignment_preserve_stack_no_null_offset assignment_preserve_stack_safe
-     assignment_preserve_stack_freeable.
-
-(* [make_load] does not fail on transl_type a translated variable coming
-   from stbl *)
-Lemma make_load_no_fail: forall stbl t nme_t x2,
-    transl_type stbl t =: x2 ->
-    exists load_addr_nme, make_load nme_t x2 =: load_addr_nme.
-Proof.
-  !intros.
-  unfold make_load.
-  destruct t;simpl in * ; simpl; try discriminate;eauto.
-  - inversion heq_transl_type. subst.
-    simpl.
-    unfold make_load.
-    simpl.
-    eauto.
-  - inversion heq_transl_type. subst.
-    simpl.
-    unfold make_load.
-    simpl.
-    eauto.
-Qed.
-
 (** Consequence of chained structure: build_load returns always a pointeur *)
 Lemma build_loads_Vptr : forall lvl_nme CE g spb ofs locenv m δ_nme nme_t nme_t_v,
-    stack_localstack_aligned CE locenv g m ->
+    stack_localstack_aligned CE locenv g m (Values.Vptr spb ofs) ->
     (lvl_nme < Datatypes.length CE)%nat ->
     build_loads lvl_nme δ_nme = nme_t ->
     Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_v ->
     ∃ nme_block nme_ofst, nme_t_v = (Values.Vptr nme_block nme_ofst).
 Proof.
-  intro.
-  !destruct lvl_nme;!intros.
-  - unfold build_loads in *.
-    simpl in *.
-    subst.
-    !invclear h_CM_eval_expr_nme_t_nme_t_v.
-    !invclear h_CM_eval_expr_v1;simpl in *.
-    !invclear h_eval_constant.
-    !invclear h_CM_eval_expr_v2;simpl in *.
-    !invclear h_eval_constant.
-    inversion h_eval_binop.
-    eauto.
-  - subst.
-    !invclear h_CM_eval_expr_nme_t_nme_t_v.
-    destruct (h_aligned_g_m (Values.Vptr spb ofs) (S lvl_nme) v1);auto.
-    subst.
-    simpl in *.
-    !invclear h_CM_eval_expr_v2.
-    simpl in *.
-    !invclear h_eval_constant.
-    !invclear h_eval_binop.
-    eauto.
+  unfold build_loads.
+  !intros; subst.
+  !invclear h_CM_eval_expr_nme_t_nme_t_v.
+  cbn in h_eval_binop.
+  !invclear h_eval_binop.
+  red in h_aligned_g_m.
+  !destruct (h_aligned_g_m lvl_nme);try omega.
+  !!pose proof (det_eval_expr _ _ _ _ _ _ _ h_CM_eval_expr_v1 h_CM_eval_expr).
+  subst.
+  !invclear h_CM_eval_expr_v2.
+  cbn in *.
+  !invclear h_eval_constant.
+  eauto.
 Qed.
 
 
 (** Consequence of chained structure: a variable is always translated into a pointer. *)
 Lemma transl_variable_Vptr : forall g spb ofs locenv m stbl CE astnm nme nme_t nme_t_v,
     invariant_compile CE stbl ->
-    stack_localstack_aligned CE locenv g m ->
+    stack_localstack_aligned CE locenv g m (Values.Vptr spb ofs) ->
     transl_variable stbl CE astnm nme =: nme_t ->
     Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_v ->
     ∃ nme_block nme_ofst, nme_t_v = (Values.Vptr nme_block nme_ofst).
@@ -6253,7 +5921,7 @@ Lemma build_compilenv_preserve_invariant_compile:
 Proof.
   !!(intros until 1).
   rewrite <- build_compilenv_ok in heq.
-  !functional inversion heq;subst;intro; rewrite -> ?build_compilenv_ok in *;clear heq.
+  !!(functional inversion heq;subst;intro; rewrite -> ?build_compilenv_ok in *;clear heq).
   split;eauto.
   + constructor.
     eauto.
@@ -6261,12 +5929,12 @@ Proof.
     * red.
       cbn.
       destruct x.
-      destruct (build_frame_decl_preserve_increasing_order _ _ _ _ _ _ heq0);auto.
+      destruct (build_frame_decl_preserve_increasing_order _ _ _ _ _ _ heq);auto.
       -- destruct (build_frame_lparams_preserve_increasing_order _ _ _ _ _ _ heq_bld_frm_prmprof);auto.
          constructor;cbn in *;auto.
       -- destruct (build_frame_lparams_preserve_increasing_order _ _ _ _ _ _ heq_bld_frm_prmprof);auto.
          constructor;cbn in *;auto.
-    * eapply (ci_increasing_ids H).
+    * eapply (ci_increasing_ids h_inv_comp_CE_st).
   + apply all_addr_no_overflow_fetch_OK;eauto.
     destruct x;unfold stoszchainparam in *.
     eapply (build_frame_decl_preserve_no_overflow st pdeclpart s z (Datatypes.length CE) x0 stcksize).
@@ -6277,7 +5945,32 @@ Proof.
     -- eapply (build_frame_lparams_preserve_no_overflow st prmprof);eauto; try omega.
        red. cbn. !intros.
        discriminate.
-Qed.
+  + unfold stack_CE_NoDup in *.
+    !intros.
+    cbn in heq_CEframeG_nme.
+    destruct (CompilEnv.resides nme x0) eqn:hresid.
+    * admit. (* spark typing, no name collision intra frame *)
+    * !!pose proof (ce_wf_intra h_inv_comp_CE_st).
+      red in h_CEnodup_CE.
+      eapply h_CEnodup_CE;eauto.
+  + unfold stack_CE_NoDup_G in *.
+    !intros.
+    cbn in heq_CEframeG_nme.
+    destruct (CompilEnv.resides nme x0) eqn:hresid.
+    * !invclear heq_CEframeG_nme.
+      !inversion h_CEcut.
+      -- cbn in h_lt;exfalso;omega.
+      -- clear H1.
+         admit. (* spark typing no name collision inter frame *)
+    * !!pose proof (ce_wf_extra h_inv_comp_CE_st).
+      !inversion h_CEcut.
+      -- cbn in *.
+         !assert (exact_levelG CE).
+         { apply h_inv_comp_CE_st. }         
+         pose proof (exact_levelG_lgth _ _ _ _ h_exact_lvlG_CE heq_CEframeG_nme).
+         exfalso;omega.
+      -- eapply h_CEnodupGCE;eauto.
+Admitted.
 
 Lemma add_to_frame_sz: forall stbl fram_sz parname parsubtype p sz,
     spark2Cminor.add_to_frame stbl fram_sz parname parsubtype =: p
@@ -7078,7 +6771,7 @@ Proof.
       !!destruct h_ex as [? ?].
       exists (n_t_v::le_t_v).
       constructor;auto.
-Qed.
+Admitted.
 
 
 
@@ -7200,8 +6893,360 @@ Tactic Notation "subst_exc" ident(v1) ident(v2) ident(v3) ident(v4) ident(v5) id
   subst_exc_l ((v1=v1) -> (v2=v2) -> (v3=v3) -> (v4=v4) -> (v5=v5) -> (v6=v6) -> Prop) subst.
 
 
+(*
+(* TODO: Adapt the proof thh changed statement.  *)
+Lemma exec_preserve_invisible:
+  ∀ g func stkptr locenv m stmt_t tr locenv' m' outc,
+    exec_stmt g func stkptr locenv m stmt_t tr locenv' m' outc -> 
+    ∀ st CE stmt s lvl,
+      lvl = Datatypes.length CE ->
+      strong_match_env st s CE stkptr locenv g m ->
+      chained_stack_structure m lvl stkptr ->
+      invariant_compile CE st ->
+      transl_stmt st CE stmt =: stmt_t ->
+      chained_stack_structure m' lvl stkptr ∧ 
+      forall astnum,
+          (* eval_stmt st s stmt s' -> *)
+          Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m'.
+Proof.
+  !!intros until 1.
+  !induction h_exec_stmt_stmt_t_outc;!intros;
+    rewrite <- transl_stmt_ok in heq_transl_stmt_stmt;
+    !functional inversion heq_transl_stmt_stmt;
+    rewrite transl_stmt_ok in *;subst;
+      (match goal with |- ?chstactctruct ∧ ?unch => assert (hstruc_m':chstactctruct);[ | split;[assumption|]] end);!intros.
+  (* Skip => chained_struct *)
+  - assumption.
+  (* Skip => unchanged on forbidden *)
+  - apply Mem.unchanged_on_refl.
+  (* Sstore => chained_struct *)
+  - admit.
+  (* Store => unchanged on forbidden *)
+  - destruct addr_v;try discriminate. 
+    up_type.
+    simpl in heq_storev_a_v_m'.
+    eapply Mem.store_unchanged_on;eauto.
+    !intros.
+    intros [abs1 abs2].
+    red in abs1.
+    !functional inversion heq_transl_name;subst.
+    simpl in heq_compute_chnk_nme_chunk.
+    rewrite <- transl_variable_astnum with (a:=astnum) (1:=heq_transl_variable) in heq_transl_variable.
+    specialize (abs1 id addr chunk b i heq_transl_variable heq_compute_chnk_nme_chunk h_CM_eval_expr_addr_addr_v). 
+    destruct abs1;auto;omega.
+  (* Scall => chained_struct *)
+  - admit.
+  (* Scall => unchanged on forbidden *)
+  - rename x1 into chaining_arg.
+    rename x into args_t.
+    rename lexp into args.
+    rename bl into all_args_t.
+    rename a_v into proc_addr.
+    rename fd into proc_value.
+    rename y into proc_lvl.
+    !assert (match_env st s CE sp e g m).
+    { inversion h_strg_mtch_s_CE_m;auto. }
+    !inversion h_evalfuncall_fd_vargs_vres;subst.
+    + (* internal function *)
+      !assert (
+         (* [transl_procsig] gives [f0,proc_lvl], so f0 is the result
+            of a translation with the right CE. All procedures in
+            memory are supposed to come from compilation. *)
+         ∃ CE_prfx CE_sufx pbdy X lotherproc,
+           CompilEnv.cut_until CE proc_lvl CE_prfx CE_sufx /\
+           transl_procedure st CE_sufx proc_lvl pbdy (* prov_lvl+1? *)
+           = OK ((X, AST.Gfun (AST.Internal f0))::lotherproc)).
+      { unfold transl_procsig in heq_transl_procsig_pnum.
+        !!assert (stack_match_functions st sp CE e g m) by eauto.
+        red in h_stk_mtch_fun.
+        unfold symboltable.fetch_proc in h_stk_mtch_fun.
+        specialize (h_stk_mtch_fun pnum).
+        !!destruct (fetch_proc pnum st) eqn:?;try discriminate.
+        !destruct t0.
+        specialize (h_stk_mtch_fun l p eq_refl).
+        decomp h_stk_mtch_fun.
+        exists CE' CE''.
+        !!destruct 
+          (transl_lparameter_specification_to_procsig
+             st l (procedure_parameter_profile p)) eqn:?;try discriminate.
+        simpl in heq_transl_procsig_pnum.
+        !invclear heq_transl_procsig_pnum.
+        exists p pnum0 lglobdef.
+        split.
+        + assumption.
+        + assert (paddr = proc_addr).
+          { eapply det_eval_expr with (1:=h_CM_eval_expr_paddr)
+                                        (2:=h_CM_eval_expr_a_a_v). }
+          subst.
+          rewrite heq_find_func_a_v_fd in heq_find_func_paddr_fction.
+          !invclear heq_find_func_paddr_fction.
+          assumption. }
+      decomp h_ex;up_type.
+
+(*      rename f0 into proc_t.
+      rename x into CE_prfx.
+      rename x0 into CE_sufx.
+      rename x3 into sub_proces.
+      rename x1 into pbdy.
+      rename x2 into proc_id_t.*)
+(*       decomp H. *)
+      rewrite transl_procedure_ok in heq_transl_proc_pbdy.
+      !functional inversion heq_transl_proc_pbdy;up_type.
+      rewrite <- transl_procedure_ok in *.
+      rename x3 into initparams.
+      rename x2 into locvarinit.
+      rename x1 into bdy.
+      rename x4 into copyout.
+      subst.
+      rename proc_t into pbody_t.
+      set (proc_t := {|
+                      fn_sig := x5;
+                      fn_params := chaining_param :: tlparams;
+                      fn_vars := transl_decl_to_lident st decl;
+                      fn_stackspace := y;
+                      fn_body := pbody_t |}) in *.
+      rename x into CE_proc.
+      rename y into proc_sz_locals.
+      up_type.
+      cbn [ proc_t fn_vars fn_params fn_body pbody_t] in h_exec_stmt.
+
+      (* splitting the execution of proc in 5: chain_param, initparam, initlocvar, bdy and cpout. *)
+      !!inversion_clear h_exec_stmt;subst.
+      2: admit. (* prematurate error, this should work with parts of the normal case *)
+      !!inversion_clear h_exec_stmt;subst.
+      2: admit. (* prematurate error, this should work with parts of the normal case *)
+      !!inversion_clear h_exec_stmt;subst.
+      2: admit. (* prematurate error, this should work with parts of the normal case *)
+      !!inversion_clear h_exec_stmt0;subst.
+      2: admit. (* prematurate error, this should work with parts of the normal case *)
+
+      * (* RENAMING *)
+        (* Case where No error occured during the whole function call *)
+        rename h_exec_stmt into h_exec_stmt_init.
+        match goal with
+        | H: exec_stmt _ _ _ _ ?ma chain_param _ ?e ?mb _ |- _ =>
+          rename mb into m_chain; rename e into e_chain;
+            rename ma into m_pre_chain
+        end.
+        match goal with
+        | H: exec_stmt _ _ _ _ _ initparams _ ?e ?mb _ |- _ =>
+          rename mb into m_init_params;rename e into e_initparams;
+            rename H into h_exec_stmt_initparams
+        end.
+        match goal with
+        | H: exec_stmt _ _ _ _ _ (Sseq locvarinit Sskip) _ ?e ?mb _ |- _ => 
+          rename mb into m_locvarinit; rename e into e_locvarinit;
+            rename H into h_exec_stmt_locvarinit
+        end.
+        match goal with
+        | H: exec_stmt _ _ _ _ _ bdy _ ?e ?mb _ |- _ => 
+          rename mb into m_bdy; rename e into e_bdy
+        end.
+        match goal with
+        | H: exec_stmt _ _ _ _ _ copyout _ ?e ?mb _ |- _ => 
+          rename mb into m_cpout; rename e into e_cpout
+        end.
+        (* END RENAMING *)
+        set (sp_proc := Values.Vptr sp0 Int.zero) in *.
+        up_type.
+        !assert (Mem.unchanged_on (forbidden st CE g astnum e sp m m_chain) m m_pre_chain).
+        { (* Lemma about invisible and alloc. *)
+          eapply Mem.alloc_unchanged_on.
+          eauto. }
+
+        !!pose proof
+        strong_match_env_match_env_sublist _ _ _ _ _ _ _ h_strg_mtch_s_CE_m
+        h_inv_comp_CE_st _ _ _ h_CEcut_CE_proc_lvl.
+        !!destruct h_ex as [δ [sp'' [s' [s'' [? [? [? h_mtchenv]]]]]]].
+        
+        (* Since the chaining param is not the translation of a spark variable, 
+           we stay in callers environment, that is: from m1 to m4 there is no change
+           in the addresses visible in m. *)
+        !assert (Mem.unchanged_on (forbidden st CE g astnum e sp m m_chain) m_pre_chain m_chain).
+        { unfold chain_param in h_exec_stmt_chain_param.
+          !inversion h_exec_stmt_chain_param.
+          unfold Mem.storev in heq_storev_v_m_chain.
+          destruct vaddr;try discriminate.
+          apply Mem.store_unchanged_on with (1:=heq_storev_v_m_chain).
+          !intros.
+          unfold sp_proc in h_CM_eval_expr_vaddr.
+          !destruct h_and.
+          !inversion h_CM_eval_expr_vaddr;subst.
+          cbn in h_eval_constant.
+          !inversion h_eval_constant;subst.
+          intro abs. red in abs. destruct abs as [abs1 abs2].
+          red in abs2.
+          apply abs2.
+          red.
+          intro.
+          eapply fresh_block_alloc_perm;eauto. }
+
+        (* This is from m_chain only. *)
+        (* TODO: prove that (forbidden m_chain m_chain) x y <=>
+        (forbidden m m_chain) x y, everything that is visible from
+        m_chain is either visible from m or free from m. *)
+        !assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_chain sp_proc m_chain m_chain) m_chain m_init_params).
+        { eapply exec_store_params_unchanged_on;eauto.
+          - eapply build_compilenv_exact_lvl with (2:=heq1);eauto.
+            eapply exact_lvlG_cut_until;eauto.
+          - eapply build_compilenv_stack_no_null_offset with (CE:=CE_sufx).
+            + eapply exact_lvlG_cut_until;eauto.
+            + specialize (h_mtchenv e).
+              eapply me_safe_cm_env.
+              eapply h_mtchenv.
+            + eauto.
+          -
+            move pbody_t after t5.
+            move chain_param after t5.
+            move sp_proc after t5.
+            move current_lvl after t5.
+            move tlparams after t5.
+            set (initlocenv:= set_locals (transl_decl_to_lident st decl)
+                                         (set_params vargs (chaining_param :: tlparams)))              in *|- *.
+            move initlocenv after proc_t.
+              (* malloc+chaining link preserve stack_localstack_aligned. *)
+            red.
+            !intros.
+            destruct δ_lvl.
+            + cbn.
+              eexists.
+              eapply cm_eval_addrstack_zero.
+            + unfold sp_proc.
+              (*First prove that after one load we are back on sp.*)
+              (* Then prove that nothing visible from there has change (use unchanged_on forbidden hyps)  *)
+              cbn.
+              !assert (stack_localstack_aligned CE_sufx e g m sp'').
+              { apply h_mtchenv. }
+              red in h_aligned_g_m.
+              !assert (δ_lvl ≤ Datatypes.length CE_sufx).
+              { rewrite <-build_compilenv_ok in heq1.
+                functional inversion heq1.
+                rewrite build_compilenv_ok in heq1;subst.
+                cbn in h_le_δ_lvl.
+                omega. }
+            
+            specialize (h_aligned_g_m δ_lvl h_le_δ_lvl0).
+            decomp h_aligned_g_m.
+            exists b_δ.
+            apply eval_Eload with (Values.Vptr b_δ Int.zero).
+            unfold chain_param in h_exec_stmt_chain_param.
+            !inversion h_exec_stmt_chain_param.
+            * up_type.
+              xxx   use h_struc?
+              stack_localstack_aligned CE_proc e_chain g m_chain sp_proc
 
 
+
+
+            !!pose proof (chain_structure_cut (current_lvl - proc_lvl) proc_lvl m sp) as h.
+            !assert (proc_lvl <= current_lvl)%nat.
+            { admit. }
+            !!assert (proc_lvl + (current_lvl - proc_lvl) = current_lvl)%nat by omega.
+            !assert (chained_stack_structure m (proc_lvl + (current_lvl - proc_lvl)) sp).
+            { rewrite heq_nat.
+              unfold current_lvl.
+              eapply chained_stack_structure_le ;eauto;omega. }
+            specialize (h h_chain_sp).
+            rewrite heq_nat in h.
+            eapply chain_aligned.
+            
+            !assert (stack_localstack_aligned CE_sufx e g m sp'').
+            { apply h_mtchenv. }
+            (* malloc+chaining link preserve stack_localstack_aligned. *)
+            red.
+            !intros.
+            destruct δ_lvl.
+            + cbn.
+              eexists.
+              eapply cm_eval_addrstack_zero.
+            + assert (chained_stack_structure m_chain (S δ_lvl) sp_proc). {
+                admit. 
+              }
+
+
+
+              pose proof chained_stack_structure_decomp_S_2' δ_lvl m_chain sp_proc.
+              
+              cbn.
+              red in h_aligned_g_m.
+              !assert (δ_lvl ≤ Datatypes.length CE_sufx).
+              { rewrite <- build_compilenv_ok in heq1.
+                functional inversion heq1;subst.
+                cbn in h_le_δ_lvl;omega. }
+              specialize (h_aligned_g_m _ h_le_δ_lvl0).
+              decomp h_aligned_g_m.
+              exists b_δ.
+              apply eval_Eload with (Values.Vptr b_δ Int.zero).
+              * 
+
+              admit.
+            }
+            
+
+            Lemma build_compilenv_stack_localstack_aligned:
+              forall st CE locenv g m sp proc_lvl lparams decl CE' sz,
+                stack_localstack_aligned CE locenv g m sp ->
+                repeat_Mem_loadv AST.Mint32 m δ sp sp'' ->
+                build_compilenv st CE proc_lvl lparams decl =: (CE',sz) ->
+                stack_localstack_aligned CE' locenv g m sp.
+
+
+            eapply chain_aligned;eauto.
+            
+            admit. (* Lemma  about build_compilenv and stack_localstack_aligned *)
+        
+        assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_initparams sp_proc m_init_params m_init_params)
+                                 m_init_params m_locvarinit).
+        { eapply init_locals_unchanged_on;auto.
+          6: eapply h_exec_stmt_locvarinit.
+          - eapply build_compilenv_exact_lvl with (2:=heq1) ;eauto.
+            eapply exact_lvlG_cut_until;eauto.
+          - eapply build_compilenv_stack_no_null_offset with (3:=heq1);eauto.
+            eapply exact_lvlG_cut_until;eauto.
+          - instantiate (1 := D_Seq_Declaration astnum decl D_Null_Declaration).
+            cbn.
+            rewrite heq_init_lcl_decl_x2;auto.
+          - eapply exec_init_locals_preserve_forbidden.
+            8: eapply h_exec_stmt_initparams.
+            5: rewrite <- plus_n_O;reflexivity.
+            + admit.
+            + pose proof (strong_match_env_match_env_sublist _ _ _ _ _ _ _ h_strg_mtch_s_CE_m h_inv_comp_CE_st _ _ _ h_CEcut_CE_proc_lvl).
+            admit.
+        }
+
+        assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_locvarinit sp_proc m_locvarinit m_locvarinit)
+                                 m_locvarinit m_bdy).
+        { admit. }
+        assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_locvarinit sp_proc m_bdy m_bdy)
+                                 m_bdy m_cpout).
+        { admit. }
+
+        
+
+        admit. (* associativity of unchanged_on? No, more
+                                complex: the unchanged_on on the body part
+                                correpsond to either visible parts from sp or from
+                                freeed space (outcome_free_mem m2 ... m'). *)
+    + (* functional inversion would be cleaner here. *)
+      admit. (* No External function *)
+  - destruct b.
+    + eapply IHh_exec_stmt_stmt_t_outc;eauto.
+    + eapply IHh_exec_stmt_stmt_t_outc;eauto.
+  - specialize (IHh_exec_stmt_stmt_t_outc1 _ _ _ _ h_strg_mtch_s_CE_m h_inv_comp_CE_st heq1).
+    (* Needing match_env preserved here. *)
+    admit.
+  (* specialize (IHh_exec_stmt_stmt_t_outc2 _ _ _ _ ?  heq0). *)
+  (* transitivity of unchanged_on is proved in recent
+     Compcert, by changing its definition. *)
+
+  - eapply IHh_exec_stmt_stmt_t_outc;eauto.
+Qed.
+*)
+
+
+
+
+(* replace match-env by strong_match_env + unchange_on (forbidden). *)
 Lemma transl_stmt_normal_OK : forall stbl (stm:statement) s s',
     eval_stmt stbl s stm (Normal s') ->
     forall CE (stm':Cminor.stmt),
