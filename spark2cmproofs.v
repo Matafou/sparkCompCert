@@ -6832,6 +6832,17 @@ Proof.
       constructor;auto.
 Admitted.
 
+Lemma malloc_preserves_chaining_loads : 
+  ∀ m lvl sp sz m' new_sp,
+    Mem.alloc m 0 sz = (m', new_sp) ->
+    chained_stack_structure m lvl sp ->
+    ∀ n e g, (n < lvl)%nat -> forall b' ,
+        Cminor.eval_expr g sp e m 
+                         ((build_loads_ (Econst (Oaddrstack Int.zero)) n)) (Values.Vptr b' Int.zero)
+        -> b' <> new_sp.
+Proof.
+  admit.
+Admitted.
 
 (* if we store in a block [sp0] not invovlved in the chaining from [sp], then
    all chainging addresses reachable from sp from sp'' are unchanged. *)
@@ -6965,6 +6976,114 @@ Proof.
     subst.
     eapply h_unch;eauto.
 Qed.
+
+Lemma repeat_Mem_loadv_cut:
+  ∀ m n sp v,
+  repeat_Mem_loadv AST.Mint32 m n sp v
+  → ∀ n' n'',
+      (n' + n'' = n)%nat
+      → ∃ sp', repeat_Mem_loadv AST.Mint32 m n' sp sp'
+               ∧ repeat_Mem_loadv AST.Mint32 m n'' sp' v.
+Proof.
+  !!intros until n'.
+  revert m n sp v h_repeat_loadv_n_sp.
+  !induction n';cbn;!intros.
+  - subst.
+    exists sp;split.
+    + constructor.
+    + assumption.
+  - subst.
+    !inversion h_repeat_loadv_n_sp.
+    specialize (IHn' m (n' + n'')%nat sp' v h_repeat_loadv n'' eq_refl).
+    decomp IHn'.
+    exists sp'0;split.
+    + econstructor;eauto.
+    + assumption.
+Qed.
+
+Lemma repeat_Mem_loadv_cut_mem_loadv :
+  ∀ (m : mem) (n : nat) (sp : Values.val),
+    chained_stack_structure m n sp
+    → ∀ n' n'' (v : Values.val),
+      (n' + n'' = n)%nat
+      → repeat_Mem_loadv AST.Mint32 m n' sp v
+      → chained_stack_structure m n''%nat v.
+Proof.
+  !!intros until n'.
+  revert m n sp h_chain_n_sp.
+  !induction n';cbn;!intros.
+  - subst.
+    !inversion h_repeat_loadv.
+    assumption.
+  - !inversion h_repeat_loadv.
+    eapply IHn' with (n:=(n' + n'')%nat);eauto.
+    subst n.
+    
+    !inversion h_chain_n_sp.
+    rewrite h_loadv in h_loadv_sp_sp'.
+    !inversion h_loadv_sp_sp'.
+    assumption.
+Qed.
+
+Lemma malloc_preserves_chained_structure : 
+  ∀ lvl m sp b ofs  m' new_sp,
+    Mem.alloc m b ofs = (m', new_sp) ->
+    chained_stack_structure m lvl sp ->
+    chained_stack_structure m' lvl sp.
+Proof.
+  intro lvl.
+  !induction lvl;!intros.
+  - !inversion h_chain_sp.
+    constructor.
+  - !inversion h_chain_sp.
+    cbn in *.
+    econstructor.
+    + eapply IHlvl;eauto.
+    + cbn.
+      eapply Mem.load_alloc_other;eauto.
+Qed.
+
+
+
+
+Lemma malloc_preserves_chaining_loads : 
+  ∀ m lvl sp sz m' new_sp,
+    Mem.alloc m 0 sz = (m', new_sp) ->
+    ∀ n, (n <= lvl)%nat ->
+         chained_stack_structure m lvl sp ->
+         ∀ e g sp',
+           Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Int.zero)) n) sp'
+           -> Cminor.eval_expr g sp e m' (build_loads_ (Econst (Oaddrstack Int.zero)) n) sp'.
+Proof.
+  !!intros until n.
+  induction n;!intros.
+  - cbn in *.
+    !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_lvl_sp.
+    decomp h_ex.
+    subst.
+    !!pose proof (cm_eval_addrstack_zero  b' Int.zero m g e).
+    !assert (sp' = Values.Vptr b' Int.zero).
+    { eapply det_eval_expr;eauto. }
+    subst.
+    apply cm_eval_addrstack_zero.
+  - !!assert (n <= lvl)%nat by omega.
+    specialize (IHn h_le_n_lvl h_chain_lvl_sp).
+    cbn -[Mem.storev] in *.
+    !inversion h_CM_eval_expr_sp'.
+    specialize (IHn _ _ _ h_CM_eval_expr_vaddr).
+    econstructor.
+    + eassumption.
+    + cbn in *.
+      rewrite <- h_loadv_vaddr_sp'.
+      destruct vaddr; try discriminate.
+      cbn in *.
+      eapply Mem.load_alloc_unchanged;eauto.
+      eapply Mem.valid_access_valid_block.
+      apply Mem.load_valid_access in h_loadv_vaddr_sp'.
+      eapply Mem.valid_access_implies with (1:=h_loadv_vaddr_sp').
+      constructor.
+Qed.
+
 
 
 
@@ -7377,30 +7496,11 @@ Proof.
                 { apply chained_stack_structure_le with (n:=proc_lvl).
                   all:swap 2 1.
                   { admit. (* exact_levelG CE + cut_until + h_le_δ_lvl0:δ_lvl ≤ Datatypes.length CE_sufx. *) }
-                  Lemma repeat_Mem_loadv_cut :
-                    ∀ (m : mem) (n : nat) (sp : Values.val),
-                      chained_stack_structure m n sp
-                      → ∀ n' (v : Values.val) (g : genv) (e : env),
-                        (n' <= n)%nat
-                        → repeat_Mem_loadv AST.Mint32 m n' sp v
-                        → chained_stack_structure m (n-n')%nat v.
-                  Proof.
-                  Admitted.
-                  replace proc_lvl with (Datatypes.length CE -(Datatypes.length CE - proc_lvl))%nat.
-                  all:swap 2 1.
-                  - omega.
-                  - eapply repeat_Mem_loadv_cut;eauto.
-                    omega. }
+                  
+                  eapply repeat_Mem_loadv_cut_mem_loadv with (n':=(Datatypes.length CE - proc_lvl)%nat) (n:=(Datatypes.length CE)%nat);eauto.
+                  omega. }
                 !assert (chained_stack_structure m_pre_chain δ_lvl sp'').
-                { Lemma malloc_preserves_chained_structure : 
-                    ∀ m lvl sp b ofs  m' new_sp,
-                    Mem.alloc m b ofs = (m', new_sp) ->
-                    chained_stack_structure m lvl sp ->
-                    chained_stack_structure m' lvl sp.
-                  Proof.
-                    admit.
-                  Admitted.
-                  eapply malloc_preserves_chained_structure;eauto. }
+                { eapply malloc_preserves_chained_structure;eauto. }
 
                 (* all sp (but the last which points to nothing), are different from sp0
                    because sp0 comes from a malloc. *)
@@ -7413,18 +7513,8 @@ Proof.
                    eassumption.
                 -- auto with arith.
                 -- (* This is true for m, and malloc does not change it so it is also true for m_pre_chain *) 
-                  Lemma malloc_preserves_chaining_loads : 
-                    ∀ m lvl sp b ofs  m' new_sp,
-                      Mem.alloc m b ofs = (m', new_sp) ->
-                      chained_stack_structure m lvl sp ->
-                      ∀ e g sp' lvl',
-                        (lvl' <= lvl)%nat
-                        -> Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Int.zero)) lvl) sp'
-                        -> Cminor.eval_expr g sp e m' (build_loads_ (Econst (Oaddrstack Int.zero)) lvl) sp'.
-                  Proof.
-                    admit.
-                  Admitted.
-                  eapply malloc_preserves_chaining_loads;eauto. }
+                 
+                  eapply malloc_preserves_chaining_loads with (1:=heq);eauto. }
 
 
 
