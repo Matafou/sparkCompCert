@@ -6832,17 +6832,55 @@ Proof.
       constructor;auto.
 Admitted.
 
-Lemma malloc_preserves_chaining_loads : 
-  ∀ m lvl sp sz m' new_sp,
-    Mem.alloc m 0 sz = (m', new_sp) ->
+Lemma malloc_distinct_from_chaining_loads : 
+  ∀ lvl m sp, 
     chained_stack_structure m lvl sp ->
-    ∀ n e g, (n < lvl)%nat -> forall b' ,
-        Cminor.eval_expr g sp e m 
-                         ((build_loads_ (Econst (Oaddrstack Int.zero)) n)) (Values.Vptr b' Int.zero)
-        -> b' <> new_sp.
+    ∀ n sz m' new_sp,
+      Mem.alloc m 0 sz = (m', new_sp) ->
+      ∀ e g, (n < lvl)%nat -> forall b' ,
+          Cminor.eval_expr g sp e m 
+                           ((build_loads_ (Econst (Oaddrstack Int.zero)) n)) (Values.Vptr b' Int.zero)
+          -> b' <> new_sp.
 Proof.
-  admit.
-Admitted.
+  !!intros * ?.
+  !induction h_chain_lvl_sp;cbn;!intros.
+  - exfalso;omega.
+  - destruct n0.
+    + cbn in *.
+      assert (b = b'0).
+      { !!pose proof cm_eval_addrstack_zero b Int.zero m g e.
+        !!pose proof det_eval_expr _ _ _ _ _ _ _ h_CM_eval_expr h_CM_eval_expr0.
+        inversion heq0;reflexivity. }
+      subst.
+      intro abs;subst b'0.
+      !!pose proof Mem.load_valid_access _ _ _ _ _ h_loadv.
+      !!pose proof Mem.fresh_block_alloc _ _ _ _ _ heq. 
+      apply H.
+      eapply Mem.valid_access_valid_block.
+      eapply Mem.valid_access_implies with (1:=h_valid_access_new_sp).
+      constructor.
+    + eapply IHh_chain_lvl_sp with (n0:=n0);eauto.
+      * omega.
+      * !assert(chained_stack_structure m (S n) (Values.Vptr b Int.zero)).
+        { econstructor;eauto. }
+        !assert(chained_stack_structure m (S n0) (Values.Vptr b Int.zero)).
+        { eapply chained_stack_structure_le with (n:=S n).
+          - assumption.
+          - omega. }
+        !!pose proof chained_stack_structure_decomp_S_2 _ _ _ h_chain0 g e _ h_CM_eval_expr.
+        decomp h_ex.
+        !inversion h_CM_eval_expr_sp'.
+        assert (vaddr=(Values.Vptr b Int.zero)).
+        { !!pose proof cm_eval_addrstack_zero b Int.zero m g e.
+          !!pose proof det_eval_expr _ _ _ _ _ _ _ h_CM_eval_expr_vaddr h_CM_eval_expr1. 
+          assumption. }
+        subst.
+        rewrite h_loadv in h_loadv_vaddr_sp'.
+        inversion h_loadv_vaddr_sp'.
+        subst.
+        eassumption.
+Qed.
+
 
 (* if we store in a block [sp0] not invovlved in the chaining from [sp], then
    all chainging addresses reachable from sp from sp'' are unchanged. *)
@@ -7082,6 +7120,76 @@ Proof.
       apply Mem.load_valid_access in h_loadv_vaddr_sp'.
       eapply Mem.valid_access_implies with (1:=h_loadv_vaddr_sp').
       constructor.
+Qed.
+
+
+Lemma malloc_preserves_chaining_loads_2 : 
+  ∀ m lvl sp sz m' new_sp,
+    Mem.alloc m 0 sz = (m', new_sp) ->
+    ∀ n, (n <= lvl)%nat ->
+         chained_stack_structure m lvl sp ->
+         ∀ e g sp',
+           Cminor.eval_expr g sp e m' (build_loads_ (Econst (Oaddrstack Int.zero)) n) sp'
+           -> Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Int.zero)) n) sp'.
+Proof.
+  !!intros until n.
+  induction n;!intros.
+  - cbn in *.
+    !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_lvl_sp.
+    decomp h_ex.
+    subst.
+    !!pose proof (cm_eval_addrstack_zero  b' Int.zero m' g e).
+    !assert (sp' = Values.Vptr b' Int.zero).
+    { eapply det_eval_expr;eauto. }
+    subst.
+    apply cm_eval_addrstack_zero.
+  - !!assert (n <= lvl)%nat by omega.
+    specialize (IHn h_le_n_lvl h_chain_lvl_sp).
+    cbn -[Mem.storev] in *.
+    !inversion h_CM_eval_expr_sp'.
+    specialize (IHn _ _ _ h_CM_eval_expr_vaddr).
+    econstructor.
+    + eassumption.
+    + cbn in *.
+      rewrite <- h_loadv_vaddr_sp'.
+      destruct vaddr; try discriminate.
+      cbn in *.
+      symmetry.
+      eapply Mem.load_alloc_unchanged;eauto.
+      destruct (Mem.valid_block_alloc_inv _ _ _ _ _ heq b).
+      * eapply Mem.valid_access_valid_block.
+        apply Mem.load_valid_access in h_loadv_vaddr_sp'.
+        eapply Mem.valid_access_implies with (1:=h_loadv_vaddr_sp').
+        constructor.
+      * exfalso.
+        subst.
+        !!assert ((lvl-n) + n = lvl)%nat by omega.
+        rewrite <- heq_nat in h_chain_lvl_sp.
+        !!pose proof (chain_structure_cut _ _ _ _ h_chain_lvl_sp) g e.
+        decomp h_ex.
+        rewrite heq_nat in h_CM_eval_expr_v.
+        assert(sp'0 = (Values.Vptr new_sp i)).
+        { eapply det_eval_expr;eauto. }
+        subst sp'0.
+        destruct (lvl - n)%nat eqn:heq'.
+        -- exfalso; omega.
+        -- cbn in h_CM_eval_expr_v0.
+           eapply chained_stack_structure_decomp_S_2 in h_CM_eval_expr_v0.
+           ++ decomp h_CM_eval_expr_v0.
+              !inversion h_CM_eval_expr_sp'1.
+              pose proof cm_eval_addrstack_zero new_sp i m g e.
+              assert (vaddr=(Values.Vptr new_sp i)).
+              { eapply det_eval_expr;eauto. }
+              subst vaddr.
+              absurd (Mem.valid_block m new_sp).
+              ** eapply Mem.fresh_block_alloc;eauto.
+              ** unfold Mem.loadv in h_loadv_vaddr_sp'0.
+                 eapply  Mem.load_valid_access in h_loadv_vaddr_sp'0.
+                 eapply Mem.valid_access_valid_block.
+                 eapply Mem.valid_access_implies;eauto.
+                 constructor.
+           ++ assumption.
+      * assumption.
 Qed.
 
 
@@ -7506,7 +7614,13 @@ Proof.
                    because sp0 comes from a malloc. *)
                 eapply storev_outside_struct_chain_preserves_chaining with (m:=m_pre_chain) (lvl:=δ_lvl)(sp0:=sp0).
                 -- (* sp'' points to a structure unchanged by the malloc. *)
-                  admit.
+                  !intros.
+                  pose proof malloc_distinct_from_chaining_loads _ _ _ h_chain_δ_lvl_sp'' n _ _ _ heq.
+                  !assert (Cminor.eval_expr g sp'' e m (build_loads_ (Econst (Oaddrstack Int.zero)) n) (Values.Vptr b' Int.zero)).
+                  { eapply malloc_preserves_chaining_loads_2 with (1:=heq);eauto.
+                    eapply chained_stack_structure_le;eauto.
+                    omega. }
+                  eapply H;eauto.
                 -- (* first prove it is true in m, then prove that malloc does not change it. *) 
                   assumption.
                 -- unfold sp_proc in heq_storev_v_m_chain.
