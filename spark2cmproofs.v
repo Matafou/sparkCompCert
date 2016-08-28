@@ -4164,7 +4164,13 @@ Proof.
 Qed.
 
 Ltac subst_det_addrstack_zero :=
+
   match goal with
+  | H:Cminor.eval_expr ?g ?sp ?e ?m ?exp ?vaddr,
+      H':Cminor.eval_expr ?g ?sp ?e ?m ?exp ?vaddr' |- _ =>
+    assert (vaddr=vaddr') by (eapply det_eval_expr;eauto);
+    try (subst vaddr + subst vaddr');
+    clear H
     (* to avoid useless applications *)
   | H:Cminor.eval_expr ?g ?sp ?e ?m ?exp ?sp |- _ =>
     fail 1
@@ -4175,11 +4181,7 @@ Ltac subst_det_addrstack_zero :=
       H':chained_stack_structure ?m ?n ?sp |- _ =>
     assert (vaddr=sp) by (eapply det_cm_eval_addrstack_zero_chain;eauto);
     try subst vaddr
-  | H:Cminor.eval_expr ?g ?sp ?e ?m ?exp ?vaddr,
-      H':Cminor.eval_expr ?g ?sp ?e ?m ?exp ?vaddr' |- _ =>
-    assert (vaddr=vaddr') by (eapply det_eval_expr;eauto);
-    try (subst vaddr + subst vaddr');
-    clear H
+
   end.
 
 Lemma chained_stack_structure_aux m sp : forall n,
@@ -4197,6 +4199,74 @@ Proof.
   cbn.
   reflexivity.
 Qed.
+
+Lemma chained_stack_structure_decomp_S: forall m b0 g e b, 
+    Cminor.eval_expr g (Values.Vptr b0 Int.zero) e m (Eload AST.Mint32 (Econst (Oaddrstack Int.zero))) (Values.Vptr b Int.zero) ->
+    ∀ n v, Cminor.eval_expr g (Values.Vptr b0 Int.zero) e m (build_loads_ (Econst (Oaddrstack Int.zero)) (S n)) v ->
+         exists sp',
+           Cminor.eval_expr g (Values.Vptr b0 Int.zero) e m (Eload AST.Mint32 (Econst (Oaddrstack Int.zero))) sp' /\
+           Cminor.eval_expr g sp' e m (build_loads_ (Econst (Oaddrstack Int.zero)) n) v.
+Proof.
+  !intros until n.
+  revert v b H h_CM_eval_expr_v.
+  !induction n.
+  - !intros.
+    cbn in *.
+    exists v;split;auto.
+    constructor;cbn.
+    subst_det_addrstack_zero.
+    cbn.
+    rewrite Int.add_zero.
+    reflexivity.
+  - !intros.
+    cbn in h_CM_eval_expr_v.
+    !invclear h_CM_eval_expr_v;subst.
+    change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Int.zero)) n)) with (build_loads_ (Econst (Oaddrstack Int.zero)) (S n)) in h_CM_eval_expr_vaddr.
+    specialize (IHn _ _ h_CM_eval_expr h_CM_eval_expr_vaddr).
+    decomp IHn.
+    exists sp';split;auto.
+    cbn.
+    econstructor;eauto.
+Qed.
+
+Lemma chained_stack_structure_spec :
+  ∀  g e m n b,
+    (∀ lvl,
+        (lvl <= n)%nat
+        -> ∃ b', Cminor.eval_expr g (Values.Vptr b Int.zero) e m (build_loads_ (Econst (Oaddrstack Int.zero)) lvl)
+                                  (Values.Vptr b' Int.zero))
+    -> chained_stack_structure m n (Values.Vptr b Int.zero).
+Proof.
+  induction n;!intros.
+  - constructor.
+  - 
+    
+    !!assert (1 ≤ S n) by omega.
+    !!pose proof  (H 1%nat h_le).
+    decomp h_ex.
+    !!assert (S n ≤ S n) by omega.
+    !!pose proof  (H _ h_le0).
+    decomp h_ex.
+    cbn in *.
+    !!pose proof chained_stack_structure_decomp_S _ _ _ _ _ h_CM_eval_expr _ _ h_CM_eval_expr0.
+    decomp h_ex.
+    subst_det_addrstack_zero.
+    eapply chained_S with (b':=b');eauto.
+    + eapply IHn.
+      !intros.
+      !!assert (S lvl ≤ S n) by omega.
+      !!pose proof  (H _ h_le1).
+      decomp h_ex.
+      cbn in *.
+      !!pose proof chained_stack_structure_decomp_S _ _ _ _ _ h_CM_eval_expr_sp' _ _ h_CM_eval_expr.
+      decomp h_ex.
+      subst_det_addrstack_zero.
+      eauto.
+    + !inversion h_CM_eval_expr_sp'.
+      subst_det_addrstack_zero.
+      assumption.
+Qed.
+
 
 Lemma chained_stack_structure_decomp_S_2: forall n m sp,
     chained_stack_structure m (S n) sp ->
@@ -4370,10 +4440,10 @@ Proof.
       econstructor.
       * eassumption.
       * !inversion h_CM_eval_expr_sp'0.
-        subst_det_addrstack_zero.
+        repeat subst_det_addrstack_zero.
         assumption.
     + !inversion h_CM_eval_expr_sp'0;subst.
-      subst_det_addrstack_zero.
+      repeat subst_det_addrstack_zero.
       clear h_chain_sp h_chain_sp0.
       !inversion h_chain_sp';subst;up_type.
       cbn in *.
@@ -7039,6 +7109,35 @@ Proof.
     eapply h_unch;eauto.
 Qed.
 
+
+Proposition storev_outside_struct_chain_preserves_chained_structure:
+  ∀ (sp0 : Values.block) (e : env) (sp : Values.val) (g : genv) (m : mem) (lvl : nat),
+    (∀ n : nat,
+        (n < lvl)%nat
+        → ∀ b' : Values.block,
+          Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Int.zero)) n) (Values.Vptr b' Int.zero) → b' ≠ sp0)
+    → chained_stack_structure m lvl sp
+    → ∀ (x : Values.val) (_v : int) (_chk : AST.memory_chunk) (m' : mem),
+        Mem.storev _chk m (Values.Vptr sp0 _v) x = Some m' ->
+        chained_stack_structure m' lvl sp.
+Proof.
+  !intros.
+  assert
+    ( ∀n, (n <= lvl)%nat -> ∀ v : Values.val,
+          Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Int.zero)) n) v
+          → Cminor.eval_expr g sp e m' (build_loads_ (Econst (Oaddrstack Int.zero)) n) v).
+  { !intro.
+    eapply storev_outside_struct_chain_preserves_chaining;eauto. }
+  destruct (chained_stack_struct_inv_sp_zero _ _ _ h_chain_lvl_sp).
+  subst.
+  eapply chained_stack_structure_spec.
+  !intros.
+  !!pose proof chain_structure_spec lvl0 m (Values.Vptr x0 Int.zero).
+  !!edestruct H1 with (g:=g) (e:=e).
+  eapply chained_stack_structure_le;eauto;try omega.
+  eauto.
+Qed.
+
 Lemma repeat_Mem_loadv_cut:
   ∀ m n sp v,
   repeat_Mem_loadv AST.Mint32 m n sp v
@@ -7483,11 +7582,11 @@ Proof.
             is |CE|-1, hence: *)
         !assert (proc_lvl<=Datatypes.length CE)%nat.
         { admit. }
-        assert (proc_lvl = Datatypes.length CE_sufx).
+        assert (proc_lvl = Datatypes.length CE_sufx)%nat.
         { !!assert (exact_levelG CE) by eauto.
           eapply cut_until_exact_levelG;eauto. }
         subst proc_lvl.        
-        assert (chained_stack_structure m (Datatypes.length CE_sufx) sp'').
+        !assert (chained_stack_structure m (Datatypes.length CE_sufx) sp'').
         { eapply (repeat_Mem_loadv_cut_mem_loadv _ _ _ h_chain_lvl_sp (Datatypes.length CE - Datatypes.length CE_sufx)).
           - omega.
           - assumption. }
@@ -7535,7 +7634,7 @@ Proof.
             move current_lvl after t5.
             move tlparams after t5.
             set (initlocenv:= set_locals (transl_decl_to_lident st decl)
-                                         (set_params vargs (chaining_param :: tlparams)))              in *|- *.
+                                         (set_params vargs (chaining_param :: tlparams))) in *|- *.
             move initlocenv after proc_t.
             !assert (stack_localstack_aligned (Datatypes.length CE_sufx) e g m sp'').
             { apply h_mtchenv. }
@@ -7591,17 +7690,43 @@ Proof.
               { !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_δ_lvl_sp''.
                 decomp h_ex.
                 subst sp'' .
-                apply chained_S with (b':=b').
-                - admit. (* malloc + store didnt change chaingin struct. *)
+                !inversion h_CM_eval_expr_v.
+                unfold initlocenv in heq0.
+                !assert ( Maps.PTree.get chaining_param
+                                         (set_locals (transl_decl_to_lident st decl) (Maps.PTree.set chaining_param v1 (set_params vl tlparams)))
+                          = Some v1).
+                  { admit. (* set_locals + Maps.PTree.gss + Maps.PTree.gso *) }
+                  subst chain_param.
+                  subst chaining_arg.
+                  cbn [set_params] in heq0.
+                  rewrite heq0 in heq3.
+                  !invclear heq3.
+                  !assert (chained_stack_structure m (Datatypes.length CE - Datatypes.length CE_sufx) sp).
+                  { eapply chained_stack_structure_le;eauto;omega. }
+                  pose proof chain_repeat_loadv _ _ _ h_chain_sp _ g e h_repeat_loadv.
+                  apply chained_S with (b':=b').
+                - !assert (chained_stack_structure m_pre_chain  δ_lvl (Values.Vptr b' Int.zero)).
+                  { eapply malloc_preserves_chained_structure;eauto. }
+                  !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_δ_lvl.
+                  decomp h_ex.
+                  eapply storev_outside_struct_chain_preserves_chained_structure with (m:=m_pre_chain) (g:=g)(e:=e) (sp0:=sp0).
+                  + !intros.
+                    !!assert (n < Datatypes.length CE_sufx)%nat by omega.
+                    !!pose proof malloc_distinct_from_chaining_loads _ _ _ h_chain_sp'' n _ _ _ heq e g h_lt_n b'1.
+                    apply H0.
+                    eapply malloc_preserves_chaining_loads_2;eauto.
+                    eapply chained_stack_structure_le;eauto;omega.
+                  + assumption.
+                  + eassumption.
+
+                (* malloc + store didnt change chaingin struct. *)
                 - unfold sp_proc in *.
+                  assert ((Values.Vptr b' Int.zero) = v1).
+                  { eapply det_eval_expr;eauto. }
+                  subst.
                   cbn in heq_storev_v_m_chain |-* .
                   rewrite (Mem.load_store_same _ _ _ _ _ _ heq_storev_v_m_chain).
-                  xxx f_equal.
-                  (* h_CM_eval_expr_v says that v is chaingin param,
-                     and at this  *)
-                  destruct ; try discriminate.
-                  eauto.
-              }
+                  reflexivity. }
               eapply chained_stack_structure_decomp_S_2' with (sp':=sp'').
               * assumption.
               * econstructor;  (* one load goes to sp'' *) 
@@ -7609,9 +7734,17 @@ Proof.
                 -- eapply cm_eval_addrstack_zero_chain;eauto.
                 -- cbn in heq_storev_v_m_chain |- *.
                    !assert (v = sp'').
-                   { transitivity v1.
-                     - admit.
-                     - admit. }
+                   { 
+                     transitivity v1.
+                     - subst sp_proc.
+                       rename v1 into chaining_value.
+                       !inversion h_CM_eval_expr_v.
+                       unfold initlocenv in heq0.
+                       admit. (* set_locals and set_params on nodup lists *)
+                     - apply chain_repeat_loadv with (g:=g)(e:=e) in h_repeat_loadv.
+                       + subst_det_addrstack_zero.
+                         reflexivity.
+                       + eapply chained_stack_structure_le;eauto;omega. }
                    subst.
                    apply Mem.load_store_same in heq_storev_v_m_chain.
                    unfold Values.Val.load_result in heq_storev_v_m_chain.
@@ -7664,7 +7797,6 @@ Proof.
 
 
 
-xxx
                 (*             
               Lemma un_changed_on_forbidden_eval_expr: ∀ st CE g astnum e sp m m_chain m_pre_chain z sp0,
                   Mem.alloc m 0 z = (m_pre_chain, sp0) -> 

@@ -632,8 +632,8 @@ Definition transl_stmt_aux :=
     | S_Procedure_Call _ _ pnum lexp =>
       do tle <- transl_params stbl pnum CE lexp ;
         do (procsig,lvl) <- transl_procsig stbl pnum ;
-        (* The height of CE is exactly the nesting level of the current procedure + 1 *)
-        let current_lvl := (List.length CE - 1)%nat in
+        (* The height of CE is exactly the nesting level of the current procedure *)
+        let current_lvl := List.length CE in
         (* compute the expression denoting the address of the frame of
            the enclosing procedure. Note that it is not the current
            procedure. We have to get down to the depth of the called
