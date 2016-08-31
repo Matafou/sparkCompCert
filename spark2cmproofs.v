@@ -7795,114 +7795,33 @@ Proof.
                 -- (* This is true for m, and malloc does not change it so it is also true for m_pre_chain *) 
                   eapply malloc_preserves_chaining_loads with (1:=heq);eauto. }
 
-
-
-                (*             
-              Lemma un_changed_on_forbidden_eval_expr: ∀ st CE g astnum e sp m m_chain m_pre_chain z sp0,
-                  Mem.alloc m 0 z = (m_pre_chain, sp0) -> 
-                  Mem.unchanged_on (forbidden st CE g astnum e sp m m_chain) m m_pre_chain ->
-                  Mem.unchanged_on (forbidden st CE g astnum e sp m m_pre_chain) m m_pre_chain.
-              Proof.
-                !intros.
-                apply (mem_unchanged_on_mon _ _ _ h_unchanged_on_m_m_pre_chain).
-                !intros. 
-                red in h_forbid_m_m_pre_chain_x_y |- *.
-                destruct h_forbid_m_m_pre_chain_x_y as [h_invis_m_m_pre_chain h_nonfree_m].
-                split;auto.
-                red in h_invis_m_m_pre_chain |- * .
-                !intros.
-                specialize (h_invis_m_m_pre_chain id id_t id_chk spb_id ofs_id heq_transl_variable heq0).
-                 *)
-
-              assert (Mem.unchanged_on (forbidden st CE g astnum e sp m m_pre_chain) m m_pre_chain).
-              { apply (mem_unchanged_on_mon _ _ _ h_unchanged_on_m_m_pre_chain).
-                !intros. 
-                red in h_forbid_m_m_pre_chain_x_y |- *.
-                destruct h_forbid_m_m_pre_chain_x_y as [h_invis_m_m_pre_chain h_nonfree_m].
-                split;auto.
-                red in h_invis_m_m_pre_chain |- * .
-                !intros.
-                specialize (h_invis_m_m_pre_chain id id_t id_chk spb_id ofs_id heq_transl_variable heq0).
-                admit. }
-                
-
-              
-
-              Lemma un_changed_on_forbidden_eval_expr: ∀ st CE g astnum e sp m_pre_chain x δ_lvl,
-              Mem.unchanged_on (forbidden st CE g astnum e sp m m_chain) m m_pre_chain ->
-              Cminor.eval_expr g sp e m       (build_loads_ (Econst (Oaddrstack Int.zero)) δ_lvl) x ->
-              Cminor.eval_expr g sp e m_pre_chain (build_loads_ (Econst (Oaddrstack Int.zero)) δ_lvl) x.
-              
-              
-              eassumption.
-            apply eval_Eload with (Values.Vptr b_δ Int.zero).
-            unfold chain_param in h_exec_stmt_chain_param.
-            !inversion h_exec_stmt_chain_param.
-            * up_type.
-              xxx   use h_struc?
-              stack_localstack_aligned CE_proc e_chain g m_chain sp_proc
-
-
-
-
-            !!pose proof (chain_structure_cut (current_lvl - proc_lvl) proc_lvl m sp) as h.
-            !assert (proc_lvl <= current_lvl)%nat.
-            { admit. }
-            !!assert (proc_lvl + (current_lvl - proc_lvl) = current_lvl)%nat by omega.
-            !assert (chained_stack_structure m (proc_lvl + (current_lvl - proc_lvl)) sp).
-            { rewrite heq_nat.
-              unfold current_lvl.
-              eapply chained_stack_structure_le ;eauto;omega. }
-            specialize (h h_chain_sp).
-            rewrite heq_nat in h.
-            eapply chain_aligned.
-            
-            !assert (stack_localstack_aligned CE_sufx e g m sp'').
-            { apply h_mtchenv. }
-            (* malloc+chaining link preserve stack_localstack_aligned. *)
-            red.
-            !intros.
-            destruct δ_lvl.
-            + cbn.
-              eexists.
-              eapply cm_eval_addrstack_zero.
-            + assert (chained_stack_structure m_chain (S δ_lvl) sp_proc). {
-                admit. 
-              }
-
-
-
-              pose proof chained_stack_structure_decomp_S_2' δ_lvl m_chain sp_proc.
-              
-              cbn.
-              red in h_aligned_g_m.
-              !assert (δ_lvl ≤ Datatypes.length CE_sufx).
-              { rewrite <- build_compilenv_ok in heq1.
-                functional inversion heq1;subst.
-                cbn in h_le_δ_lvl;omega. }
-              specialize (h_aligned_g_m _ h_le_δ_lvl0).
-              decomp h_aligned_g_m.
-              exists b_δ.
-              apply eval_Eload with (Values.Vptr b_δ Int.zero).
-              * 
-
-              admit.
-            }
-            
-
-            Lemma build_compilenv_stack_localstack_aligned:
-              forall st CE locenv g m sp proc_lvl lparams decl CE' sz,
-                stack_localstack_aligned CE locenv g m sp ->
-                repeat_Mem_loadv AST.Mint32 m δ sp sp'' ->
-                build_compilenv st CE proc_lvl lparams decl =: (CE',sz) ->
-                stack_localstack_aligned CE' locenv g m sp.
-
-
-            eapply chain_aligned;eauto.
-            
-            admit. (* Lemma  about build_compilenv and stack_localstack_aligned *)
-        
-        assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_initparams sp_proc m_init_params m_init_params)
+        (* changing the caller in forbidden. *)
+        !assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_chain sp_proc m m_chain)
+                                 m_chain m_init_params).
+        { eapply mem_unchanged_on_mon with (P:=(forbidden st CE_proc g astnum e_chain sp_proc m_chain m_chain));try assumption.
+          !intros.
+          unfold forbidden in h_forbid_m_m_chain_x_y |- *.
+          decomp h_forbid_m_m_chain_x_y.
+          split;auto.
+          intro abs.
+          unfold is_free_block in H0, abs.
+          apply H0.
+          !intros.
+          intro abs'.
+          apply (abs perm).
+          (* splitting in m -> m_pre_chain  -> m_chain *)
+          assert (Mem.perm m_pre_chain x y Cur perm).
+          { eapply Mem.perm_alloc_1 with (m1:=m);eauto. }
+          !inversion h_exec_stmt_chain_param.
+          unfold sp_proc in h_CM_eval_expr_vaddr.
+          subst_det_addrstack_zero.
+          unfold Mem.storev in heq_storev_v_m_chain.
+          eapply Mem.perm_store_1 with (m1:=m_pre_chain);eauto. }
+        clear h_unchanged_on_m_chain_m_init_params.
+        autorename h_unchanged_on_m_chain_m_init_params0.
+          
+        xxx
+          assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_initparams sp_proc m_init_params m_init_params)
                                  m_init_params m_locvarinit).
         { eapply init_locals_unchanged_on;auto.
           6: eapply h_exec_stmt_locvarinit.
