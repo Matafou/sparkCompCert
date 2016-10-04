@@ -1,5 +1,34 @@
-Require Import LibHypsNaming Sorted ZArith.
+Require Import SetoidList.
+Require Import LibHypsNaming Sorted ZArith List.
 
+
+
+Ltac rename_hyp1 h th :=
+  match th with
+  | List.In ?e ?l => fresh "h_in_" e "_" l
+  | List.In ?e _ => fresh "h_in_" e
+  | List.In _ _ => fresh "h_in"
+  | InA _ ?e ?l => fresh "h_inA_" e "_" l
+  | InA _ ?e _ => fresh "h_inA_" e
+  | InA _ _ _ => fresh "h_inA"
+  | @Forall _ ?P ?x => fresh "h_forall_" P "_" x
+  | @Forall _ _ ?x => fresh "h_forall_" x
+  | @Forall _ ?P _ => fresh "h_forall_" P
+  | @Forall _ _ _ => fresh "h_forall"
+  | @StronglySorted _ ?ord ?l => fresh "h_strgSorted_" l
+  | @StronglySorted _ ?ord ?l => fresh "h_strgSorted"
+  | NoDupA _ ?l => fresh "h_NoDupA_" l
+  | NoDupA _ _ => fresh "h_NoDupA"
+  end.
+
+
+Ltac rename_hyp2 h th :=
+  match th with
+  | _ => rename_hyp1 h th
+  | _ => LibHypsNaming.rename_hyp_neg h th
+  end.
+
+Ltac rename_hyp ::= rename_hyp2.
 
 (* All elements of a sorted list are smaller or equal to the first
    element. If the ordering is reflexive. *)
@@ -8,13 +37,13 @@ Lemma increasing_order_In A : forall ord (stk:list A) (hd:A),
     List.Forall (fun elt => elt = hd \/ ord hd elt) (hd::stk).
 Proof.
   !intros.
-  !inversion H.
+  !inversion h_strgSorted.
   constructor 2.
   - left;reflexivity.
   - apply List.Forall_forall.
     !intros.
     right.
-    rewrite List.Forall_forall in H3.
+    rewrite List.Forall_forall in h_forall_stk.
     auto.
 Qed.
 

@@ -21,6 +21,7 @@ Require Import ZArith.
   to a hypothesis. [th] is the type of the hypothesis. *)
 Ltac fallback_rename_hyp h th :=
   match th with
+
     | true = beq_nat _ _ => fresh "hbeqnat_true"
     | beq_nat _ _ = true => fresh "hbeqnat_true"
     | false = beq_nat _ _ => fresh "hbeqnat_false"
@@ -41,6 +42,15 @@ Ltac fallback_rename_hyp h th :=
     | ?f _ _ _ _ _ _ = _ => fresh "heq_" f
     | ?f _ _ _ _ _ _ _ = _ => fresh "heq_" f
     | ?f _ _ _ _ _ _ _ _ = _ => fresh "heq_" f
+    | _ = ?f => fresh "heq_" f
+    | _ = ?f _  => fresh "heq_" f
+    | _ = ?f _ _  => fresh "heq_" f
+    | _ = ?f _ _ _  => fresh "heq_" f
+    | _ = ?f _ _ _ _  => fresh "heq_" f
+    | _ = ?f _ _ _ _ _  => fresh "heq_" f
+    | _ = ?f _ _ _ _ _ _  => fresh "heq_" f
+    | _ = ?f _ _ _ _ _ _ _  => fresh "heq_" f
+    | _ = ?f _ _ _ _ _ _ _ _  => fresh "heq_" f
     | @eq bool _ true => fresh "heq_bool_true"
     | @eq bool _ false => fresh "heq_bool_false"
     | @eq bool true _ => fresh "heq_bool_true"
@@ -121,6 +131,16 @@ Ltac my_rename_hyp h th :=
 Ltac rename_hyp ::= my_rename_hyp.>> *)
 
 Ltac rename_hyp h ht := fail.
+
+
+(* Add this if you want hyps of typr ~ P to be renamed like if of type
+   P but prefixed by "neg_" *)
+Ltac rename_hyp_neg h th :=
+  match th with
+  | ~ ?th' =>
+    let nme := rename_hyp h th' in
+    fresh "neg_" nme
+  end.
 
 (* Credit for the harvesting of hypothesis: Jonathan Leivant *)
 Ltac harvest_hyps harvester := constr:(ltac:(harvester; constructor) : True).
@@ -353,3 +373,4 @@ Ltac move_up_types H := match type of H with
    variables to the top. Really useful with [Set Compact Context]
    which is no yet commited in coq-trunk. *)
 Ltac up_type := map_all_hyps_rev move_up_types.
+

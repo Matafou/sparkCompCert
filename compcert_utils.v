@@ -1,6 +1,9 @@
-Require Import LibHypsNaming spark2Cminor.
+Require Import LibHypsNaming spark2Cminor more_stdlib.
 Import ZArith Memory Cminor Integers Errors.
 Open Scope Z_scope.
+
+(* no permission mean free. *)
+Definition is_free_block := fun m sp_id ofs_id => forall perm, ~ Mem.perm m sp_id ofs_id Cur perm.
 
 Ltac rename_hyp1 h th :=
   match th with
@@ -8,6 +11,9 @@ Ltac rename_hyp1 h th :=
     | ?min <= ?x and ?x < ?max => fresh "h_" x "_bounded_"
     | ?min <= ?x and ?x < ?max => fresh "h_bounded"
     | Ctypes.access_mode ?x = _ => fresh "h_access_mode_" x
+    | Values.Vptr ?b ?v = _ => fresh "heq_vptr_" b "_" v
+    | Values.Vptr ?b = _ => fresh "heq_vptr_" b
+    | Values.Vptr _ _ = _ => fresh "heq_vptr"
     | Mem.valid_access ?m ?chk ?b ?ofs ?perm => fresh "h_valid_access_" b
     | Mem.valid_access ?m ?chk ?b ?ofs ?perm => fresh "h_valid_access"
     | Ctypes.access_mode _ = _ => fresh "h_access_mode"
@@ -44,6 +50,16 @@ Ltac rename_hyp1 h th :=
     | Mem.storev ?chk ?m ?vaddr ?v = ?m2 => fresh "heq_storev_" v "_" m2
     | Mem.storev ?chk ?m ?vaddr ?v = ?m2 => fresh "heq_storev_" v
     | Mem.storev ?chk ?m ?vaddr ?v = ?m2 => fresh "heq_storev"
+
+    | Mem.valid_block ?m ?sp => fresh "h_valid_blck_" m "_" sp
+    | Mem.valid_block ?m ?sp => fresh "h_valid_blck_" m
+    | Mem.valid_block ?m ?sp => fresh "h_valid_blck_" sp
+    | Mem.valid_block _ _ => fresh "h_valid_blck"
+
+    | Mem.alloc ?m ?ofs ?sz = (?m', ?sp) => fresh "h_malloc_" m "_" m'
+    | Mem.alloc ?m ?ofs ?sz = ?res       => fresh "h_malloc_" m "_" res
+    | Mem.alloc ?m ?ofs ?sz = _ => fresh "h_malloc_" m
+    | Mem.alloc _ _ _ = _ => fresh "h_malloc"
 
     | Mem.unchanged_on ?prd ?m ?m' => fresh "h_unchanged_on_" prd "_" m "_" m'
     | Mem.unchanged_on ?prd ?m ?m' => fresh "h_unchanged_on_" m "_" m'
@@ -92,7 +108,27 @@ Ltac rename_hyp1 h th :=
     | Globalenvs.Genv.find_funct ?g _ = Some _ => fresh "heq_find_func"
     | Globalenvs.Genv.find_funct ?g ?paddr = None => fresh "heq_find_func_" paddr "_NONE"
     | Globalenvs.Genv.find_funct ?g ?paddr = None => fresh "heq_find_func_None"
+
+    | Maps.PTree.get ?k ?m = Some ?v => fresh "heq_mget_" k "_" m "_" v
+    | Maps.PTree.get ?k _ = Some ?v => fresh "heq_mget_" k "_" v
+    | Maps.PTree.get ?k _ = Some _ => fresh "heq_mget_" k
+    | Maps.PTree.get _ _ = Some _ => fresh "heq_mget"
+
+    | is_free_block ?m ?sp ?ofs => fresh "h_free_blck_" m "_" sp "_" ofs
+    | is_free_block ?m ?sp ?ofs => fresh "h_free_blck_" sp "_" ofs
+    | is_free_block ?m ?sp ?ofs => fresh "h_free_blck_" m
+    | is_free_block ?m ?sp ?ofs => fresh "h_free_blck"
   end.
+
+Ltac rename_hyp2 h th :=
+  match th with
+    | _ => rename_hyp1 h th
+    | _ => (more_stdlib.rename_hyp1 h th)
+    | _ => (spark2Cminor.rename_hyp1 h th)
+    | _ => (LibHypsNaming.rename_hyp_neg h th)
+  end.
+
+Ltac rename_hyp ::= rename_hyp2.
 
 (* Sometme inversion unfolds to much things under OK (like Int.repr for instance).
    Then this lemma is useful. *)
@@ -132,9 +168,6 @@ Proof.
   apply repr_inj in abs;auto.
 Qed.
 
-
-(* no permission mean free. *)
-Definition is_free_block := fun m sp_id ofs_id => forall perm, ~ Mem.perm m sp_id ofs_id Cur perm.
 (* never allocated blocks are invalid, thus free. *)
 
 Lemma fresh_block_alloc_perm:
@@ -163,4 +196,47 @@ Proof.
     + apply unchanged_on_perm;auto.
     + apply unchanged_on_perm;auto.
   - apply unchanged_on_contents;auto.
+Qed.
+
+
+
+Lemma map_get_set_same_nodup :
+  forall l m k v,
+    (forall i, List.In i l -> i <> k) ->
+    Maps.PTree.get k (set_locals l (Maps.PTree.set k v m)) = Some v.
+Proof.
+  !!induction l;cbn;!intros.
+  - apply Maps.PTree.gss.
+  - rename H into h_diff.
+    rewrite Maps.PTree.gso.
+    + eapply IHl.
+      !intros.
+      apply h_diff.
+      right;assumption.
+    + apply not_eq_sym.
+      eapply h_diff.
+      left.
+      reflexivity.
+Qed.
+
+
+Lemma map_get_set_locals_diff: forall decl x env,
+    ~List.In x decl ->
+    Maps.PTree.get x (set_locals decl env) =
+    Maps.PTree.get x env.
+Proof.
+  !intro.
+  !!induction decl;!intros;cbn.
+  - reflexivity.
+  - rewrite Maps.PTree.gso.
+    + eapply IHdecl.
+      intro abs.
+      apply neg_h_in_x.
+      constructor 2.
+      assumption.
+    + intro abs.
+      apply neg_h_in_x.
+      subst.
+      constructor 1.
+      reflexivity.
 Qed.

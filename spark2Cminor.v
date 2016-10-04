@@ -1104,6 +1104,18 @@ Ltac rename_hyp1 h th :=
     | transl_basetype _ _ = Error _ => fresh "heq_transl_basetype_RE"
     | transl_basetype _ _ = _ => fresh "heq_transl_basetype"
 
+    | transl_exprlist _ _ ?x = Error _ => fresh "h_trans_exprl_Err_" x
+    | transl_exprlist _ _ _ = Error _ => fresh "h_trans_exprl_Err"
+    | transl_exprlist _ _ ?x = Some ?y => fresh "h_trans_exprl_" x "_" y
+    | transl_exprlist _ _ ?x = Some _ => fresh "h_trans_exprl_" x
+    | transl_exprlist _ _ _ = _ => fresh "h_trans_exprl"
+
+    | transl_paramexprlist _ _ ?x _ = Error _ => fresh "h_trans_prmexprl_Err_" x
+    | transl_paramexprlist _ _ _ _ = Error _ => fresh "h_trans_prmexprl_Err"
+    | transl_paramexprlist _ _ ?x _ = Some ?y => fresh "h_trans_prmexprl_" x "_" y
+    | transl_paramexprlist _ _ ?x _ = Some _ => fresh "h_trans_prmexprl_" x
+    | transl_paramexprlist _ _ _ _ = _ => fresh "h_trans_prmexprl"
+
     | transl_params _ _ _ _ = Error _ => fresh "heq_transl_params_ERR"
     | transl_params _ ?p _ _ = (OK ?r) => fresh "heq_transl_params_" p "_" r
     | transl_params _ ?p _ _ = ?r => fresh "heq_transl_params_" p "_" r
@@ -1211,7 +1223,6 @@ Ltac rename_hyp1 h th :=
     | add_to_frame _ _ _ _ = Error _ => fresh "heq_add_to_fr_ERR" 
     | add_to_frame _ _ ?typ _ = _ => fresh "heq_add_to_fr_" typ 
     | add_to_frame _ _ _ _ = _ => fresh "heq_add_to_fr" 
-
 end.
 
 

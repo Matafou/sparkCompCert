@@ -78,10 +78,17 @@ Ltac rename_hyp_sem h th :=
   | symboltable.fetch_proc ?p _ = ?r => fresh "h_fetch_proc_" p "_" r
   | symboltable.fetch_proc ?p _ = _ => fresh "h_fetch_proc_" p
   | symboltable.fetch_proc _ _ = _ => fresh "h_fetch_proc"
-  | _ => STACK.rename_hyp1 h th
   end.
 
-Ltac rename_hyp ::= rename_hyp_sem.
+
+Ltac rename_hyp1 h th :=
+  match th with
+  | _ => rename_hyp_sem h th
+  | _ => STACK.rename_hyp1 h th
+  | _ => LibHypsNaming.rename_hyp_neg h th
+  end.
+
+Ltac rename_hyp ::= rename_hyp1.
 
 Lemma storeUpdate_id_ok_others: forall ast_num stbl stk id v stk',
     storeUpdate stbl stk (E_Identifier ast_num id) v (Normal stk') ->
