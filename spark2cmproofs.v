@@ -1,10 +1,10 @@
-Require Import
- ZArith function_utils LibHypsNaming Errors spark2Cminor Cminor
- symboltable semantics semantics_properties Sorted Relations
- compcert.lib.Integers compcert_utils more_stdlib.
+Require Import ZArith function_utils LibHypsNaming  Errors
+        spark2Cminor Cminor symboltable semantics semantics_properties
+        Sorted Relations compcert.lib.Integers compcert_utils more_stdlib.
 Require Import SetoidList.
 Require Ctypes.
 Import Symbol_Table_Module Memory.
+
 
 Open Scope error_monad_scope.
 Open Scope Z_scope.
@@ -912,6 +912,7 @@ Proof.
     eauto.
 Qed.
 
+(* THIS IS NOT TRUE: some variable may not be initialized at some point. *)
 Definition stack_complete stbl s CE := forall a nme addr_nme,
     transl_variable stbl CE a nme = OK addr_nme
     -> exists v, eval_name stbl s (E_Identifier a nme) (Normal v).
@@ -5162,7 +5163,7 @@ Proof.
       destruct abs1; try omega.
       apply H;auto.
     + eapply unchanged_on_iff  ;eauto.
-      do 2 red;!intros;subst.
+      red; red ; !intros;subst.
       eapply h_unch_forbid_m_m_mid.
   - rename x0 into initparams'.
     rename x1 into prm_name_t.
@@ -5205,7 +5206,7 @@ Proof.
       destruct abs1; try omega.
       apply H;auto.
     + eapply unchanged_on_iff  ;eauto.
-      do 2 red;!intros;subst.
+      red;red;!intros;subst.
       eapply h_unch_forbid_m_m_mid.
   - rename x0 into initparams'.
     rename x1 into prm_name_t.
@@ -5248,7 +5249,7 @@ Proof.
       destruct abs1; try omega.
       apply H;auto.
     + eapply unchanged_on_iff  ;eauto.
-      do 2 red;!intros;subst.
+      red; red;!intros;subst.
       eapply h_unch_forbid_m_m_mid.
 Qed.
 
@@ -5444,7 +5445,7 @@ Proof.
         omega. }
       red in h_unch_forbid_m_m_mid.
       eapply unchanged_on_iff;eauto.
-      do 2 (red;!intros).
+       (red;!intros);(red;!intros).
       subst.
       apply h_unch_forbid_m_m_mid.
 Qed.
@@ -6884,7 +6885,8 @@ Qed.
 
 Lemma copy_in_spec:
   forall st s CE spb ofs locenv g m sto pb_lvl prms_profile args args_t sto',
-    match_env st s CE (Values.Vptr spb ofs) locenv g m
+    chained_stack_structure m (Datatypes.length CE -1) (Values.Vptr spb ofs)
+    -> match_env st s CE (Values.Vptr spb ofs) locenv g m
     -> transl_paramexprlist st CE args prms_profile =: args_t
     (* je veux exprimer la propriété qui parle  *)
     -> copy_in st s (pb_lvl,sto) prms_profile args (Normal (pb_lvl,sto'))
@@ -6896,7 +6898,7 @@ Proof.
   !intros.
   remember (Normal (pb_lvl, sto')) as res_copy_in.
   remember (pb_lvl, sto) as pb_lvl_sto.
-  revert heq_transl_params_args_t h_match_env Heqres_copy_in Heqpb_lvl_sto .
+  revert heq_transl_params_args_t h_chain h_match_env Heqres_copy_in Heqpb_lvl_sto .
   revert spb ofs locenv g m sto pb_lvl args_t sto'.
   !induction h_copy_in; try discriminate;subst;repeat eq_same_clear;intros.
   - subst.
@@ -7018,7 +7020,25 @@ Proof.
          to an address. Even if it is not guaranteed that this address
          contains a value in the current case: (Out parameter). *)
       assert (h_ex:exists n_t_v, Cminor.eval_expr g (Values.Vptr spb ofs) locenv m n_t n_t_v).
-      { admit. }
+      { decomp (transl_name_OK_inv _ _ _ _ heq_transl_name);subst. 
+        functional inversion heq_transl_variable;subst.
+        unfold build_loads.
+        !assert (chained_stack_structure m (m'-m0) (Values.Vptr spb ofs)).
+        {  admit.
+          (* hyp? *)
+        }
+        decomp (chain_structure_spec _ _ _ h_chain g locenv).
+        eexists.
+        econstructor.
+        - !!assert (exact_levelG CE).
+          { admit. }
+          !!pose proof exact_lvlG_lgth _ _ h_exact_lvlG_CE H2. 
+          rewrite heq_nat in h_CM_eval_expr.
+          admit.
+        - econstructor.
+          econstructor.
+        - cbn.
+          reflexivity. }
       !!destruct h_ex as [? ?].
       exists (n_t_v::le_t_v).
       constructor;auto.
@@ -8010,8 +8030,6 @@ Proof.
             + omega.
           - eassumption. }
 
-xxx
-
         assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_locvarinit sp_proc m_locvarinit m_locvarinit)
                                  m_locvarinit m_bdy).
         { admit. }
@@ -8030,7 +8048,10 @@ xxx
   - destruct b.
     + eapply IHh_exec_stmt_stmt_t_outc;eauto.
     + eapply IHh_exec_stmt_stmt_t_outc;eauto.
-  - specialize (IHh_exec_stmt_stmt_t_outc1 _ _ _ _ h_strg_mtch_s_CE_m h_inv_comp_CE_st heq1).
+  - destruct b.
+    + eapply IHh_exec_stmt_stmt_t_outc;eauto.
+    + eapply IHh_exec_stmt_stmt_t_outc;eauto.
+  - specialize (IHh_exec_stmt_stmt_t_outc1 _ _ _ _ _ h_wf_st_st (eq_refl _) h_strg_mtch_s_CE_m h_chain_lvl_sp h_inv_comp_CE_st heq__res2).
     (* Needing match_env preserved here. *)
     admit.
   (* specialize (IHh_exec_stmt_stmt_t_outc2 _ _ _ _ ?  heq0). *)
