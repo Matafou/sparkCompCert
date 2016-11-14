@@ -6886,6 +6886,7 @@ Qed.
 Lemma copy_in_spec:
   forall st s CE spb ofs locenv g m sto pb_lvl prms_profile args args_t sto',
     chained_stack_structure m (Datatypes.length CE -1) (Values.Vptr spb ofs)
+    -> invariant_compile CE st
     -> match_env st s CE (Values.Vptr spb ofs) locenv g m
     -> transl_paramexprlist st CE args prms_profile =: args_t
     (* je veux exprimer la propriété qui parle  *)
@@ -6898,7 +6899,8 @@ Proof.
   !intros.
   remember (Normal (pb_lvl, sto')) as res_copy_in.
   remember (pb_lvl, sto) as pb_lvl_sto.
-  revert heq_transl_params_args_t h_chain h_match_env Heqres_copy_in Heqpb_lvl_sto .
+  revert heq_transl_params_args_t h_chain h_inv_comp_CE_st 
+         h_match_env Heqres_copy_in Heqpb_lvl_sto .
   revert spb ofs locenv g m sto pb_lvl args_t sto'.
   !induction h_copy_in; try discriminate;subst;repeat eq_same_clear;intros.
   - subst.
@@ -7020,19 +7022,50 @@ Proof.
          to an address. Even if it is not guaranteed that this address
          contains a value in the current case: (Out parameter). *)
       assert (h_ex:exists n_t_v, Cminor.eval_expr g (Values.Vptr spb ofs) locenv m n_t n_t_v).
-      { decomp (transl_name_OK_inv _ _ _ _ heq_transl_name);subst. 
-        functional inversion heq_transl_variable;subst.
+      { decomp (transl_name_OK_inv _ _ _ _ heq_transl_name);subst;up_type. 
+        !functional inversion heq_transl_variable;subst;up_type.
+        !assert ((m' - lvl_id) <= (Datatypes.length CE - 1))%nat.
+        { refine (_ (exact_lvlG_lgth CE _ _ heq_lvloftop_CE_m')) .
+          - !intro .
+            rewrite heq_nat.
+            omega.
+          - apply h_inv_comp_CE_st. }
+        !assert (exists lvl,  lvl + (m' - lvl_id) = Datatypes.length CE - 1 )%nat.
+        { exists ((Datatypes.length CE - 1) - (m' - lvl_id))%nat. 
+          (* Speeds up omega. *)
+          set (aa := (m' - lvl_id)%nat) in *.
+          set (bb := (Datatypes.length CE - 1)%nat) in *.
+          omega. }
+
+        decomp h_ex.
+        rewrite <- heq_nat in h_chain.
+
+        !!pose proof chain_structure_cut _ _ _ _ h_chain g locenv.
+        decomp h_ex.
+        exists sp'.
         unfold build_loads.
-        !assert (chained_stack_structure m (m'-m0) (Values.Vptr spb ofs)).
-        {  admit.
-          (* hyp? *)
-        }
+        econstructor.
+        - eassumption.
+        - econstructor.
+          econstructor.
+        - cbn.
+          reflexivity. 
+
+
+        unfold build_loads.
+        !assert (chained_stack_structure m (m'-lvl_id) (Values.Vptr spb ofs)).
+        { eapply chained_stack_structure_le;eauto. }
         decomp (chain_structure_spec _ _ _ h_chain g locenv).
         eexists.
         econstructor.
-        - !!assert (exact_levelG CE).
-          { admit. }
-          !!pose proof exact_lvlG_lgth _ _ h_exact_lvlG_CE H2. 
+        - !assert (exists lvl,  (m' - lvl_id) + lvl = Datatypes.length CE - 1 )%nat.
+          { exists ((Datatypes.length CE - 1) - (m' - lvl_id))%nat. 
+            (* Speeds up omega. *)
+            set (aa := (m' - lvl_id)%nat) in *.
+            set (bb := (Datatypes.length CE - 1)%nat) in *.
+            omega. }
+          decomp h_ex.
+          pose proof chain_structure_cut _ _ _ _ 
           rewrite heq_nat in h_CM_eval_expr.
           admit.
         - econstructor.
