@@ -935,6 +935,12 @@ Definition stack_match_CE (s : STACK.stack) (CE : compilenv) :=
     exists CE_sto,
     CompilEnv.frameG nme CE = Some (lvl,CE_sto).
 
+(* A name present in CE is translated to some expression that evaluates
+   correctly to an address. *)
+Definition stack_match_addresses st sp CE locenv g m :=
+  forall nme addr_nme ,
+    transl_name st CE nme = OK addr_nme ->
+    exists addr, Cminor.eval_expr g sp locenv m addr_nme addr.
 
 (* Observationnal equivalence of the spark dynamic stack and the compile environment. *)
 Definition stack_match st s CE sp locenv g m :=
@@ -948,6 +954,7 @@ Definition stack_match st s CE sp locenv g m :=
       (transl_value v v_t /\
        Cminor.eval_expr g sp locenv m load_addr_nme v_t).
 
+  
 
 (* We have translated all procedures of stbl, and they have all an address
    pointing to there translation *)
@@ -1096,7 +1103,7 @@ stack points to another local stack up to a given depth. This give a
 stack of stacks that is isomrphic to Spark's stack of stacks. *)
 
 (* We need this structural invariant at least to prove that execution
-   never modifies the chaining pointers. *)
+   never modifies the chaining pointers. *) 
 Inductive chained_stack_structure m : nat -> Values.val -> Prop :=
 | chained_0: forall b, chained_stack_structure m 0 (Values.Vptr b Int.zero) (* Should b null? *)
 | chained_S: forall n b' b,
@@ -1104,8 +1111,9 @@ Inductive chained_stack_structure m : nat -> Values.val -> Prop :=
     Mem.loadv AST.Mint32 m (Values.Vptr b Int.zero) = Some (Values.Vptr b' Int.zero) ->
     chained_stack_structure m (S n) (Values.Vptr b Int.zero).
 
-Record safe_cm_env st CE sp locenv g m: Prop :=
+Record safe_cm_env st (CE:compilenv) (sp:Values.val) locenv g m: Prop :=
   mk_safe_cm_env {
+      me_stack_match_addresses: @stack_match_addresses st sp CE locenv g m;
       me_stack_match_functions: stack_match_functions st sp CE locenv g m ;
       me_stack_separate: stack_separate st CE sp locenv g m;
       me_stack_localstack_aligned: stack_localstack_aligned (Datatypes.length CE) locenv g m sp;
@@ -1142,6 +1150,7 @@ Record match_env st s CE sp locenv g m: Prop :=
     }.
 
 Arguments me_stack_match : default implicits.
+Arguments me_stack_match_addresses : default implicits.
 Arguments me_stack_match_CE : default implicits.
 Arguments me_stack_match_functions : default implicits.
 Arguments me_overflow : default implicits.
@@ -1172,7 +1181,7 @@ Arguments ce_wf_intra: default implicits.
 Arguments ce_wf_extra: default implicits.
 
 Hint Resolve ci_exact_lvls ci_increasing_ids ci_no_overflow ci_stbl_var_types_ok ce_wf_extra ce_wf_extra.
-Hint Resolve me_stack_match me_stack_match_CE me_stack_match_functions me_stack_complete me_stack_separate me_stack_localstack_aligned me_stack_no_null_offset me_overflow me_safe_cm_env me_chain_struct.
+Hint Resolve me_stack_match_addresses me_stack_match me_stack_match_CE me_stack_match_functions me_stack_complete me_stack_separate me_stack_localstack_aligned me_stack_no_null_offset me_overflow me_safe_cm_env me_chain_struct.
 
 Inductive strong_match_env stbl: STACK.stack → compilenv → Values.val → env → genv → mem → Prop :=
 | C1: forall v locenv g m,
@@ -1213,9 +1222,14 @@ Ltac rename_hyp3 h th :=
   | match_env _ _ _ _ _ _ _ => fresh "h_match_env"
   | stack_match _ ?s _ _ _ _ ?m => fresh "h_stk_mtch_" s "_" m
   | stack_match _ _ _ _ _ _ _ => fresh "h_stk_mtch"
+  | stack_match_addresses _ _ ?CE _ _ ?m => fresh "h_stk_mtch_addr_" CE "_" m
+  | stack_match_addresses _ _ ?CE _ _ _ => fresh "h_stk_mtch_addr_" CE
+  | stack_match_addresses _ _ _ _ _ _ => fresh "h_stk_mtch_addr"
   | stack_match_CE ?s ?CE => fresh "h_stk_mtch_CE_" s "_" CE
   | stack_match_CE ?s _ => fresh "h_stk_mtch_CE_" s
   | stack_match_CE _ _ => fresh "h_stk_mtch_CE"
+
+
   | stack_match_functions _ _ _ _ _ _ => fresh "h_stk_mtch_fun"
   | stack_complete _ ?s ?CE => fresh "h_stk_cmpl_" s "_" CE
   | stack_complete _ ?s _ => fresh "h_stk_cmpl_" s
@@ -1739,6 +1753,14 @@ Proof.
   functional inversion heq_transl_name.
 Qed.
 
+Lemma stack_match_addresses_empty: forall st sp locenv g m,
+    stack_match_addresses st sp [] locenv g m.
+Proof.
+  !intros.
+  red;!intros.
+  functional inversion heq_transl_name.
+Qed.
+
 Lemma stack_match_CE_empty: stack_match_CE [] [].
 Proof.
   red;!intros.
@@ -1795,6 +1817,7 @@ Proof.
   + red;!intros.
     !functional inversion heq_transl_variable.
     functional inversion heq_CEfetchG_nme.
+  + apply stack_match_addresses_empty.
   + red;!intros.
     red in h_stk_mtch_fun.
     specialize (h_stk_mtch_fun _ _ _ h_fetch_proc_p).
@@ -1889,26 +1912,6 @@ Proof.
   - eapply eval_expr_build_load_const_inv_locenv;eauto.
   - eapply eval_expr_Econst_inv_locenv;eauto.
 Qed.
-      
-Lemma stack_match_inv_locenv :  forall st s CE sp locenv g m,
-    stack_match st s CE sp locenv g m -> 
-    forall locenv',
-      stack_match st s CE sp locenv' g m.
-Proof.
-  !intros.
-  red.
-  !intros.
-  red in h_stk_mtch_s_m.
-  specialize (h_stk_mtch_s_m nme v nme_t load_addr_nme typ_nme cm_typ_nme h_eval_name_nme_v heq_type_of_name heq_transl_name heq_transl_type heq_make_load).
-  !!destruct h_stk_mtch_s_m as [? [? ?]].
-  exists load_addr_nme_v;split;auto.
-  !functional inversion heq_make_load;subst.
-  !inversion h_CM_eval_expr_load_addr_nme_load_addr_nme_v.
-  econstructor;eauto.
-  !functional inversion heq_transl_name;subst.
-  !functional inversion heq_transl_variable;subst.
-  eapply eval_expr_build_load_inv_locenv;eauto.
-Qed.
 
 Lemma eval_expr_transl_variable_inv_locenv: forall st CE astnum g sp locenv m nme nme_t v,
           transl_variable st CE astnum nme = OK nme_t ->
@@ -1929,6 +1932,41 @@ Proof.
   !functional inversion heq_transl_name;subst.
   eapply eval_expr_transl_variable_inv_locenv;eauto.
 Qed.
+
+Lemma stack_match_addr_inv_locenv :  forall st CE sp locenv g m,
+    stack_match_addresses st sp CE locenv g m -> 
+    forall locenv',
+      stack_match_addresses st sp CE locenv' g m.
+Proof.
+  !intros.
+  red.
+  !intros.
+  red in h_stk_mtch_addr_CE_m.
+  specialize (h_stk_mtch_addr_CE_m nme nme_t heq_transl_name).
+  decomp h_stk_mtch_addr_CE_m.
+  exists nme_t_v.
+  eapply eval_expr_transl_name_inv_locenv;eauto.
+Qed.
+      
+Lemma stack_match_inv_locenv :  forall st s CE sp locenv g m,
+    stack_match st s CE sp locenv g m -> 
+    forall locenv',
+      stack_match st s CE sp locenv' g m.
+Proof.
+  !intros.
+  red.
+  !intros.
+  red in h_stk_mtch_s_m.
+  specialize (h_stk_mtch_s_m nme v nme_t load_addr_nme typ_nme cm_typ_nme h_eval_name_nme_v heq_type_of_name heq_transl_name heq_transl_type heq_make_load).
+  !!destruct h_stk_mtch_s_m as [? [? ?]].
+  exists load_addr_nme_v;split;auto.
+  !functional inversion heq_make_load;subst.
+  !inversion h_CM_eval_expr_load_addr_nme_load_addr_nme_v.
+  econstructor;eauto.
+  !functional inversion heq_transl_name;subst.
+  !functional inversion heq_transl_variable;subst.
+  eapply eval_expr_build_load_inv_locenv;eauto.
+Qed.
   
   
 (** Currently locenv are not considered in match_env, this lemma could become
@@ -1943,6 +1981,7 @@ Proof.
   !intros.
   split;[ | | | split | ];try now apply h_match_env.  
   - eapply stack_match_inv_locenv;eauto.
+  - eapply stack_match_addr_inv_locenv; eauto.
   - pose proof me_stack_match_functions (me_safe_cm_env h_match_env) as h_mtch_fun.
     red in h_mtch_fun.
     red;!intros.
@@ -7021,57 +7060,12 @@ Proof.
          by well_formedness/well_typedness it should correctly evaluate
          to an address. Even if it is not guaranteed that this address
          contains a value in the current case: (Out parameter). *)
-      assert (h_ex:exists n_t_v, Cminor.eval_expr g (Values.Vptr spb ofs) locenv m n_t n_t_v).
-      { decomp (transl_name_OK_inv _ _ _ _ heq_transl_name);subst;up_type. 
-        !functional inversion heq_transl_variable;subst;up_type.
-        !assert ((m' - lvl_id) <= (Datatypes.length CE - 1))%nat.
-        { refine (_ (exact_lvlG_lgth CE _ _ heq_lvloftop_CE_m')) .
-          - !intro .
-            rewrite heq_nat.
-            omega.
-          - apply h_inv_comp_CE_st. }
-        !assert (exists lvl,  lvl + (m' - lvl_id) = Datatypes.length CE - 1 )%nat.
-        { exists ((Datatypes.length CE - 1) - (m' - lvl_id))%nat. 
-          (* Speeds up omega. *)
-          set (aa := (m' - lvl_id)%nat) in *.
-          set (bb := (Datatypes.length CE - 1)%nat) in *.
-          omega. }
+      assert (h_ex:∃ n_t_v, Cminor.eval_expr g (Values.Vptr spb ofs) locenv m n_t n_t_v).
+      { !!pose proof (me_stack_match_addresses (me_safe_cm_env h_match_env)).
+        red in h_stk_mtch_addr_CE_m.
+        eapply h_stk_mtch_addr_CE_m.
+        eassumption. }
 
-        decomp h_ex.
-        rewrite <- heq_nat in h_chain.
-
-        !!pose proof chain_structure_cut _ _ _ _ h_chain g locenv.
-        decomp h_ex.
-        exists sp'.
-        unfold build_loads.
-        econstructor.
-        - eassumption.
-        - econstructor.
-          econstructor.
-        - cbn.
-          reflexivity. 
-
-
-        unfold build_loads.
-        !assert (chained_stack_structure m (m'-lvl_id) (Values.Vptr spb ofs)).
-        { eapply chained_stack_structure_le;eauto. }
-        decomp (chain_structure_spec _ _ _ h_chain g locenv).
-        eexists.
-        econstructor.
-        - !assert (exists lvl,  (m' - lvl_id) + lvl = Datatypes.length CE - 1 )%nat.
-          { exists ((Datatypes.length CE - 1) - (m' - lvl_id))%nat. 
-            (* Speeds up omega. *)
-            set (aa := (m' - lvl_id)%nat) in *.
-            set (bb := (Datatypes.length CE - 1)%nat) in *.
-            omega. }
-          decomp h_ex.
-          pose proof chain_structure_cut _ _ _ _ 
-          rewrite heq_nat in h_CM_eval_expr.
-          admit.
-        - econstructor.
-          econstructor.
-        - cbn.
-          reflexivity. }
       !!destruct h_ex as [? ?].
       exists (n_t_v::le_t_v).
       constructor;auto.
