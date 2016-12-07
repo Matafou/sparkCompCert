@@ -4083,13 +4083,69 @@ Proof.
 Qed.
 
 
+    
+
 Hint Resolve
-     assignment_preserve_stack_match
+     assignment_preserve_stack_match assignment_preserve_stack_match_CE
      assignment_preserve_stack_match_function
      assignment_preserve_stack_complete
      assignment_preserve_stack_separate assignment_preserve_loads_offset_non_null
      assignment_preserve_stack_no_null_offset assignment_preserve_stack_safe
      assignment_preserve_stack_freeable.
+
+Lemma assignment_preserve_safe_cm_env:
+  forall stbl s CE spb ofs locenv' g m x x0 nme_t nme_chk nme_t_addr e_t_v m',
+    invariant_compile CE stbl ->
+    match_env stbl s CE (Values.Vptr spb ofs) locenv' g m ->
+    transl_name stbl CE (E_Identifier x x0) =: nme_t ->
+    Cminor.eval_expr g (Values.Vptr spb ofs) locenv' m nme_t nme_t_addr ->
+    Mem.storev nme_chk m nme_t_addr e_t_v = Some m' ->
+    safe_cm_env stbl CE (Values.Vptr spb ofs) locenv' g m'.
+Proof.
+  !intros.
+  split;eauto.
+xxx
+Lemma assignment_preserve_match_env:forall stbl s CE spb ofs locenv g m x x0 nme_t nme_chk nme_t_addr e_v e_t_v s' m',
+    forall h_overflow:(forall n, e_v = Int n -> do_overflow_check n (Normal (Int n))),
+      invariant_compile CE stbl ->
+      match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
+      transl_name stbl CE (E_Identifier x x0) =: nme_t ->
+      Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_addr ->
+      compute_chnk stbl (E_Identifier x x0) = OK nme_chk ->
+      transl_value e_v e_t_v ->
+      storeUpdate stbl s (E_Identifier x x0) e_v (Normal s') ->
+      Mem.storev nme_chk m nme_t_addr e_t_v = Some m' ->
+      match_env stbl s' CE (Values.Vptr spb ofs) locenv g m'.
+Proof.
+  !intros.
+  generalize heq_transl_name; unfold transl_name;!intro.
+  split;eauto.
+  - unfold transl_name in heq_transl_name.
+    !!pose proof (me_stack_complete h_match_env).
+    red in h_stk_cmpl_s_CE.
+    specialize (h_stk_cmpl_s_CE x x0 nme_t heq_transl_name).
+    decomp h_stk_cmpl_s_CE.
+    !! pose proof (me_stack_match h_match_env).
+    eapply assignment_preserve_stack_match;eauto.
+    
+      red in h_stk_mtch_s_m.
+      !assert (exists typ_x0, type_of_name stbl (E_Identifier x x0) =: typ_x0).
+      { admit. (* invariant? *) }
+      decomp h_ex.
+      !assert (exists typ_x0_t, transl_type stbl typ_x0 =: typ_x0_t).
+      { admit. (* invariant? *) }
+      decomp h_ex.
+      !assert (exists load_addr_x0, make_load nme_t typ_x0_t =: load_addr_x0).
+      { admit. (* invariant? *) }
+      decomp h_ex.
+      specialize (h_stk_mtch_s_m _ _ _ _ _ _  h_eval_name_v heq_type_of_name heq_transl_name heq_transl_type heq_make_load).
+      decomp h_stk_mtch_s_m.
+      eapply assignment_preserve_stack_match with (e_v:=v);eauto 10.
+    + 
+  
+
+  
+
 
 (* TODO: prove and  move somewhere else. *)
 Lemma exec_stmt_assoc: forall g the_proc stackptr locenv m prog1 prog2 prog3 trace locenv' m' Out_normal,
@@ -4775,6 +4831,14 @@ Proof.
   red in H.
   eapply H;eauto.
 Admitted.
+
+Lemma unchange_forbidden_refl: forall st CE g astnum e1 sp m,
+    unchange_forbidden st CE g astnum e1 e1 sp m m.
+Proof.
+  !intros.
+  red;!intros.
+  reflexivity.
+Qed.
 
 Definition strict_unchanged_on st CE g astnum e_chain e_chain' sp m m' :=
   Mem.unchanged_on (forbidden st CE g astnum e_chain sp m m) m m' /\
@@ -8085,14 +8149,27 @@ Proof.
   (* transitivity of unchanged_on is proved in recent
      Compcert, by changing its definition. *)
 
+  - !assert (chained_stack_structure m1 (Datatypes.length CE) sp
+             ∧ (∀ astnum : language_basics.astnum, Mem.unchanged_on (forbidden st CE g astnum e sp m m) m m1)).
+    { eapply IHh_exec_stmt_stmt_t_outc1;eauto. }
+    !assert (chained_stack_structure m2 (Datatypes.length CE) sp
+             ∧ (∀ astnum : language_basics.astnum, Mem.unchanged_on (forbidden st CE g astnum e1 sp m1 m1) m1 m2)).
+    { eapply IHh_exec_stmt_stmt_t_outc2;eauto.
+      - admit. (* need to enrich the property. *)
+      - eapply IHh_exec_stmt_stmt_t_outc1;eauto. }
+    eapply trans_unchanged with m1.
+    + eapply h_and.
+    + admit.
   - eapply IHh_exec_stmt_stmt_t_outc;eauto.
-Qed.
-*)
+  - eapply IHh_exec_stmt_stmt_t_outc;eauto.
+  
+Admitted.
 
 
 
 
-(* replace match-env by strong_match_env + unchange_on (forbidden). *)
+
+(* replacing match-env by strong_match_env + unchange_on (forbidden). *)
 Lemma transl_stmt_normal_OK : forall stbl (stm:statement) s norms',
     eval_stmt stbl s stm norms' ->
     forall s' CE (stm':Cminor.stmt),
@@ -8108,7 +8185,8 @@ Lemma transl_stmt_normal_OK : forall stbl (stm:statement) s norms',
           Cminor.exec_stmt g f stkptr locenv m stm' tr locenv' m' Out_normal
           /\ strong_match_env stbl s' CE stkptr locenv' g m'
           /\ chained_stack_structure m' lvl stkptr
-          /\ forall astnum, Mem.unchanged_on (forbidden stbl CE g astnum locenv stkptr m m) m m'.
+          /\ forall astnum, unchange_forbidden stbl CE g astnum locenv locenv' stkptr m m'
+                            /\ Mem.unchanged_on (forbidden stbl CE g astnum locenv stkptr m m) m m'.
 Proof.
   !!intros until 1.
   Opaque transl_stmt.
@@ -8117,10 +8195,15 @@ Proof.
         !functional inversion heq_transl_stmt_stm';
         subst;
         try rewrite -> transl_stmt_ok in * ); eq_same_clear.
+  (* Skip *)
   - eexists. eexists. eexists.
-    split.
+    repeat (apply conj;!!intros).
     + try now constructor.
     + assumption.
+    + assumption.
+    + apply unchange_forbidden_refl.
+    + apply Mem.unchanged_on_refl.
+  
   (* assignment no range constraint *)
   - rename x into nme.
     rename st into stbl.
@@ -8128,6 +8211,7 @@ Proof.
     exists Events.E0.
     exists locenv.
     decomp (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
+    !!pose proof (ltac:(eapply strong_match_env_match_env with (1:= h_strg_mtch_s_CE_m))).
     !! (edestruct (me_stack_complete h_match_env);eauto).
     decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _
                            h_eval_expr_e_e_v h_match_env).
@@ -8184,14 +8268,14 @@ Proof.
       - constructor 2. }
     eapply Mem.valid_access_store in h_valid_access_nme_block.
     destruct h_valid_access_nme_block.
-    exists x0.
     !assert (exec_stmt g f (Values.Vptr spb ofs) locenv m (Sstore nme_chk nme_t e_t)
                       Events.E0 locenv x0 Out_normal). {
       econstructor;eauto.
       subst.
       simpl.
       eassumption. }
-    split.
+    exists x0.
+    repeat (apply conj;!intros).
     * assumption.
     * !invclear h_exec_stmt.
       assert (e_t_v0 = e_t_v).
