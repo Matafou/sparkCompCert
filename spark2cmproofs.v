@@ -8369,27 +8369,27 @@ Proof.
         assumption.
       - constructor 2. }
     eapply Mem.valid_access_store in h_valid_access_nme_block.
-    destruct h_valid_access_nme_block.
+    !!destruct h_valid_access_nme_block as [m' ?].
     !assert (exec_stmt g f (Values.Vptr spb ofs) locenv m (Sstore nme_chk nme_t e_t)
-                      Events.E0 locenv x0 Out_normal). {
+                      Events.E0 locenv m' Out_normal). {
       econstructor;eauto.
       subst.
       simpl.
       eassumption. }
-    exists x0.
+    exists m'.
     repeat (apply conj;!intros).
     * assumption.
     * !invclear h_exec_stmt.
       assert (e_t_v0 = e_t_v).
       { eapply det_eval_expr;eauto. }
       subst e_t_v0.
-      constructor; eauto 10.
-      -- admit.
-      -- admit.
-      -- eapply assignment_preserve_stack_safe;eauto.
-         !intros.
-         subst.
-         eapply eval_expr_overf;eauto.
+      assert (match_env stbl s' CE (Values.Vptr spb ofs) locenv g m').
+      { eapply assignment_preserve_match_env;eauto.
+        !intros.
+        subst.
+        eapply eval_expr_overf;eauto. }
+      
+      admit. (* TODO strong match instead. *)
   (* Assignment with satisifed range constraint (Range l u) *)
   - rename x into nme.
     rename st into stbl.
