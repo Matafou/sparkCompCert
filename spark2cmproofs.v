@@ -3829,163 +3829,6 @@ Proof.
 Qed.
 
 
-Lemma assignment_preserve_stack_match_addresses :
-  forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
-    exact_levelG CE ->
-    all_frm_increasing CE ->
-    (* translating the variabe to a Cminor load address *)
-    transl_variable stbl CE a id = OK id_t ->
-    (* translating the value, we may need a overflow hypothesis on e_v/e_t_v *)
-    transl_value e_v e_t_v ->
-    (* Evaluating var address in Cminor *)
-    Cminor.eval_expr g stkptr locenv m id_t idaddr ->
-    (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (E_Identifier a id) = OK chk ->
-    (* the two storing operation maintain match_env *)
-    storeUpdate stbl s (E_Identifier a id) e_v (Normal s') ->
-    Mem.storev chk m idaddr e_t_v = Some m' ->
-    match_env stbl s CE stkptr locenv g m ->
-    stack_match_addresses stbl stkptr CE locenv g m'.
-Proof.
-  !intros.
-  !!pose proof (assignment_preserve_stack_match
-                  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-                  h_exact_lvlG_CE h_allincr_CE heq_transl_variable heq_transl_value_e_v_e_t_v h_CM_eval_expr_id_t_id_t_v
-                  heq_compute_chnk h_storeUpd heq_storev_e_t_v_m' h_match_env).
-  red in h_stk_mtch_s'_m'.
-  specialize ().
-  red.
-  !intros.
-  exists idaddr.
-  rewrite <- cm_storev_ok in heq_storev_e_t_v_m'.
-  functional inversion heq_storev_e_t_v_m'.
-  rewrite cm_storev_ok in *.
-  subst.
- functional inversion heq_transl_name.
- subst.
- eapply wf_chain_load_var;eauto.
-  - eapply wf_chain_load_aligned;eauto.
-    eapply eval_build_loads_offset_non_null_var;eauto.
-  - eapply h_CM_eval_expr_id_t_idaddr.
-    eapply eval_build_loads_offset_non_null_var;eauto.
-  - eauto.
-
-  (* Getting rid of erronous cases *)
-  !functional inversion heq_transl_variable.
-  rename m'0 into lvl_max.
-  (* done *)
-  (* getting rid of erroneous storev parameter *)
-  rewrite <- cm_storev_ok in heq_storev_e_t_v_m'.
-  !functional inversion heq_storev_e_t_v_m';subst.
-  set (loads_id:=(build_loads (lvl_max - lvl_id) δ_id)) in *.
-  rewrite cm_storev_ok in *.
-  (* done *)
-  assert (h_ofs_nonzero:4 <= Int.unsigned ofs). {
-    eapply eval_build_loads_offset_non_null_var;eauto. }
-  unfold stack_match_addresses.
-  !intros other_nme addr_other;up_type.
-  (* id can already be evaluated in s *)
-  destruct (h_stk_cmpl_s_CE _ _ _ heq_transl_variable) as [v_id_prev h_eval_name_id_val_prev].
-  set (nme:=(E_Identifier a id)) in *.
-  (* Getting rid of erronous cases *)
-  !functional inversion heq_transl_name.
-  subst.
-  (* done *)
-  rename id0 into other_id.
-  set (other_nme:=(E_Identifier astnum other_id)) in *.
-  (* other_nme can already be evaluated in s *)
-  destruct (h_stk_cmpl_s_CE _ _ _ heq_transl_variable0) as [v_other_id_prev h_eval_name_other_id_val_prev].
-  decomp (h_stk_mtch_addr_CE_m _ _ heq_transl_name).
-  !destruct (Nat.eq_dec id other_id).
-  - subst nme. (* same variable ==> result is the value just stored *)
-    subst other_nme.
-    subst other_id.
-    assert (chk = AST.Mint32). {
-      rewrite compute_chnk_ok in heq_compute_chnk.
-      !functional inversion heq_compute_chnk;subst;auto. }
-    simpl in heq_compute_chnk.
-    unfold compute_chnk_astnum in heq_compute_chnk.
-    lazy beta iota delta [bind] in heq_compute_chnk.
-    rewrite (transl_variable_astnum _ _ _ _ _ heq_transl_variable0 a) in *.
-    rewrite heq_transl_variable0 in heq_transl_variable.
-    !invclear heq_transl_variable.
-    exists addr_other_v.
-
-    !functional inversion heq_make_load;subst.
-    eapply eval_Eload with (Values.Vptr b ofs).
-    * { eapply wf_chain_load_var with (2:= heq_storev_e_t_v_m');eauto.
-        - eapply wf_chain_load_aligned;eauto. }
-    * simpl.
-      (* Should be ok by well typedness of the chained stack wrt
-           stbl (see hyp on compute_chk). *)
-      assert (chunk = AST.Mint32). {
-        !functional inversion heq_transl_type;subst;simpl in h_access_mode_cm_typ_other.
-        - inversion h_access_mode_cm_typ_other;auto.
-        - inversion h_access_mode_cm_typ_other;auto. }
-      subst.
-      erewrite (Mem.load_store_same _ _ _ _ _ _ heq_store_e_t_v_m') .
-      { destruct e_t_v;auto;destruct e_v;simpl in *;try discriminate;
-        now inversion heq_transl_value_e_v_e_t_v. }
-
-  - (* loading a different variable id' than the one stored id.
-         2 steps: first prove that the addresses of id' and id did
-         not change (the translated expressions did not change + the
-         chained stack did not change either), and thus remain
-         different, then conclude that the value stored in id' did
-         not change. *)
-    !assert (chk = AST.Mint32). {
-      rewrite function_utils.compute_chnk_ok in heq_compute_chnk.
-      functional inversion heq_compute_chnk; reflexivity. }
-
-    assert (v_other_id_prev = other_v). {
-      eapply storeUpdate_id_ok_others_eval_name ;eauto. }
-    subst.
-    exists cm_v.
-    split;auto.
-    assert (h_aligned_m' : stack_localstack_aligned (Datatypes.length CE) locenv g m' stkptr). {
-      eapply wf_chain_load_aligned;eauto. }
-    !functional inversion heq_make_load;subst.
-    !inversion cm_eval_m_v_other.
-    generalize (wf_chain_load_var _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-                                  h_exact_lvlG_CE
-                                  heq_storev_e_t_v_m' h_aligned_m'
-                                  h_ofs_nonzero heq_transl_variable0
-                                  h_CM_eval_expr_addr_other_addr_other_v).
-    !intro.
-    econstructor.
-    + eassumption.
-    + destruct addr_other_v; try discriminate;simpl in *.
-      clear h_tr_exp_other.
-      erewrite Mem.load_store_other;[now eassumption| now eassumption | ].
-      subst nme other_nme.
-      unfold compute_chnk_id in heq_compute_chnk.
-      destruct (symboltable.fetch_exp_type astnum stbl) eqn:heq_fetchvartyp;try discriminate.
-      !invclear heq_ftch_astnum.
-      unfold stack_separate in h_separate_CE_m.
-
-
-      eapply h_separate_CE_m with (nme:=(E_Identifier astnum id))
-                                    (nme':=(E_Identifier astnum other_id))
-                                    (k₂ := b0) (k₁:=b);
-        clear h_separate_CE_m;simpl;try eassumption;auto.
-        * rewrite heq_fetchvartyp.
-          reflexivity.
-        * rewrite heq_fetchvartyp.
-          reflexivity.
-        * erewrite transl_variable_astnum;eauto.
-        * rewrite h_access_mode_cm_typ_other.
-          f_equal.
-          eq_same_clear.
-          clear heq_type_of_name.
-          functional inversion heq_transl_type;subst;auto;cbn in *.
-          -- inversion heq_make_load;reflexivity.
-          -- inversion heq_make_load;reflexivity.
-        * intro abs.
-          inversion abs;subst;try discriminate.
-          elim hneq;reflexivity.
-Qed.
-
-
 Lemma assignment_preserve_stack_match_function :
   forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
     exact_levelG CE ->
@@ -4303,6 +4146,51 @@ Proof.
 Qed.
 
 
+
+Lemma assignment_preserve_stack_match_addresses :
+  forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
+    invariant_compile CE stbl ->
+    (* translating the variabe to a Cminor load address *)
+    transl_variable stbl CE a id = OK id_t ->
+    (* translating the value, we may need a overflow hypothesis on e_v/e_t_v *)
+    transl_value e_v e_t_v ->
+    (* Evaluating var address in Cminor *)
+    Cminor.eval_expr g stkptr locenv m id_t idaddr ->
+    (* Size of variable in Cminor memorry *)
+    compute_chnk stbl (E_Identifier a id) = OK chk ->
+    (* the two storing operation maintain match_env *)
+    storeUpdate stbl s (E_Identifier a id) e_v (Normal s') ->
+    Mem.storev chk m idaddr e_t_v = Some m' ->
+    match_env stbl s CE stkptr locenv g m ->
+    stack_match_addresses stbl stkptr CE locenv g m'.
+Proof.
+  !intros; red. !intros.
+  !functional inversion heq_transl_name;subst.
+  !functional inversion heq_transl_variable;subst.
+  !assert (exists id_t_v_pt id_t_v_ofs, id_t_v = Values.Vptr id_t_v_pt id_t_v_ofs).
+  { destruct id_t_v;try discriminate. eauto. }
+  decomp h_ex; subst.
+  destruct (Nat.eq_dec id id0).
+  - subst.
+    exists (Values.Vptr id_t_v_pt id_t_v_ofs).
+    destruct (match_env_sp_zero _ _ _ _ _ _ _ h_match_env);subst.
+    eapply wf_chain_load_var;eauto.
+    + eapply assignment_preserve_loads_offset_non_null;eauto.
+    + eapply eval_build_loads_offset_non_null_var;eauto.
+    + destruct (transl_variable_astnum _ _ _ _ _ heq_transl_variable astnum).
+      rewrite heq_transl_variable in heq_transl_variable0.
+      inversion heq_transl_variable0;subst.
+      assumption.
+  - !assert (∃ addr : Values.val, Cminor.eval_expr g stkptr locenv m nme_t addr).
+    { eapply h_match_env;eauto. }
+    decomp h_ex.
+    exists nme_t_v.
+    destruct (match_env_sp_zero _ _ _ _ _ _ _ h_match_env);subst.
+    eapply wf_chain_load_var;eauto.
+    + eapply assignment_preserve_loads_offset_non_null;eauto.
+    + eapply eval_build_loads_offset_non_null_var;eauto.
+Qed.
+
     
 
 Hint Resolve
@@ -4311,54 +4199,8 @@ Hint Resolve
      assignment_preserve_stack_complete
      assignment_preserve_stack_separate assignment_preserve_loads_offset_non_null
      assignment_preserve_stack_no_null_offset assignment_preserve_stack_safe
-     assignment_preserve_stack_freeable.
+     assignment_preserve_stack_freeable assignment_preserve_stack_match_addresses.
 
-Lemma assignment_preserve_safe_cm_env:
-  forall stbl s CE spb ofs locenv locenv' g m x x0 nme_t nme_chk nme_t_addr e_v e_t_v s' m',
-    invariant_compile CE stbl ->
-    match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
-    transl_name stbl CE (E_Identifier x x0) =: nme_t ->
-    Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_addr ->
-    compute_chnk stbl (E_Identifier x x0) = OK nme_chk ->
-    transl_value e_v e_t_v ->
-    storeUpdate stbl s (E_Identifier x x0) e_v (Normal s') ->
-    Mem.storev nme_chk m nme_t_addr e_t_v = Some m' ->
-    safe_cm_env stbl CE (Values.Vptr spb ofs) locenv' g m'.
-Proof.
-  !intros.
-  assert (safe_cm_env stbl CE (Values.Vptr spb ofs) locenv g m').
-  { split;eauto.
-    - admit.
-    - (* proved much later *)
-      admit. }
-  eapply safe_cm_env_inv_locenv;eauto.
-Admitted.
-  
-
-Lemma assignment_preserve_match_env:
-  forall stbl s CE spb ofs locenv g m x x0 nme_t nme_chk nme_t_addr e_v e_t_v s' m',
-    forall h_overflow:(forall n, e_v = Int n -> do_overflow_check n (Normal (Int n))),
-      invariant_compile CE stbl ->
-      match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
-      transl_name stbl CE (E_Identifier x x0) =: nme_t ->
-      Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_addr ->
-      compute_chnk stbl (E_Identifier x x0) = OK nme_chk ->
-      transl_value e_v e_t_v ->
-      storeUpdate stbl s (E_Identifier x x0) e_v (Normal s') ->
-      Mem.storev nme_chk m nme_t_addr e_t_v = Some m' ->
-      match_env stbl s' CE (Values.Vptr spb ofs) locenv g m'.
-Proof.
-  !intros.
-  generalize heq_transl_name; unfold transl_name;!intro.
-  split;eauto.
-  - unfold transl_name in heq_transl_name.
-    !!pose proof (me_stack_complete h_match_env).
-    red in h_stk_cmpl_s_CE.
-    specialize (h_stk_cmpl_s_CE x x0 nme_t heq_transl_name).
-    decomp h_stk_cmpl_s_CE.
-    !! pose proof (me_stack_match h_match_env).
-    eapply assignment_preserve_safe_cm_env;eauto.
-Qed.
 
   
 
@@ -4917,6 +4759,50 @@ Proof.
   eapply assignment_preserve_chained_stack_structure_aux; eauto.
 Qed.
 
+Lemma assignment_preserve_safe_cm_env:
+  forall stbl s CE spb ofs locenv locenv' g m x x0 nme_t nme_chk nme_t_addr e_v e_t_v s' m',
+    invariant_compile CE stbl ->
+    match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
+    transl_name stbl CE (E_Identifier x x0) =: nme_t ->
+    Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_addr ->
+    compute_chnk stbl (E_Identifier x x0) = OK nme_chk ->
+    transl_value e_v e_t_v ->
+    storeUpdate stbl s (E_Identifier x x0) e_v (Normal s') ->
+    Mem.storev nme_chk m nme_t_addr e_t_v = Some m' ->
+    safe_cm_env stbl CE (Values.Vptr spb ofs) locenv' g m'.
+Proof.
+  !intros.
+  assert (safe_cm_env stbl CE (Values.Vptr spb ofs) locenv g m').
+  { split;eauto.
+    eapply assignment_preserve_chained_stack_structure;eauto. }
+  eapply safe_cm_env_inv_locenv;eauto.
+Qed.
+  
+
+Lemma assignment_preserve_match_env:
+  forall stbl s CE spb ofs locenv g m x x0 nme_t nme_chk nme_t_addr e_v e_t_v s' m',
+    forall h_overflow:(forall n, e_v = Int n -> do_overflow_check n (Normal (Int n))),
+      invariant_compile CE stbl ->
+      match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
+      transl_name stbl CE (E_Identifier x x0) =: nme_t ->
+      Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_addr ->
+      compute_chnk stbl (E_Identifier x x0) = OK nme_chk ->
+      transl_value e_v e_t_v ->
+      storeUpdate stbl s (E_Identifier x x0) e_v (Normal s') ->
+      Mem.storev nme_chk m nme_t_addr e_t_v = Some m' ->
+      match_env stbl s' CE (Values.Vptr spb ofs) locenv g m'.
+Proof.
+  !intros.
+  generalize heq_transl_name; unfold transl_name;!intro.
+  split;eauto.
+  - unfold transl_name in heq_transl_name.
+    !!pose proof (me_stack_complete h_match_env).
+    red in h_stk_cmpl_s_CE.
+    specialize (h_stk_cmpl_s_CE x x0 nme_t heq_transl_name).
+    decomp h_stk_cmpl_s_CE.
+    !! pose proof (me_stack_match h_match_env).
+    eapply assignment_preserve_safe_cm_env;eauto.
+Qed.
 
 (** Visibility of variables.  *)
 
