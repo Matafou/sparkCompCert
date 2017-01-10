@@ -4804,6 +4804,18 @@ Proof.
     eapply assignment_preserve_safe_cm_env;eauto.
 Qed.
 
+(* This lemma is false: the shadowed variable may be different in and m. *)
+(*
+Lemma match_env_cons:
+  forall s stbl CE locenv g m sp sp',
+    s<>[] -> CE <> [] -> 
+    invariant_compile CE stbl ->
+    match_env stbl s CE sp locenv g m ->
+    Mem.loadv AST.Mint32 m sp = Some sp' ->
+    stack_match stbl (List.tl s) (List.tl CE) sp' locenv g m.
+Proof.
+*)
+
 (** Visibility of variables.  *)
 
 (* [visible_spark_id st CE stnum locenv stkptr m spb ofs] means that
