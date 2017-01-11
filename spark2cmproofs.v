@@ -156,6 +156,14 @@ Ltac rename_hyp1 h th :=
   | Values.Val.bool_of_val ?v ?b => fresh "heq_bofv_" v
   | Values.Val.bool_of_val ?v ?b => fresh "heq_bofv_" b
   | Values.Val.bool_of_val ?v ?b => fresh "heq_bofv"
+  | STACK.NoDup ?s => fresh "nodup_s_" s
+  | STACK.NoDup _ => fresh "nodup_s"
+  | STACK.NoDup_G ?s => fresh "nodup_G_s_" s
+  | STACK.NoDup_G _ => fresh "nodup_G_s"
+  | CompilEnv.NoDup ?s => fresh "nodup_CE_" s
+  | CompilEnv.NoDup _ => fresh "nodup_CE"
+  | CompilEnv.NoDup_G ?s => fresh "nodup_G_CE_" s
+  | CompilEnv.NoDup_G _ => fresh "nodup_G_CE"
   | expression => fresh "e"
   | statement => fresh "stmt"
   | Cminor.expr => match goal with
@@ -1071,9 +1079,7 @@ Definition stbl_var_types_ok st :=
   ∀ nme t, type_of_name st nme = OK t ->
            ∃ nme_type_t, transl_type st t = OK nme_type_t.
 
-(* See CminorgenProof.v@205. *)
-
-
+(*
 (* The AST provided by gnat/sireum are supposed to have no two variables sharing
    the same name. This should imply that there are no duplication of name in CE. *)
 (* intra-store *)
@@ -1090,10 +1096,9 @@ Definition stack_CE_NoDup_G (CE : compilenv) :=
     CompilEnv.frameG nme CE = Some (lvl,sto) ->
     CompilEnv.cut_until CE lvl CE' CE'' ->
     CompilEnv.resideG nme CE'' = false.
+*)
 
-(* Record CE_well_formed CE := *)
-(*   { ce_wf_intra:> stack_CE_NoDup CE; *)
-(*     ce_wf_extra:> stack_CE_NoDup_G CE }. *)
+
 
 
 (** The Chaining structure of the stacks.
@@ -1125,6 +1130,7 @@ Record safe_cm_env st (CE:compilenv) (sp:Values.val) locenv g m: Prop :=
 
 
 
+(* See CminorgenProof.v@205. *)
 (** The Memory bisimilarity/invariant property states that
 
  -[me_overflow] Spark stack [s] is ok wrt overflows 
@@ -1144,6 +1150,8 @@ Record match_env st s CE sp locenv g m: Prop :=
   mk_match_env {
       me_stack_match: stack_match st s CE sp locenv g m;
       me_stack_match_CE: stack_match_CE s CE;
+      me_noDup_s: STACK.NoDup s;
+      me_noDup_G_s: STACK.NoDup_G s;
       me_stack_complete: stack_complete st s CE;
       me_safe_cm_env: safe_cm_env st CE sp locenv g m;
       me_overflow: safe_stack s; (* Put this somewhere else, concerns only s *)
@@ -1152,6 +1160,8 @@ Record match_env st s CE sp locenv g m: Prop :=
 Arguments me_stack_match : default implicits.
 Arguments me_stack_match_addresses : default implicits.
 Arguments me_stack_match_CE : default implicits.
+Arguments me_noDup_s : default implicits.
+Arguments me_noDup_G_s : default implicits.
 Arguments me_stack_match_functions : default implicits.
 Arguments me_overflow : default implicits.
 Arguments me_stack_no_null_offset : default implicits.
@@ -1171,16 +1181,16 @@ Record invariant_compile CE stbl :=
     ci_increasing_ids: all_frm_increasing CE ;
     ci_no_overflow: all_addr_no_overflow CE ;
     ci_stbl_var_types_ok: stbl_var_types_ok stbl;
-    ce_wf_intra: stack_CE_NoDup CE;
-    ce_wf_extra: stack_CE_NoDup_G CE }.
+    ce_nodup_CE: CompilEnv.NoDup CE;
+    ce_nodup_G_CE: CompilEnv.NoDup_G CE }.
 
 Arguments ci_increasing_ids : default implicits.
 Arguments ci_no_overflow : default implicits.
 Arguments ci_stbl_var_types_ok : default implicits.
-Arguments ce_wf_intra: default implicits.
-Arguments ce_wf_extra: default implicits.
+Arguments ce_nodup_CE: default implicits.
+Arguments ce_nodup_G_CE: default implicits.
 
-Hint Resolve ci_exact_lvls ci_increasing_ids ci_no_overflow ci_stbl_var_types_ok ce_wf_extra ce_wf_extra.
+Hint Resolve ci_exact_lvls ci_increasing_ids ci_no_overflow ci_stbl_var_types_ok ce_nodup_G_CE ce_nodup_G_CE.
 Hint Resolve me_stack_match_addresses me_stack_match_functions me_stack_separate me_stack_localstack_aligned
      me_stack_no_null_offset me_stack_freeable me_chain_struct.
 Hint Resolve me_stack_match me_stack_match_CE me_stack_complete me_overflow me_safe_cm_env.
@@ -1304,10 +1314,10 @@ Ltac rename_hyp_cut h th :=
   | STACK.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_stkcut"
 (*   | CE_well_formed ?CE => fresh "h_CEwf_" CE *)
 (*   | CE_well_formed ?CE => fresh "h_CEwf" *)
-  | stack_CE_NoDup ?CE => fresh "h_CEnodup_" CE
-  | stack_CE_NoDup ?CE => fresh "h_CEnodup"
-  | stack_CE_NoDup_G ?CE => fresh "h_CEnodupG" CE
-  | stack_CE_NoDup_G ?CE => fresh "h_CEnodupG"
+  | CompilEnv.NoDup ?CE => fresh "h_CEnodup_" CE
+  | CompilEnv.NoDup ?CE => fresh "h_CEnodup"
+  | CompilEnv.NoDup_G ?CE => fresh "h_CEnodupG" CE
+  | CompilEnv.NoDup_G ?CE => fresh "h_CEnodupG"
   | _ => rename_hyp4 h th                                
   end.
 Ltac rename_sparkprf ::= rename_hyp_cut.
@@ -1417,7 +1427,7 @@ Qed.
 
 Lemma stack_push_all_new_subcons:
   forall a CE,
-    stack_CE_NoDup_G (a :: CE) ->
+    CompilEnv.NoDup_G (a :: CE) ->
     exact_levelG (a :: CE) ->
     stack_push_all_new a CE.
 Proof.
@@ -1477,7 +1487,7 @@ Qed.
 Lemma nodup_G_cons :
   forall a l nme ,
     exact_levelG (a::l) ->
-    stack_CE_NoDup_G (a::l) -> CompilEnv.resideG nme l = true -> CompilEnv.reside nme a = false.
+    CompilEnv.NoDup_G (a::l) -> CompilEnv.resideG nme l = true -> CompilEnv.reside nme a = false.
 Proof.
   !intros.
   !!destruct (CompilEnv.reside nme a) eqn:?;auto.
@@ -1506,7 +1516,7 @@ Qed.
 Lemma nodup_G_cons_2 :
   forall a l nme ,
     exact_levelG (a::l) ->
-    stack_CE_NoDup_G (a::l) -> CompilEnv.reside nme a = true -> CompilEnv.resideG nme l = false.
+    CompilEnv.NoDup_G (a::l) -> CompilEnv.reside nme a = true -> CompilEnv.resideG nme l = false.
 Proof.
   !intros.
   !!destruct (CompilEnv.resideG nme l) eqn:?;try discriminate;auto.
@@ -1537,10 +1547,10 @@ Lemma stack_CE_NoDup_G_cons: forall l',
     exact_levelG l' ->
     forall l a,
       l'= a::l ->
-      stack_CE_NoDup_G (a::l) -> stack_CE_NoDup_G l.
+      CompilEnv.NoDup_G (a::l) -> CompilEnv.NoDup_G l.
 Proof.
   !!intros ? ?.
-  !induction h_exct_lvl_l';subst; !intros; unfold stack_CE_NoDup_G in *;!intros;up_type.
+  !induction h_exct_lvl_l';subst; !intros; unfold CompilEnv.NoDup_G in *;!intros;up_type.
   - inversion heq.
   - !invclear heq.
     remember (Datatypes.length l, fr) as a0.
@@ -1556,7 +1566,7 @@ Proof.
       rewrite heq_bool_false.
       apply heq_CEframeG_nme_l. }
 
-    eapply h_CEnodupG with (1:= heq_CEframeG_nme) (CE':= a0 :: CE').
+    eapply h_CEnodupG with (1:= heq_CEframeG_nme) (s':= a0 :: s').
     constructor 3.
     + pose proof exact_lvl_level_of_top (a0::l) as h.
       specialize (h h_exct_lvl).
@@ -1574,11 +1584,11 @@ Qed.
 
 Lemma stack_CE_NoDup_cons: forall l',
     exact_levelG l' ->
-    stack_CE_NoDup_G l' ->
-    stack_CE_NoDup l' ->
+    CompilEnv.NoDup_G l' ->
+    CompilEnv.NoDup l' ->
     forall l a,
       l'= a::l ->
-      stack_CE_NoDup l.
+      CompilEnv.NoDup l.
 Proof.
   !intros.
   red.
@@ -1599,8 +1609,8 @@ Qed.
 
 Lemma stack_CE_NoDup_G_sublist: forall CE1 CE2,
     exact_levelG (CE1 ++ CE2) ->
-    stack_CE_NoDup_G (CE1++CE2) ->
-    stack_CE_NoDup_G CE2.
+    CompilEnv.NoDup_G (CE1++CE2) ->
+    CompilEnv.NoDup_G CE2.
 Proof.
   !!induction CE1;!intros.
   - simpl List.app in h_CEnodupG.
@@ -1613,9 +1623,9 @@ Qed.
 
 Lemma stack_CE_NoDup_sublist: forall CE1 CE2,
     exact_levelG (CE1 ++ CE2) ->
-    stack_CE_NoDup_G (CE1++CE2) ->
-    stack_CE_NoDup (CE1++CE2) ->
-    stack_CE_NoDup CE2.
+    CompilEnv.NoDup_G (CE1++CE2) ->
+    CompilEnv.NoDup (CE1++CE2) ->
+    CompilEnv.NoDup CE2.
 Proof.
   !!induction CE1;!intros.
   - simpl List.app in h_CEnodup.
@@ -1644,7 +1654,7 @@ Qed.
 
 Lemma stack_CE_NoDup_G_stack_push_all_new: forall x CE,
     exact_levelG (x::CE) ->
-    stack_CE_NoDup_G (x::CE) -> 
+    CompilEnv.NoDup_G (x::CE) -> 
     stack_push_all_new x CE.
 Proof.
   !intros.
@@ -1805,6 +1815,19 @@ Proof.
   reflexivity.
 Qed.
 
+(* TODO: move this in spark. *)
+Lemma stack_NoDup_empty: STACK.NoDup [ ].
+Proof.
+  red;simpl;!intros.
+  discriminate.
+Qed.
+
+Lemma stack_NoDup_G_empty: STACK.NoDup_G [ ].
+Proof.
+  red;simpl;!intros.
+  discriminate.
+Qed.
+
 Lemma match_env_empty: forall st sp b sp' locenv locenv' g m,
     stack_match_functions st sp' [ ] locenv' g m ->
     sp = (Values.Vptr b Int.zero) ->
@@ -1812,10 +1835,12 @@ Lemma match_env_empty: forall st sp b sp' locenv locenv' g m,
 Proof.
   !intros.
   split (* apply h_match_env. *).
-  4: split.
+  6: split.
   + apply stack_match_empty.
   + red;!intros.
     functional inversion heq.
+  + apply stack_NoDup_empty.
+  + apply stack_NoDup_G_empty.
   + red;!intros.
     !functional inversion heq_transl_variable.
     functional inversion heq_CEfetchG_nme.
@@ -1981,7 +2006,7 @@ Lemma match_env_inv_locenv : forall st s CE sp locenv g m,
     forall locenv', match_env st s CE sp locenv' g m.
 Proof.
   !intros.
-  split;[ | | | split | ];try now apply h_match_env.  
+  split;[ | | | | | split | ];try now apply h_match_env.  
   - eapply stack_match_inv_locenv;eauto.
   - eapply stack_match_addr_inv_locenv; eauto.
   - pose proof me_stack_match_functions (me_safe_cm_env h_match_env) as h_mtch_fun.
@@ -4779,6 +4804,46 @@ Proof.
 Qed.
   
 
+
+Lemma assignment_preserve_Nodup_s:
+  forall stbl s CE x x0 nme_t e_v s',
+    invariant_compile CE stbl ->
+    NoDup s -> 
+    transl_name stbl CE (E_Identifier x x0) =: nme_t ->
+    storeUpdate stbl s (E_Identifier x x0) e_v (Normal s') ->
+    NoDup s'.
+Proof.
+  !!intros stbl s CE x x0 nme_t e_v s' H H0 H1 H2. 
+  red.
+  red in nodup_s_s.
+  !intros.
+  !assert (exists sto_nme, frameG nme s = Some (lvl,sto_nme)).
+  { clear nodup_s_s.
+    !inversion h_storeUpd;subst; clear h_storeUpd;up_type.
+    destruct (Nat.eq_dec nme x0).
+    - subst.
+      eapply updateG_ok_same_frameG_orig;eauto.
+    - eapply updateG_ok_others_frameG_orig;eauto. }
+  decomp h_ex.
+  !assert (exists sto_nme', cuts_to nme sto_nme = (sto_nme', sto'')).
+  { clear nodup_s_s.
+    !inversion h_storeUpd;subst; clear h_storeUpd;up_type.
+    xxx
+    functional inversion heq_updateG_s_x0;subst.
+    destruct (Nat.eq_dec nme x0).
+    - subst.
+
+Lemma aux: forall updateG stk id v = Some stk'
+
+
+      eapply updateG_ok_same_frameG_orig;eauto.
+    - eapply updateG_ok_others_frameG_orig;eauto.
+
+    admit. }
+  decomp h_ex.
+  eapply nodup_s_s ;eauto.
+Qed.
+
 Lemma assignment_preserve_match_env:
   forall stbl s CE spb ofs locenv g m x x0 nme_t nme_chk nme_t_addr e_v e_t_v s' m',
     forall h_overflow:(forall n, e_v = Int n -> do_overflow_check n (Normal (Int n))),
@@ -4795,6 +4860,8 @@ Proof.
   !intros.
   generalize heq_transl_name; unfold transl_name;!intro.
   split;eauto.
+  - 
+  - admit.
   - unfold transl_name in heq_transl_name.
     !!pose proof (me_stack_complete h_match_env).
     red in h_stk_cmpl_s_CE.
@@ -4804,17 +4871,42 @@ Proof.
     eapply assignment_preserve_safe_cm_env;eauto.
 Qed.
 
-(* This lemma is false: the shadowed variable may be different in and m. *)
-(*
+(* Is there the shadowed variable? If yes this lemma is wrong. *)
+
 Lemma match_env_cons:
-  forall s stbl CE locenv g m sp sp',
+  forall stbl CE s locenv g m sp sp',
     s<>[] -> CE <> [] -> 
     invariant_compile CE stbl ->
     match_env stbl s CE sp locenv g m ->
     Mem.loadv AST.Mint32 m sp = Some sp' ->
     stack_match stbl (List.tl s) (List.tl CE) sp' locenv g m.
 Proof.
-*)
+  unfold stack_match.
+  !intros.
+  !functional inversion heq_transl_name;subst.
+  functional inversion heq_transl_variable;subst.
+  assert (eval_name stbl s (E_Identifier astnum id) (Normal v)).
+  { admit. (* invariant_compile mplies that CE has no shadowing, thus  *)
+
+  }
+
+  revert dependent m.
+  revert dependent s.
+  revert dependent typ_nme.
+  revert dependent cm_typ_nme.
+  revert dependent h_inv_comp_CE_stbl.
+  revert dependent hneq0.
+  revert locenv g sp sp' v load_addr_nme.
+  !functional inversion heq_transl_name.
+  clear heq_transl_name.
+  revert heq_transl_variable heq_nme heq_nme0.
+  remember (tl CE) as CE'.
+  revert CE HeqCE' nme_t nme nme0.
+  !!functional induction transl_variable stbl CE' astnum id;simpl;!intros.
+  
+Qed.
+
+
 
 (** Visibility of variables.  *)
 
@@ -6423,15 +6515,15 @@ Proof.
     -- eapply (build_frame_lparams_preserve_no_overflow st prmprof);eauto; try omega.
        red. cbn. !intros.
        discriminate.
-  + unfold stack_CE_NoDup in *.
+  + unfold CompilEnv.NoDup in *.
     !intros.
     cbn in heq_CEframeG_nme.
     destruct (CompilEnv.resides nme x0) eqn:hresid.
     * admit. (* spark typing, no name collision intra frame *)
-    * !!pose proof (ce_wf_intra h_inv_comp_CE_st).
+    * !!pose proof (ce_nodup_CE h_inv_comp_CE_st).
       red in h_CEnodup_CE.
       eapply h_CEnodup_CE;eauto.
-  + unfold stack_CE_NoDup_G in *.
+  + unfold CompilEnv.NoDup_G in *.
     !intros.
     cbn in heq_CEframeG_nme.
     destruct (CompilEnv.resides nme x0) eqn:hresid.
@@ -6440,7 +6532,7 @@ Proof.
       -- cbn in h_lt;exfalso;omega.
       -- clear H1.
          admit. (* spark typing no name collision inter frame *)
-    * !!pose proof (ce_wf_extra h_inv_comp_CE_st).
+    * !!pose proof (ce_nodup_G_CE h_inv_comp_CE_st).
       !inversion h_CEcut.
       -- cbn in *.
          !assert (exact_levelG CE).
