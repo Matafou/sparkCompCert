@@ -4803,7 +4803,20 @@ Proof.
   eapply safe_cm_env_inv_locenv;eauto.
 Qed.
   
-
+(*
+Lemma aux: forall s nme v s',
+    updateG s nme v = Some s' ->
+    forall lvl sto_nme sto_nme' sto' sto'' sto'_updated,
+      frameG nme s = Some (lvl, sto_nme) ->
+      frameG nme s' = Some (lvl, sto_nme') ->
+      cuts_to nme sto_nme = (sto', sto'') -> 
+      cuts_to nme sto_nme' = (sto'_updated, sto'').
+Proof.
+  !!intros s nme v s' ?.
+  !!functional induction updateG s nme v;(try now (simpl;!intros;discriminate));!intros.
+  - inversion heq;subst;clear heq.
+    cbn in *.
+*)
 
 Lemma assignment_preserve_Nodup_s:
   forall stbl s CE x x0 nme_t e_v s',
@@ -4825,15 +4838,39 @@ Proof.
       eapply updateG_ok_same_frameG_orig;eauto.
     - eapply updateG_ok_others_frameG_orig;eauto. }
   decomp h_ex.
+
+  !inversion h_storeUpd;subst; clear h_storeUpd;up_type.
+  
+Lemma aux: forall nme sto sto' sto'',
+      cuts_to nme sto = (sto', sto'')
+      -> sto = sto'++sto''.
+Proof.
+  intros nme sto. 
+  !!functional induction cuts_to nme sto;simpl;!intros.
+  - !inversion heq.
+    reflexivity.
+  - !inversion heq0; clear heq0.
+    erewrite IHp;eauto;reflexivity.
+  - inversion heq;auto.
+Qed.
+
+
+  assert (sto = sto'++sto'').
+  { eapply aux;eauto. }
+  subst.
+  assert (update (lvl,sto) x0 e_v = Some (lvl, sto'++sto'')).
+  { admit. }
+  
+
+  assert (sto_nme = update s).
+(*   ST.updateG s x0 e_v = Some s' *)
   !assert (exists sto_nme', cuts_to nme sto_nme = (sto_nme', sto'')).
   { clear nodup_s_s.
     !inversion h_storeUpd;subst; clear h_storeUpd;up_type.
-    xxx
     functional inversion heq_updateG_s_x0;subst.
     destruct (Nat.eq_dec nme x0).
     - subst.
 
-Lemma aux: forall updateG stk id v = Some stk'
 
 
       eapply updateG_ok_same_frameG_orig;eauto.
