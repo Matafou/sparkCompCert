@@ -36,36 +36,6 @@ Notation "x ≤ y" := (le x y) (at level 70, no associativity,format "'[hv' x  '
 Notation "x ≥ y" := (ge x y) (at level 70, no associativity,format "'[hv' x  '/' ≥  y ']'").
 
 
-(* Specialize the first arguments of a hypothesis *)
-Inductive espec_rename:Type:=
-  | ESPEC_Clear
-  | ESPEC_Explicit
-  | ESPEC_Automatic.
-
-Ltac tac_especialize h keepeqn nme :=
-  let tac x :=
-      match keepeqn with
-      | ESPEC_Clear => clear x
-      | ESPEC_Explicit => rename x into nme
-      | ESPEC_Automatic => idtac
-      end in
-  let t := type of h in
-  match t with
-    (?a -> ?b) =>
-    let harg := fresh h "_arg" in
-    assert (harg:a) ;[ | specialize (h harg); tac harg ]
-  end.
-
-Tactic Notation "especialize"  hyp(h) := let dummy := fresh in tac_especialize h ESPEC_Clear dummy.
-Tactic Notation "especialize"  hyp(h) ":" "_" := especialize h.
-Tactic Notation "especialize"  hyp(h) ":" "_" "_" := especialize h;[|especialize h].
-Tactic Notation "especialize"  hyp(h) ":" "?" := let dummy := fresh in tac_especialize h ESPEC_Automatic dummy.
-Tactic Notation "especialize"  hyp(h) ":" "?" "?" := especialize h : ? ; [|especialize h : ?].
-Tactic Notation "especialize"  hyp(h) ":" "_" "?" := especialize h : _ ; [|especialize h : ?].
-Tactic Notation "especialize"  hyp(h) ":" "?" "_" := especialize h : ? ; [|especialize h : _].
-Tactic Notation "especialize"  hyp(h) ":" ident(id)  := tac_especialize h ESPEC_Explicit id.
-Tactic Notation "especialize"  hyp(h) ":" ident(id) ident(id2)  :=
-  tac_especialize h true id; [ | tac_especialize h true id2].
 
 
 Ltac rename_sparkprf h th := fail.
@@ -1568,8 +1538,7 @@ Proof.
     eapply h_CEnodupG with (1:= heq_CEframeG_nme) (s':= a0 :: s').
     constructor 3.
     + pose proof exact_lvl_level_of_top (a0::l) as h.
-      specialize (h h_exct_lvl).
-      specialize (h _ _ _ heq_CEframeG_nme).
+      specialize h with (1:=h_exct_lvl) (2:=heq_CEframeG_nme).
       decomp h.
       enough (lvl_nme ≤ CompilEnv.level_of a0)%nat by omega.
 
@@ -1799,7 +1768,7 @@ Proof.
   !!pose proof (me_stack_localstack_aligned (me_safe_cm_env h_match_env)).
   red in h_aligned_g_m.
   !!assert (O ≤ Datatypes.length x) by omega.
-  specialize (h_aligned_g_m O h_le_O).
+  specialize h_aligned_g_m with (1:=h_le_O).
   decomp h_aligned_g_m.
   cbn in*.
   exists b_δ.
@@ -1845,7 +1814,7 @@ Proof.
   + apply stack_match_addresses_empty.
   + red;!intros.
     red in h_stk_mtch_fun.
-    specialize (h_stk_mtch_fun _ _ _ h_fetch_proc_p).
+    specialize h_stk_mtch_fun with (1:=h_fetch_proc_p).
     !!decomp h_stk_mtch_fun.
     up_type.
     exists CE', CE'', paddr, pnum, fction, lglobdef.
@@ -1967,7 +1936,7 @@ Proof.
   red.
   !intros.
   red in h_stk_mtch_addr_CE_m.
-  specialize (h_stk_mtch_addr_CE_m nme nme_t heq_transl_name).
+  specialize h_stk_mtch_addr_CE_m with (1:= heq_transl_name).
   decomp h_stk_mtch_addr_CE_m.
   exists nme_t_v.
   eapply eval_expr_transl_name_inv_locenv;eauto.
@@ -1982,7 +1951,7 @@ Proof.
   red.
   !intros.
   red in h_stk_mtch_s_m.
-  specialize (h_stk_mtch_s_m nme v nme_t load_addr_nme typ_nme cm_typ_nme h_eval_name_nme_v heq_type_of_name heq_transl_name heq_transl_type heq_make_load).
+  specialize h_stk_mtch_s_m with (1:=h_eval_name_nme_v) (2:=heq_type_of_name) (3:=heq_transl_name) (4:=heq_transl_type) (5:=heq_make_load).
   !!destruct h_stk_mtch_s_m as [? [? ?]].
   exists load_addr_nme_v;split;auto.
   !functional inversion heq_make_load;subst.
@@ -2010,7 +1979,7 @@ Proof.
   - pose proof me_stack_match_functions (me_safe_cm_env h_match_env) as h_mtch_fun.
     red in h_mtch_fun.
     red;!intros.
-    specialize (h_mtch_fun p pb_lvl pb h_fetch_proc_p).
+    specialize h_mtch_fun with (1:=h_fetch_proc_p).
     decomp h_mtch_fun.
     repeat eexists;eauto.
     eapply eval_expr_Econst_inv_locenv;eauto.
@@ -2164,7 +2133,7 @@ Proof.
     + !assert (CompilEnv.cut_until CE lvl0 [ ] CE).
       { eapply cut_until_exact_lvl;eauto. }
       cbn in *.
-      specialize (IHh_strg_mtch_s_CE_m h_inv_comp_CE_st (@nil CompilEnv.frame) CE lvl0 h_CEcut_CE_lvl0 ).
+      specialize IHh_strg_mtch_s_CE_m with (1:= h_inv_comp_CE_st) (2:=h_CEcut_CE_lvl0).
       decomp IHh_strg_mtch_s_CE_m.
       simpl in *.
       exists s1.
@@ -2176,7 +2145,7 @@ Proof.
         constructor 2.
         simpl;auto.
     + rename s' into CE1.
-      specialize (IHh_strg_mtch_s_CE_m h_inv_comp_CE_st CE1 CE2 lvl0 h_CEcut_CE_lvl0).
+      specialize IHh_strg_mtch_s_CE_m with (1:=h_inv_comp_CE_st) (2:=h_CEcut_CE_lvl0).
       decomp IHh_strg_mtch_s_CE_m.
       simpl in *.
       exists ((lvl, sto) :: s1).
@@ -2352,8 +2321,7 @@ Proof.
       constructor 1;auto.
     * (* not reached *)
       rename s' into CE'.
-      specialize (IHh_strg_mtch_s_CE_m CE' CE'' lvl0).
-      specialize (IHh_strg_mtch_s_CE_m h_CEcut_CE_lvl0).      
+      specialize IHh_strg_mtch_s_CE_m with (1:=h_CEcut_CE_lvl0).      
       !!destruct IHh_strg_mtch_s_CE_m as [sp'' ?].
       exists sp''.
       cbn in *|-.
@@ -2480,7 +2448,7 @@ Proof.
   !inversion h_CM_eval_expr_v2.
   simpl in *.
   red in h_aligned_g_m.
-  specialize (h_aligned_g_m _ h_le_δ_lvl_lvl). (* TODO: especialize *)
+  specialize h_aligned_g_m with (1:=h_le_δ_lvl_lvl).
   !!edestruct h_aligned_g_m;eauto.
   assert (v1 = Values.Vptr x Int.zero).
   { eapply det_eval_expr;eauto. }
@@ -2566,8 +2534,7 @@ Proof.
   - (* Unary minus *)
     simpl in heq_transl_unop.
     eq_same_clear.
-    specialize (IHr e_t heq_tr_expr_e locenv g m s e_v stkptr
-                    h_eval_expr_e_e_v h_match_env).
+    specialize IHr with (1:=heq_tr_expr_e) (2:=h_eval_expr_e_e_v) (3:=h_match_env).
     decomp IHr.
     !invclear h_do_rtc_unop;eq_same_clear.
     !invclear h_overf_check.
@@ -2581,7 +2548,7 @@ Proof.
       reflexivity.
   (* Not *)
   - !invclear h_do_rtc_unop;simpl in *;try eq_same_clear.
-    specialize (IHr _ heq_tr_expr_e _ _ _ _ _ _ h_eval_expr_e_e_v h_match_env).
+    specialize IHr with (1:=heq_tr_expr_e) (2:=h_eval_expr_e_e_v) (3:=h_match_env).
     decomp IHr.
     generalize (not_ok _ _ _ heq_transl_value_e_v_e_t_v heq_unary_operation).
     !intro.
@@ -3980,13 +3947,13 @@ Proof.
     !!pose proof storeUpdate_id_ok_others _ _ _ _ _ _ h_storeUpd _ hneq.
     !destruct (updateG_ok_same_orig _ _ _ _ heq_updateG_s_id).
     !!pose proof (updateG_ok_others_frameG _ _ _ _ heq_updateG_s_id).
-    specialize (H nme lvl).
+    specialize H with (1:=hneq).
     !assert (exists sto', frameG nme s = Some (lvl, sto')).
     { pose proof (updateG_ok_others_frameG_orig _ _ _ _ heq_updateG_s_id _ _ _ hneq heq_frameG).
       assumption. }
     !destruct h_ex.
     rename x0 into sto'.
-    specialize (H sto' hneq heq_frameG0).
+    specialize H with (1:=heq_frameG0).
     eapply h_stk_mtch_CE_s_CE;eauto. 
 Qed.
 
@@ -4459,9 +4426,10 @@ Proof.
     cbn in h_CM_eval_expr_v.
     !inversion h_CM_eval_expr_v;subst.
     change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Int.zero)) n)) with (build_loads_ (Econst (Oaddrstack Int.zero)) (S n)) in h_CM_eval_expr_vaddr.
+    specialize IHn with (2:=h_CM_eval_expr_vaddr).
     !assert (chained_stack_structure m (S n) sp).
     { eapply chained_stack_structure_le;eauto. }
-    specialize (IHn m sp h_chain_sp0 _ _ _ h_CM_eval_expr_vaddr).
+    specialize IHn with (1:=h_chain_sp0).
     decomp IHn.
     exists sp';split;auto.
     cbn.
