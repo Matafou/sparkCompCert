@@ -1,5 +1,3 @@
-Require Import LibHypsNaming.
-Require Import Errors.
 (* Require Import language. *)
 Require Import Cminor.
 Require Ctypes AST.
@@ -7,8 +5,11 @@ Require Ctypes AST.
 (* Require Cminorgen. *)
 Require Import BinPosDef.
 Require Import Maps.
-Require Import symboltable.
-Require Import semantics.
+Require Import spark.symboltable.
+Require Import spark.eval.
+Require Import LibHypsNaming.
+Require Import Errors. (* Errors.OK may be written OK *)
+Require Import store_util.
 
 Notation " [ ] " := nil : list_scope.
 Notation " [ x ] " := (cons x nil) : list_scope.
@@ -92,7 +93,7 @@ Definition transl_num x := (Pos.of_nat (x+80)).
     arbitrary n but in fine we should remove this n.
  Idea from Krebber: remove the type defiition from stbl after fetching
  it. That way we have a decreasing argument. *)
-Function reduce_type (stbl:symboltable.symboltable) (ty:type) (n:nat): res base_type :=
+Function reduce_type (stbl:symTab) (ty:type) (n:nat): res base_type :=
   match n with
     | O => Error (msg "reduce_type: exhausted recursivity")
     | S n' =>
@@ -108,7 +109,7 @@ Function reduce_type (stbl:symboltable.symboltable) (ty:type) (n:nat): res base_
           Error (msg "reduce_type: Array_Type Not yet implemented!!.")
         (*match symboltable.fetch_type typnum stbl with
             | None => Error [ MSG "reduce_type: no such type num :" ; CTX (transl_num typnum)]
-            | Some (Array_Type_Declaration _ _ tpidx tpcell) =>
+            | Some (ArrayTypeDecl _ _ tpidx tpcell) =>
               do typofcells <- reduce_type stbl tpcell n' ;
                 do rge <- range_of tpidx ;
                 OK (BArray_Type typofcells rge)
@@ -122,13 +123,13 @@ Function reduce_type (stbl:symboltable.symboltable) (ty:type) (n:nat): res base_
       end
   end.
 
-Definition type_of_decl (typdecl:type_declaration): res type :=
+Definition type_of_decl (typdecl:typeDecl): res type :=
   match typdecl with
-    | Integer_Type_Declaration _ typnum range => OK (Integer_Type typnum)
-    | Array_Type_Declaration _ typnum typidx typcell => OK (Array_Type typnum)
-    | Record_Type_Declaration x x0 x1 => Error (msg "type_of_decl: Record Not yet implemented!!.")
-    | Subtype_Declaration x x0 x1 x2 => Error (msg "type_of_decl: Subtype Not yet implemented!!.")
-    | Derived_Type_Declaration x x0 x1 x2 => Error (msg "type_of_decl: Derived Not yet implemented!!.")
+    | IntegerTypeDecl _ typnum range => OK (Integer_Type typnum)
+    | ArrayTypeDecl _ typnum typidx typcell => OK (Array_Type typnum)
+    | RecordTypeDecl x x0 x1 => Error (msg "type_of_decl: Record Not yet implemented!!.")
+    | SubtypeDecl x x0 x1 x2 => Error (msg "type_of_decl: Subtype Not yet implemented!!.")
+    | DerivedTypeDecl x x0 x1 x2 => Error (msg "type_of_decl: Derived Not yet implemented!!.")
   end.
 
 
@@ -150,8 +151,8 @@ Module OffsetEntry <: environment.ENTRY.
   Definition T := Z.
 End OffsetEntry.
 
-Module CompilEnv := more_store.STORE_PROP OffsetEntry.
-Definition compilenv := CompilEnv.stack.
+Module CompilEnv := store_util.STORE_PROP OffsetEntry.
+Definition compilenv := CompilEnv.state.
 Notation localframe := CompilEnv.store.
 Definition frame := CompilEnv.frame.
 
@@ -285,6 +286,7 @@ Definition transl_binop (op:binary_operator): binary_operation :=
     | Minus => Cminor.Osub
     | Multiply => Cminor.Omul
     | Divide => Cminor.Odiv (* divu? *)
+    | Modulus => Cminor.Omodu
     | Equal => Cminor.Ocmp Integers.Ceq
     | Not_Equal => Cminor.Ocmp Integers.Cne
     | Less_Than => Cminor.Ocmp Integers.Clt
@@ -297,7 +299,6 @@ Definition transl_binop (op:binary_operator): binary_operation :=
    must be treated outside of this function (not b is translated into <b>!=0) *)
 Function transl_unop (op:unary_operator) : res Cminor.unary_operation :=
   match op with
-    | Unary_Plus => Error (msg "unary plus should be removed")
     | Unary_Minus => OK Cminor.Onegint
     | Not => Error (msg "Not expected here")
   end.
@@ -324,10 +325,10 @@ Notation "'do' X <- A ; B" :=
     BUT to allow Functional Scheme to work correctly I need to tweak
     the name of this definition. Hence the fix here instead of
     Fixpoint. *)
-Definition transl_expr_aux := fix transl_expr (stbl:symboltable) (CE:compilenv) (e:expression): res Cminor.expr :=
+Definition transl_expr_aux := fix transl_expr (stbl:symboltable) (CE:compilenv) (e:exp): res Cminor.expr :=
   match e with
-    | E_Literal _ lit => OK (Econst (transl_literal lit))
-    | E_Name _ (E_Identifier astnum id) =>
+    | Literal _ lit => OK (Econst (transl_literal lit))
+    | Name _ (Identifier astnum id) =>
       do addrid <- transl_variable stbl CE astnum id ; (* get the address of the variable *)
         (* get type from stbl or from actual value? *)
         (* do typ <- fetch_var_type id stbl *)  (* TRYING TO USE ASTNUM instead *)
@@ -341,19 +342,19 @@ Definition transl_expr_aux := fix transl_expr (stbl:symboltable) (CE:compilenv) 
           | Some (typ) => value_at_addr stbl typ addrid
         end *)
 
-    | E_Name _ (E_Selected_Component _ _ _) => Error (msg "transl_expr: record not yet implemented")
-    | E_Binary_Operation _ op e1 e2 =>
+    | Name _ (SelectedComponent _ _ _) => Error (msg "transl_expr: record not yet implemented")
+    | BinOp _ op e1 e2 =>
       do te1 <- transl_expr stbl CE e1;
         do te2 <- transl_expr stbl CE e2;
         OK (Ebinop (transl_binop op) te1 te2)
-    | E_Unary_Operation _ Not e => (* (not b) is translated as (<b> == 0) *)
+    | UnOp _ Not e => (* (not b) is translated as (<b> == 0) *)
       do te <- transl_expr stbl CE e;
         OK (Ebinop (Ocmp Integers.Ceq) te (Econst (Ointconst Integers.Int.zero)))
-    | E_Unary_Operation _ op e => (* all unary ops. except not *)
+    | UnOp _ op e => (* all unary ops. except not *)
       do te <- transl_expr stbl CE e;
         do top <- transl_unop op;
         OK (Eunop top te)
-    | E_Name astnum (E_Indexed_Component _ id e) => (* deref? *)
+    | Name astnum (IndexedComponent _ id e) => (* deref? *)
       Error (msg "transl_expr: Array not yet implemented")
 (*      do tid <- (transl_variable stbl CE astnum id);
 (*         match fetch_var id stbl with *)
@@ -383,8 +384,8 @@ Functional Scheme transl_expr_ind := Induction for transl_expr Sort Prop.
     *address* where the value of name [nme] is stored. *)
 Function transl_name (stbl:symboltable) (CE:compilenv) (nme:name) {struct nme}: res Cminor.expr :=
   match nme with
-    | E_Identifier astnum id => (transl_variable stbl CE astnum id) (* address of the variable *)
-    | E_Indexed_Component astnum id e =>
+    | Identifier astnum id => (transl_variable stbl CE astnum id) (* address of the variable *)
+    | IndexedComponent astnum id e =>
       Error (msg "transl_name: array not yet implemented")
     (*      do tid <- transl_variable stbl CE astnum id; (* address of the variable *)
 (*         match fetch_var id stbl with *)
@@ -404,10 +405,10 @@ Function transl_name (stbl:symboltable) (CE:compilenv) (nme:name) {struct nme}: 
           end
         | _ => Error (msg "transl_name: ")
       end*)
-    | E_Selected_Component _ _ _ =>  Error (msg "transl_name:Not yet implemented")
+    | SelectedComponent _ _ _ =>  Error (msg "transl_name:Not yet implemented")
   end.
 
-Fixpoint transl_exprlist (stbl: symboltable) (CE: compilenv) (el: list expression)
+Fixpoint transl_exprlist (stbl: symboltable) (CE: compilenv) (el: list exp)
                      {struct el}: res (list Cminor.expr) :=
   match el with
   | nil => OK nil
@@ -490,14 +491,14 @@ Definition compute_chnk_astnum (stbl:symboltable) (astn:astnum): res AST.memory_
 (* FIXME *)
 Definition compute_chnk (stbl:symboltable) (nme:name): res AST.memory_chunk :=
   match nme with
-  | E_Identifier astnum id => compute_chnk_id stbl id
-  | E_Indexed_Component _ nme' e => Error (msg "compute_chnk: arrays not implemented yet")
-  | E_Selected_Component _ nme' id => Error (msg "compute_chnk: records not implemented yet")
+  | Identifier astnum id => compute_chnk_id stbl id
+  | IndexedComponent _ nme' e => Error (msg "compute_chnk: arrays not implemented yet")
+  | SelectedComponent _ nme' id => Error (msg "compute_chnk: records not implemented yet")
   end.
 
 
 Fixpoint transl_lparameter_specification_to_ltype
-         (stbl:symboltable) (lpspec:list parameter_specification): res (list AST.typ) :=
+         (stbl:symboltable) (lpspec:list paramSpec): res (list AST.typ) :=
   match lpspec with
     | nil => OK nil
     | cons pspec lpspec' =>
@@ -509,7 +510,7 @@ Fixpoint transl_lparameter_specification_to_ltype
 Definition transl_paramid := transl_num.
 
 Fixpoint transl_lparameter_specification_to_lident
-         (stbl:symboltable) (lpspec:list parameter_specification): (list AST.ident) :=
+         (stbl:symboltable) (lpspec:list paramSpec): (list AST.ident) :=
   match lpspec with
     | nil => nil
     | cons pspec lpspec' =>
@@ -519,16 +520,16 @@ Fixpoint transl_lparameter_specification_to_lident
   end.
 
 
-Fixpoint transl_decl_to_lident (stbl:symboltable) (decl:declaration): list AST.ident :=
+Fixpoint transl_decl_to_lident (stbl:symboltable) (decl:decl): list AST.ident :=
   match decl with
-    | D_Null_Declaration => nil
-    | D_Seq_Declaration _ decl1 decl2 =>
+    | NullDecl => nil
+    | SeqDecl _ decl1 decl2 =>
       let lident1 := transl_decl_to_lident stbl decl1 in
       let lident2 := transl_decl_to_lident stbl decl2 in
       List.app lident1 lident2
-    | D_Object_Declaration _ objdecl => [transl_paramid objdecl.(object_name)]
-    | D_Type_Declaration x x0 => nil
-    | D_Procedure_Body x x0 => nil
+    | ObjDecl _ objdecl => [transl_paramid objdecl.(object_name)]
+    | TypeDecl x x0 => nil
+    | ProcBodyDecl x x0 => nil
   end.
 
 
@@ -538,7 +539,7 @@ Definition default_calling_convention := {| AST.cc_vararg := true;
 
 Definition transl_lparameter_specification_to_procsig
            (stbl:symboltable) (lvl:Symbol_Table_Module.level)
-           (lparams:list parameter_specification) : res AST.signature :=
+           (lparams:list paramSpec) : res AST.signature :=
   do tparams <- transl_lparameter_specification_to_ltype stbl lparams ;
   OK {|
          (* add a void* to the list of parameters, for frame chaining *)
@@ -551,8 +552,8 @@ Definition transl_lparameter_specification_to_procsig
        |}.
 
 
-Fixpoint transl_paramexprlist (stbl: symboltable) (CE: compilenv) (el: list expression)
-         (lparams:list parameter_specification)
+Fixpoint transl_paramexprlist (stbl: symboltable) (CE: compilenv) (el: list exp)
+         (lparams:list paramSpec)
          {struct el}: res (list Cminor.expr) :=
   match (el,lparams) with
   | (nil,nil) => OK nil
@@ -564,7 +565,7 @@ Fixpoint transl_paramexprlist (stbl: symboltable) (CE: compilenv) (el: list expr
           OK (te1 :: te2)
       | _ =>
         match e1 with
-          | E_Name _ nme =>
+          | Name _ nme =>
               do te1 <- transl_name stbl CE nme;
               do te2 <- transl_paramexprlist stbl CE e2 p2;
               OK (te1 :: te2)
@@ -576,13 +577,13 @@ Fixpoint transl_paramexprlist (stbl: symboltable) (CE: compilenv) (el: list expr
   end.
 
 Definition transl_params (stbl:symboltable) (pnum:procnum) (CE: compilenv)
-           (el: list expression): res (list Cminor.expr) :=
+           (el: list exp): res (list Cminor.expr) :=
   match fetch_proc pnum stbl with
     | None => Error (msg "Unkonwn procedure")
     | Some (lvl , pdecl) => transl_paramexprlist stbl CE el (procedure_parameter_profile pdecl)
   end.
 
-(* FIXME, return lvl directly instead of counting on transl_lparameter_specification_to_procsig *)
+(* FIXME, return lvl directly instead of counting on transl_lparamSpec_to_procsig *)
 Definition transl_procsig (stbl:symboltable) (pnum:procnum)
   : res (AST.signature * Symbol_Table_Module.level) :=
   match fetch_proc pnum stbl with
@@ -599,19 +600,19 @@ Definition transl_procid := transl_num.
 
 (** Compilation of statements *)
 Definition transl_stmt_aux :=
-  fix transl_stmt (stbl:symboltable) (CE:compilenv) (e:statement) {struct e}: res stmt :=
+  fix transl_stmt (stbl:symboltable) (CE:compilenv) (e:stmt) {struct e}: res Cminor.stmt :=
   match e with
-    | S_Null => OK Sskip
-    | S_Sequence _ s1 s2 =>
+    | Null => OK Sskip
+    | Seq _ s1 s2 =>
       do ts1 <- transl_stmt stbl CE s1;
         do ts2 <- transl_stmt stbl CE s2;
         OK (Sseq ts1 ts2)
-    | S_Assignment _ nme e =>
+    | Assign _ nme e =>
       do te <- transl_expr stbl CE e;
         do tnme <- transl_name stbl CE nme ;
         do chnk <- compute_chnk stbl nme ;
         OK (Sstore chnk tnme te)
-    | S_If _ e s1 s2 =>
+    | If _ e s1 s2 =>
       do te1 <- transl_expr stbl CE e ;
         do te <- OK (Ebinop (Ocmp Integers.Cne)
                             te1 (Econst (Ointconst Integers.Int.zero)));
@@ -629,7 +630,7 @@ Definition transl_stmt_aux :=
        Question: Since no aliasing is allowed in spark, it should not
        be possible to exploit one or the other strategy for arrays and
        records? *)
-    | S_Procedure_Call _ _ pnum lexp =>
+    | Call _ _ pnum lexp =>
       do tle <- transl_params stbl pnum CE lexp ;
         do (procsig,lvl) <- transl_procsig stbl pnum ;
         (* The height of CE is exactly the nesting level of the current procedure *)
@@ -653,7 +654,7 @@ Definition transl_stmt_aux :=
        out of the loop (if the test contains a block...). See
        Cshmgen.transl_statement, we need to have the number of
        necessary breaks to get out. *)
-    | S_While_Loop x x0 x1 => Error (msg "transl_stmt:Not yet implemented")
+    | While x x0 x1 => Error (msg "transl_stmt:Not yet implemented")
   end.
 
 (* iota neede because of trivial compute_chnk *)
@@ -667,7 +668,7 @@ Functional Scheme transl_stmt_ind := Induction for transl_stmt Sort Prop.
 compilation. It stores the offset of each visible variable (in its own
 frame) and the level of nesting of each one. The nestng level is
 actually represented by the structure of the compilenv: Concretely a
-compilenv is a stack ([CompilEnv.stack]) of frames
+compilenv is a stack ([CompilEnv.state]) of frames
 ([frame] = [scope*localframe]'s). A part of the compilation process to Cminor
 consists in using the information of this stack to maintain a pseudo
 stack in memory, that is isomorphic to this environment (chaining
@@ -688,10 +689,10 @@ Definition add_to_frame stbl (cenv_sz:localframe*Z) nme subtyp_mrk: res (localfr
    accumulator to build a frame env for lparam. It also compute
    the overall size of the store. *)
 Fixpoint build_frame_lparams (stbl:symboltable) (fram_sz:localframe * Z)
-         (lparam:list parameter_specification): res (localframe*Z) :=
+         (lparam:list paramSpec): res (localframe*Z) :=
   match lparam with
     | nil => OK fram_sz
-    | mkparameter_specification _ nme subtyp_mrk mde :: lparam' =>
+    | mkparamSpec _ nme subtyp_mrk mde :: lparam' =>
       do new_fram_sz <- add_to_frame stbl fram_sz nme subtyp_mrk ;
       build_frame_lparams stbl new_fram_sz lparam'
   end.
@@ -700,22 +701,22 @@ Fixpoint build_frame_lparams (stbl:symboltable) (fram_sz:localframe * Z)
    accumulator to build a frame for decl. It also compute
    the overall size of the store. *)
 Fixpoint build_frame_decl (stbl:symboltable) (fram_sz:localframe * Z)
-         (decl:declaration): res (localframe*Z) :=
+         (decl:decl): res (localframe*Z) :=
   let (fram,sz) := fram_sz in
   match decl with
-    | D_Null_Declaration => OK fram_sz
-    | D_Seq_Declaration _ decl1 decl2 =>
+    | NullDecl => OK fram_sz
+    | SeqDecl _ decl1 decl2 =>
       do fram2_sz1 <- build_frame_decl stbl fram_sz decl1 ;
       build_frame_decl stbl fram2_sz1 decl2
-    | D_Object_Declaration _ objdecl =>
+    | ObjDecl _ objdecl =>
       do size <- compute_size stbl (objdecl.(object_nominal_subtype)) ;
       let new_size := (sz+size)%Z in
       if (new_size >=? Integers.Int.modulus) then Error (msg "build_frame_decl: memory would overflow")
       else
       OK (((objdecl.(object_name),sz)::fram) ,new_size)
-    | D_Type_Declaration _ typdcl =>
+    | TypeDecl _ typdcl =>
       Error (msg "build_frame_decl: type decl no implemented yet")
-    | D_Procedure_Body _ pbdy =>
+    | ProcBodyDecl _ pbdy =>
       Error (msg "build_frame_decl: proc decl no implemented yet")
   end.
 
@@ -723,16 +724,16 @@ Fixpoint build_frame_decl (stbl:symboltable) (fram_sz:localframe * Z)
 (* [build_proc_decl stbl (fram,sz) decl] experimenting a way to translate
    procedure one by one instead of recursively. *)
 Fixpoint build_proc_decl (lvl:Symbol_Table_Module.level)
-         (stbl:symboltable) (decl:declaration): list procedure_body :=
+         (stbl:symboltable) (decl:decl): list procBodyDecl :=
   match decl with
-    | D_Null_Declaration => []
-    | D_Seq_Declaration _ decl1 decl2 =>
+    | NullDecl => []
+    | SeqDecl _ decl1 decl2 =>
       let l1 := build_proc_decl (S lvl) stbl decl1 in
       let l2 := build_proc_decl (S lvl) stbl decl2 in
       l1 ++ l2
-    | D_Object_Declaration _ objdecl => []
-    | D_Type_Declaration _ typdcl => []
-    | D_Procedure_Body _ pbdy => pbdy::build_proc_decl (S lvl) stbl (procedure_declarative_part pbdy)
+    | ObjDecl _ objdecl => []
+    | TypeDecl _ typdcl => []
+    | ProcBodyDecl _ pbdy => pbdy::build_proc_decl (S lvl) stbl (procedure_declarative_part pbdy)
   end.
 
 (* [build_compilenv stbl enclosingCE pbdy] returns the new compilation
@@ -757,7 +758,7 @@ Fixpoint build_proc_decl (lvl:Symbol_Table_Module.level)
 
     this is correct. *)
 Definition build_compilenv (stbl:symboltable) (enclosingCE:compilenv) (lvl:Symbol_Table_Module.level)
-         (lparams:list parameter_specification) (decl:declaration) : res (compilenv*Z) :=
+         (lparams:list paramSpec) (decl:decl) : res (compilenv*Z) :=
 (*   let stoszchainparam := (((0%nat,0%Z) :: nil),4%Z) in *)
   let stoszchainparam := (nil,4%Z) in
   do stoszparam <- build_frame_lparams stbl stoszchainparam lparams ;
@@ -789,15 +790,15 @@ of nested procedures. *)
     temporary variables and the one that cannot really be "lifted" to
     temporary (because their address is needed) are copied in the
     stack by the generated prelude of the procedure. *)
-Fixpoint store_params stbl (CE:compilenv) (lparams:list parameter_specification)
-         {struct lparams} : res stmt :=
+Fixpoint store_params stbl (CE:compilenv) (lparams:list paramSpec)
+         {struct lparams} : res Cminor.stmt :=
   match lparams with
     | nil => OK Sskip
     | cons prm lparams' =>
       let id := transl_paramid prm.(parameter_name) in
-      do chnk <- compute_chnk stbl (E_Identifier 0%nat (prm.(parameter_name))) ;
+      do chnk <- compute_chnk stbl (Identifier 0%nat (prm.(parameter_name))) ;
       do recres <- store_params stbl CE lparams' ;
-      do lexp <- transl_name stbl CE (E_Identifier 0%nat (prm.(parameter_name))) ;
+      do lexp <- transl_name stbl CE (Identifier 0%nat (prm.(parameter_name))) ;
       let rexp := (* Should I do nothing for in (except in_out) params? *)
           match prm.(parameter_mode) with
             | In => Evar id
@@ -807,15 +808,15 @@ Fixpoint store_params stbl (CE:compilenv) (lparams:list parameter_specification)
   end.
 
 
-Fixpoint copy_out_params stbl (CE:compilenv) (lparams:list parameter_specification)
-         {struct lparams} : res stmt :=
+Fixpoint copy_out_params stbl (CE:compilenv) (lparams:list paramSpec)
+         {struct lparams} : res Cminor.stmt :=
   match lparams with
     | nil => OK Sskip
     | cons prm lparams' =>
       let id := transl_paramid prm.(parameter_name) in
-      do chnk <- compute_chnk stbl (E_Identifier 0%nat (prm.(parameter_name))) ;
+      do chnk <- compute_chnk stbl (Identifier 0%nat (prm.(parameter_name))) ;
         do recres <- copy_out_params stbl CE lparams' ;
-        do rexp <- transl_name stbl CE (E_Identifier 0%nat (prm.(parameter_name))) ;
+        do rexp <- transl_name stbl CE (Identifier 0%nat (prm.(parameter_name))) ;
         match prm.(parameter_mode) with
           | In => OK recres
           | _ =>
@@ -834,21 +835,21 @@ Fixpoint copy_out_params stbl (CE:compilenv) (lparams:list parameter_specificati
    intialzation expressions in [decl]. Variables declared in decl are
    supposed to already be added to compilenv [CE] (by
    [build_compilenv] above).*)
-Fixpoint init_locals (stbl:symboltable) (CE:compilenv) (decl:declaration)
-  : res stmt :=
+Fixpoint init_locals (stbl:symboltable) (CE:compilenv) (decl:decl)
+  : res Cminor.stmt :=
   match decl with
-    | D_Null_Declaration => OK Sskip
-    | D_Seq_Declaration _ decl1 decl2 =>
+    | NullDecl => OK Sskip
+    | SeqDecl _ decl1 decl2 =>
       do s1 <- init_locals stbl CE decl1 ;
       do s2 <- init_locals stbl CE decl2 ;
       OK (Sseq s1 s2)
-    | D_Object_Declaration _ objdecl =>
-      match objdecl.(initialization_expression) with
+    | ObjDecl _ objdecl =>
+      match objdecl.(initialization_exp) with
         | None => OK Sskip
         | Some e =>
-          do chnk <- compute_chnk stbl (E_Identifier 0%nat objdecl.(object_name)) ;
+          do chnk <- compute_chnk stbl (Identifier 0%nat objdecl.(object_name)) ;
           do exprinit <- transl_expr stbl CE e;
-          do lexp <- transl_name stbl CE (E_Identifier 0%nat objdecl.(object_name)) ;
+          do lexp <- transl_name stbl CE (Identifier 0%nat objdecl.(object_name)) ;
           OK (Sstore chnk lexp exprinit)
       end
     | _ => OK Sskip
@@ -864,10 +865,10 @@ Definition CMfundecls: Type := (list (AST.ident * AST.globdef fundef unit)).
     local vars. The postlude copies "Out" parameters to there destination
     variables. *)
 Fixpoint transl_procedure (stbl:symboltable) (enclosingCE:compilenv)
-         (lvl:Symbol_Table_Module.level) (pbdy:procedure_body)
+         (lvl:Symbol_Table_Module.level) (pbdy:procBodyDecl)
   : res CMfundecls  :=
   match pbdy with
-    | mkprocedure_body _ pnum lparams decl statm =>
+    | mkprocBodyDecl _ pnum lparams decl statm =>
         (* setup frame chain *)
         do (CE,stcksize) <- build_compilenv stbl enclosingCE lvl lparams decl ;
         if Z.leb stcksize Integers.Int.max_unsigned
@@ -924,16 +925,16 @@ Fixpoint transl_procedure (stbl:symboltable) (enclosingCE:compilenv)
 
 (* FIXME: check the size needed for the declarations *)
 with transl_declaration (stbl:symboltable) (enclosingCE:compilenv)
-       (lvl:Symbol_Table_Module.level) (decl:declaration)
+       (lvl:Symbol_Table_Module.level) (decl:decl)
      : res CMfundecls :=
    match decl with
-      | D_Procedure_Body _ pbdy =>
+      | ProcBodyDecl _ pbdy =>
         transl_procedure stbl enclosingCE lvl pbdy
-      | D_Seq_Declaration _ decl1 decl2 =>
+      | SeqDecl _ decl1 decl2 =>
         do p1 <- transl_declaration stbl enclosingCE lvl decl1;
         do p2 <- transl_declaration stbl enclosingCE lvl decl2;
         OK (p1++p2)
-      | D_Object_Declaration astnum objdecl =>
+      | ObjDecl astnum objdecl =>
         OK [
             (transl_paramid objdecl.(object_name),
                            AST.Gvar {| AST.gvar_info := tt;
@@ -941,9 +942,9 @@ with transl_declaration (stbl:symboltable) (enclosingCE:compilenv)
                                        AST.gvar_readonly := false; (* FIXME? *)
                                        AST.gvar_volatile := false |} (* FIXME? *)
           ) ] (*transl_objdecl stbl 0  ;*)
-       | D_Type_Declaration _ _ =>
-         Error (msg "transl_declaration: D_Type_Declaration not yet implemented")
-       | D_Null_Declaration => OK nil
+       | TypeDecl _ _ =>
+         Error (msg "transl_declaration: TypeDecl not yet implemented")
+       | NullDecl => OK nil
        end.
 
 (** In Ada the main procedure is generally a procedure at toplevel
@@ -952,17 +953,17 @@ with transl_declaration (stbl:symboltable) (enclosingCE:compilenv)
 
     WARNING: main procedure in Cminor is supposed to be called with chaining
     param set to void. *)
-Fixpoint get_main_procedure (decl:declaration) : option procnum :=
+Fixpoint get_main_procedure (decl:decl) : option procnum :=
   match decl with
-    | D_Null_Declaration => None
-    | D_Type_Declaration _ x0 => None
-    | D_Object_Declaration _ x0 => None
-    | D_Seq_Declaration _ x0 x1 =>
+    | NullDecl => None
+    | TypeDecl _ x0 => None
+    | ObjDecl _ x0 => None
+    | SeqDecl _ x0 x1 =>
       match get_main_procedure x0 with
         | None => get_main_procedure x1
         | Some r => Some r
       end
-    | D_Procedure_Body _  (mkprocedure_body _ pnum _ _ _) => Some pnum
+    | ProcBodyDecl _  (mkprocBodyDecl _ pnum _ _ _) => Some pnum
   end.
 
 (** Intitial program. *)
@@ -971,7 +972,7 @@ Definition build_empty_program_with_main procnum (lfundef:CMfundecls) :=
      AST.prog_public := nil;
      AST.prog_main := transl_num procnum |}.
 
-Definition transl_program (stbl:symboltable) (decl:declaration) : res (Cminor.program) :=
+Definition transl_program (stbl:symboltable) (decl:decl) : res (Cminor.program) :=
   match get_main_procedure decl with
     | None => Error (msg "No main procedure detected")
     | Some mainprocnum =>
@@ -1041,37 +1042,37 @@ Definition empty_stbl:symboltable :=
   |}.
 
 
-Fixpoint transl_lparameter_specification_to_stbl
-         (stbl:symboltable) (lpspec:list parameter_specification)
+Fixpoint transl_lparamSpec_to_stbl
+         (stbl:symboltable) (lpspec:list paramSpec)
   : symboltable :=
   match lpspec with
     | nil => stbl
     | cons pspec lpspec' =>
-      let stblrec := transl_lparameter_specification_to_stbl stbl lpspec' in
+      let stblrec := transl_lparamSpec_to_stbl stbl lpspec' in
       (update_vars stblrec pspec.(parameter_name) (pspec.(parameter_mode),pspec.(parameter_subtype_mark)))
   end.
 
 
-Fixpoint transl_decl_to_stbl (stbl:symboltable) (decl:declaration): symboltable :=
+Fixpoint transl_decl_to_stbl (stbl:symboltable) (decl:decl): symboltable :=
   match decl with
-    | D_Null_Declaration => stbl
-    | D_Seq_Declaration _ decl1 decl2 =>
+    | NullDecl => stbl
+    | SeqDecl _ decl1 decl2 =>
       let stbl1 := transl_decl_to_stbl stbl decl1 in
       let stbl2 := transl_decl_to_stbl stbl1 decl2 in
       stbl2
-    | D_Object_Declaration _ objdecl =>
+    | ObjDecl _ objdecl =>
       update_vars stbl objdecl.(object_name) (In_Out,objdecl.(object_nominal_subtype))
-    | D_Type_Declaration x x0 => stbl (* not implemented yet *)
-    | D_Procedure_Body _ pbdy =>
+    | TypeDecl x x0 => stbl (* not implemented yet *)
+    | Procedure_Body _ pbdy =>
       (* FIXME: we should look for blocks inside the body of the procedure. *)
-      let stbl1 := transl_lparameter_specification_to_stbl stbl (procedure_parameter_profile pbdy) in
+      let stbl1 := transl_lparamSpec_to_stbl stbl (procedure_parameter_profile pbdy) in
       let stbl2 := transl_decl_to_stbl stbl1 (procedure_declarative_part pbdy) in
       stbl2
   (* TODO: go recursively there *)
   end.
 
 Definition stbl_of_proc (pbdy:procedure_body) :=
-  let stbl1 := transl_lparameter_specification_to_stbl empty_stbl (procedure_parameter_profile pbdy) in
+  let stbl1 := transl_lparamSpec_to_stbl empty_stbl (procedure_parameter_profile pbdy) in
   let stbl2 := transl_decl_to_stbl stbl1 (procedure_declarative_part pbdy) in
   stbl2.
 
