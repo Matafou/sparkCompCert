@@ -1,10 +1,11 @@
 Require Import LibHypsNaming.
-Require Import semantics.
 Require Import Errors.
+Require Import eval.
 Require Import more_stdlib function_utils spark2Cminor.
 Require Import Morphisms Relations.
 Import STACK.
-Import STACK.ST.
+Require Import store_util.
+(* Import STACK.ST. *)
 
 
 (* Functional Scheme update_ind := Induction for update Sort Prop. *)
@@ -23,54 +24,54 @@ Ltac rename_hyp_sem h th :=
   | symboltable.fetch_exp_type _ _ = Error _ => fresh "heq_fetch_exp_type_ERR"
   | fetch_exp_type _ _ = None => fresh "heq_fetch_exp_type_none"
   | fetch_exp_type _ _ = _ => fresh "heq_fetch_exp_type"
-  | eval_expr _ _ _ (Run_Time_Error _) => fresh "h_eval_expr_RE"
-  | eval_expr _ _ ?e (Normal ?v) => fresh "h_eval_expr_" e "_" v
-  | eval_expr _ _ _ (Normal ?v) => fresh "h_eval_expr_" v
-  | eval_expr _ _ ?e ?v => fresh "h_eval_expr_" e "_" v
-  | eval_expr _ _ ?e _ => fresh "h_eval_expr_" e
-  | eval_expr _ _ _ ?v => fresh "h_eval_expr_" v
-  | eval_expr _ _ _ _ => fresh "h_eval_expr"
-  | eval_name _ _ _ (Run_Time_Error _) => fresh "h_eval_name_RE"
-  | eval_name _ _ ?e (Normal ?v) => fresh "h_eval_name_" e "_" v
-  | eval_name _ _ _ (Normal ?v) => fresh "h_eval_name_" v
-  | eval_name _ _ ?e ?v => fresh "h_eval_name_" e "_" v
-  | eval_name _ _ ?e _ => fresh "h_eval_name_" e
-  | eval_name _ _ _ ?v => fresh "h_eval_name_" v
-  | eval_name _ _ _ _ => fresh "h_eval_name"
-  | do_overflow_check _ (Run_Time_Error _) => fresh "h_overf_check_RE"
-  | do_overflow_check _ _ => fresh "h_overf_check"
-  | do_range_check _ _ _ (Run_Time_Error _) => fresh "h_do_range_check_RE"
-  | do_range_check _ _ _ _ => fresh "h_do_range_check"
-  | do_run_time_check_on_binop _ _ _ (Run_Time_Error _) => fresh "h_do_rtc_binop_RTE"
+  | evalExp _ _ _ (RTE _) => fresh "h_eval_expr_RE"
+  | evalExp _ _ ?e (OK ?v) => fresh "h_eval_expr_" e "_" v
+  | evalExp _ _ _ (OK ?v) => fresh "h_eval_expr_" v
+  | evalExp _ _ ?e ?v => fresh "h_eval_expr_" e "_" v
+  | evalExp _ _ ?e _ => fresh "h_eval_expr_" e
+  | evalExp _ _ _ ?v => fresh "h_eval_expr_" v
+  | evalExp _ _ _ _ => fresh "h_eval_expr"
+  | evalName _ _ _ (RTE _) => fresh "h_eval_name_RE"
+  | evalName _ _ ?e (OK ?v) => fresh "h_eval_name_" e "_" v
+  | evalName _ _ _ (OK ?v) => fresh "h_eval_name_" v
+  | evalName _ _ ?e ?v => fresh "h_eval_name_" e "_" v
+  | evalName _ _ ?e _ => fresh "h_eval_name_" e
+  | evalName _ _ _ ?v => fresh "h_eval_name_" v
+  | evalName _ _ _ _ => fresh "h_eval_name"
+  | overflowCheck _ (RTE _) => fresh "h_overf_check_RE"
+  | overflowCheck _ _ => fresh "h_overf_check"
+  | rangeCheck _ _ _ (RTE _) => fresh "h_do_range_check_RE"
+  | rangeCheck _ _ _ _ => fresh "h_do_range_check"
+  | do_run_time_check_on_binop _ _ _ (RTE _) => fresh "h_do_rtc_binop_RTE"
   | do_run_time_check_on_binop _ _ _ _ => fresh "h_do_rtc_binop"
-  | eval_literal _ (Run_Time_Error _)  => fresh "h_eval_literal_RE"
-  | eval_literal _ _  => fresh "h_eval_literal"
-  | eval_stmt _ _ _ (Run_Time_Error _) => fresh "h_eval_stmt_RE"
-  | eval_stmt _ _ _ _ => fresh "h_eval_stmt"
-  | eval_decl _ _ _ _ (Run_Time_Error _) => fresh "h_eval_stmt_RE"
-  | eval_decl _ _ _ _ _ => fresh "h_eval_stmt"
-  | storeUpdate _ _ _ _ (Run_Time_Error _) => fresh "h_storeUpd_RE"
+  | evalLiteral _ (RTE _)  => fresh "h_eval_literal_RE"
+  | evalLiteral _ _  => fresh "h_eval_literal"
+  | evalStmt _ _ _ (RTE _) => fresh "h_eval_stmt_RE"
+  | evalStmt _ _ _ _ => fresh "h_eval_stmt"
+  | evalDecl _ _ _ _ (RTE _) => fresh "h_eval_decl_RE"
+  | evalDecl _ _ _ _ _ => fresh "h_eval_decl"
+  | storeUpdate _ _ _ _ (RTE _) => fresh "h_storeUpd_RE"
   | storeUpdate _ _ _ _ _ => fresh "h_storeUpd"
-  | do_run_time_check_on_binop _ _ _ (Run_Time_Error _) =>  fresh "h_do_rtc_binop_RE"
+  | do_run_time_check_on_binop _ _ _ (RTE _) =>  fresh "h_do_rtc_binop_RE"
   | do_run_time_check_on_binop _ _ _ _ =>  fresh "h_do_rtc_binop"
-  | do_run_time_check_on_unop _ _ (Run_Time_Error _) =>  fresh "h_do_rtc_unop_RE"
+  | do_run_time_check_on_unop _ _ (RTE _) =>  fresh "h_do_rtc_unop_RE"
   | do_run_time_check_on_unop _ _ _ =>  fresh "h_do_rtc_unop"
-  | do_division_check _ _ (Run_Time_Error _) => fresh "h_do_division_check_RTE"
-  | do_division_check _ _ _ => fresh "h_do_division_check"
+  | divCheck _ _ _ (RTE _) => fresh "h_do_division_check_RTE"
+  | divCheck _ _ _ _ => fresh "h_do_division_check"
   | extract_subtype_range _ ?t ?rge => fresh "subtype_rge_" t "_" rge
   | extract_subtype_range _ ?t _ => fresh "subtype_rge_" t
   | extract_subtype_range _ _ _ => fresh "subtype_rge"
-  | copy_out ?st ?s ?pstmt ?paramsprf ?args (Run_Time_Error ?er) => fresh "h_copy_out_RE"
-  | copy_out ?st ?s ?pstmt ?paramsprf ?args (Normal ?s') => fresh "h_copy_out_" s "_" s'
-  | copy_out ?st ?s ?pstmt ?paramsprf ?args ?s' => fresh "h_copy_out_" s "_" s'
-  | copy_out ?st ?s ?pstmt ?paramsprf ?args _ => fresh "h_copy_out_" s
-  | copy_out ?st ?s ?pstmt ?paramsprf ?args _ => fresh "h_copy_out"
+  | copyOut ?st ?s ?pstmt ?paramsprf ?args (RTE ?er) => fresh "h_copy_out_RE"
+  | copyOut ?st ?s ?pstmt ?paramsprf ?args (OK ?s') => fresh "h_copy_out_" s "_" s'
+  | copyOut ?st ?s ?pstmt ?paramsprf ?args ?s' => fresh "h_copy_out_" s "_" s'
+  | copyOut ?st ?s ?pstmt ?paramsprf ?args _ => fresh "h_copy_out_" s
+  | copyOut ?st ?s ?pstmt ?paramsprf ?args _ => fresh "h_copy_out"
 
-  | copy_in ?st ?s ?fr ?paramsprf ?args (Run_Time_Error ?er) => fresh "h_copy_in_RE"
-  | copy_in ?st ?s ?fr ?paramsprf ?args (Normal ?fr') => fresh "h_copy_in_" fr "_" fr'
-  | copy_in ?st ?s ?fr ?paramsprf ?args ?fr' => fresh "h_copy_in_" fr "_" fr'
-  | copy_in ?st ?s ?fr ?paramsprf ?args _ => fresh "h_copy_in_" fr
-  | copy_in ?st ?s ?fr ?paramsprf ?args _ => fresh "h_copy_in"
+  | copyIn ?st ?s ?fr ?paramsprf ?args (RTE ?er) => fresh "h_copy_in_RE"
+  | copyIn ?st ?s ?fr ?paramsprf ?args (OK ?fr') => fresh "h_copy_in_" fr "_" fr'
+  | copyIn ?st ?s ?fr ?paramsprf ?args ?fr' => fresh "h_copy_in_" fr "_" fr'
+  | copyIn ?st ?s ?fr ?paramsprf ?args _ => fresh "h_copy_in_" fr
+  | copyIn ?st ?s ?fr ?paramsprf ?args _ => fresh "h_copy_in"
 
   | symboltable.fetch_proc ?p _ = None => fresh "h_fetch_proc_None_" p
   | symboltable.fetch_proc _ _ = None => fresh "h_fetch_proc_None"
@@ -91,16 +92,16 @@ Ltac rename_hyp1 h th :=
 Ltac rename_hyp ::= rename_hyp1.
 
 Lemma storeUpdate_id_ok_others: forall ast_num stbl stk id v stk',
-    storeUpdate stbl stk (E_Identifier ast_num id) v (Normal stk') ->
+    storeUpdate stbl stk (Identifier ast_num id) v (OK stk') ->
     forall id', id<>id' -> fetchG id' stk = fetchG id' stk'.
 Proof.
   !intros.
   !invclear h_storeUpd.
-  eapply updateG_ok_others;eauto.
+  eapply STACK.updateG_ok_others;eauto.
 Qed.
 
 Lemma storeUpdate_id_ok_same: forall ast_num stbl stk id v stk',
-    storeUpdate stbl stk (E_Identifier ast_num id) v (Normal stk') ->
+    storeUpdate stbl stk (Identifier ast_num id) v (OK stk') ->
     fetchG id stk' = Some v.
 Proof.
   !intros.
@@ -109,9 +110,9 @@ Proof.
 Qed.
 
 Lemma storeUpdate_id_ok_same_eval_name: forall ast_num stbl stk id v stk',
-    storeUpdate stbl stk (E_Identifier ast_num id) v (Normal stk') ->
+    storeUpdate stbl stk (Identifier ast_num id) v (OK stk') ->
     forall ast_num' v',
-      eval_name stbl stk' (E_Identifier ast_num' id) (Normal v') ->
+      evalName stbl stk' (Identifier ast_num' id) (OK v') ->
       v = v'.
 Proof.
   !intros.
@@ -124,11 +125,11 @@ Proof.
 Qed.
 
 Lemma storeUpdate_id_ok_others_eval_name: forall ast_num stbl stk id v stk',
-    storeUpdate stbl stk (E_Identifier ast_num id) v (Normal stk') ->
+    storeUpdate stbl stk (Identifier ast_num id) v (OK stk') ->
     forall ast_num' ast_num'' id' v' v'',
       id<>id' ->
-      eval_name stbl stk (E_Identifier ast_num' id') (Normal v') ->
-      eval_name stbl stk' (E_Identifier ast_num'' id') (Normal v'') ->
+      evalName stbl stk (Identifier ast_num' id') (OK v') ->
+      evalName stbl stk' (Identifier ast_num'' id') (OK v'') ->
       v' = v''.
 Proof.
   !intros.
@@ -218,7 +219,7 @@ Inductive eq_frame:
 (** [match_env sta b m] means that the chained Cminor stack at address
     [b] in memory m ([b] is the adress of the bottom of the top stack)
     matches spark stack [s]. *)
-Inductive eq_env: stack -> Values.block -> Memory.Mem.mem -> Prop :=
+Inductive eq_env: state -> Values.block -> Memory.Mem.mem -> Prop :=
   ME1: forall spb m, eq_env nil spb m
 | ME2: forall s sto (lvl:scope_level) fr spb spb' m,
          eq_frame fr spb (Integers.Int.repr 4) m
@@ -238,23 +239,23 @@ Qed.
 
 
 
-(** ** Normalized names
+(** ** OKized names
 
-Normalized names are like names, except that any expression in it has
+OKized names are like names, except that any expression in it has
 been evaluated into a cell number. *)
 Inductive Nname: Type :=
-  NE_Identifier : idnum -> Nname
+  NIdentifier : idnum -> Nname
 | NE_Indexed_Component : Nname -> Z -> Nname
 | NE_Selected_Component : Nname -> idnum -> Nname. (* what if (f(x,y,z).foo?? *)
 
 
 
 
-Inductive solve_name (stbl:symboltable) (stck:stack): name -> Nname -> Prop :=
-  Solve_E_Identifier: forall _x id,
-    solve_name stbl stck (E_Identifier _x id) (NE_Identifier id)
+Inductive solve_name (stbl:symboltable) (stck:state): name -> Nname -> Prop :=
+  Solve_Identifier: forall _x id,
+    solve_name stbl stck (Identifier _x id) (NIdentifier id)
 | Solve_E_Indexed_Component : forall _x (id:name) e nid n,
-    eval_expr stbl stck e (Normal (Int n)) ->
+    evalExp stbl stck e (OK (Int n)) ->
     solve_name stbl stck id nid->
     solve_name stbl stck (E_Indexed_Component _x id e) (NE_Indexed_Component nid n)
 | Solve_E_Selected_Component : forall _x id nme nnme,
@@ -262,8 +263,8 @@ Inductive solve_name (stbl:symboltable) (stck:stack): name -> Nname -> Prop :=
     solve_name stbl stck (E_Selected_Component _x nme id) (NE_Selected_Component nnme id).
 
 Lemma foramm: forall stbl stck e v,
-    eval_expr stbl stck e (Normal v) ->
-    eval_expr
+    evalExp stbl stck e (OK v) ->
+    evalExp
 .
 Proof.
   #
@@ -279,7 +280,7 @@ Lemma storeUpdate_arr_ok_others:
   forall astnum (idarr:idnum) stk varr i v  varr' stbl stk',
   fetchG idarr stk = Some (ArrayV varr) ->
   arrayUpdate (ArrayV varr) i v = Some (ArrayV varr') ->
-  storeUpdate stbl stk (E_Identifier astnum idarr) (ArrayV varr') (Normal stk') ->
+  storeUpdate stbl stk (Identifier astnum idarr) (ArrayV varr') (OK stk') ->
   fetchG idarr stk' = Some (ArrayV varr') ->
   
 .
@@ -296,12 +297,12 @@ Lemma storeUpdate_arr_ok_others:
   forall astnum (idarr:idnum) stk varr i v  varr' stbl stk',
   fetchG idarr stk = Some (ArrayV varr) ->
   arrayUpdate (ArrayV varr) i v = Some (ArrayV varr') ->
-  storeUpdate stbl stk (E_Identifier astnum idarr) (ArrayV varr') (Normal stk') ->
+  storeUpdate stbl stk (Identifier astnum idarr) (ArrayV varr') (OK stk') ->
   fetchG idarr stk' = Some (ArrayV varr').
 
   
   
-  storeUpdate stbl stk (E_Indexed_Component ast_num nmearr i) (ArrayV varr) (Normal stk') ->
+  storeUpdate stbl stk (E_Indexed_Component ast_num nmearr i) (ArrayV varr) (OK stk') ->
   forall id', id<>id' -> fetchG id' stk = fetchG id' stk'.
 Proof.
   !intros.
@@ -320,7 +321,7 @@ Qed.
 (*
 Lemma storeUpdate_ok_same:
   forall stbl s nme (v:value) s',
-    storeUpdate stbl s nme v (Normal s') ->
-    eval_name stbl s' nme (Normal x).
+    storeUpdate stbl s nme v (OK s') ->
+    evalName stbl s' nme (OK x).
 Proof.
 *)

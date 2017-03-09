@@ -1,5 +1,5 @@
 Require Import ZArith function_utils LibHypsNaming  Errors
-        spark2Cminor Cminor symboltable semantics semantics_properties
+        spark2Cminor Cminor symboltable eval semantics_properties
         Sorted Relations compcert.lib.Integers compcert_utils more_stdlib.
 Require Import SetoidList.
 Require Ctypes.
@@ -69,9 +69,9 @@ Ltac eq_same_clear :=
                | H: ?A = _ , H': ?A = _ |- _ => rewrite H in H'; !inversion H'
                | H: OK ?A = OK ?B |- _ => !inversion H
                | H: Some ?A = Some ?B |- _ => !inversion H
-               | H: Normal ?A = Normal ?B |- _ => !inversion H
-               | H: Normal ?A = Run_Time_Error ?B |- _ => discriminate H
-               | H: Run_Time_Error ?B= Normal ?A |- _ => discriminate H
+               | H: OK ?A = OK ?B |- _ => !inversion H
+               | H: OK ?A = RTE ?B |- _ => discriminate H
+               | H: RTE ?B= OK ?A |- _ => discriminate H
                | H: ?A <> ?A |- _ => elim H;reflexivity
                end)).
 
@@ -99,19 +99,19 @@ Proof. reflexivity. Qed.
 (* TODO: replace this y the real typing function *)
 Definition type_of_name (stbl:symboltable) (nme:name): res type :=
   match nme with
-  | E_Identifier astnum id =>
+  | Identifier astnum id =>
     match symboltable.fetch_exp_type astnum stbl with
-      Some x => OK x
+      Some x => Errors.OK x
     | None =>  Error (msg "type_of_name: unknown type for astnum")
     end
-  | E_Indexed_Component astnum x0 x1 =>
+  | IndexedComponent astnum x0 x1 =>
     match symboltable.fetch_exp_type astnum stbl with
-      Some x => OK x
+      Some x => Errors.OK x
     | None =>  Error (msg "type_of_name: unknown type for astnum (indexed_component")
     end
-  | E_Selected_Component astnum x0 x1 =>
+  | SelectedComponent astnum x0 x1 =>
     match symboltable.fetch_exp_type astnum stbl with
-      Some x => OK x
+      Some x => Errors.OK x
     | None =>  Error (msg "type_of_name: unknown type for astnum (selected_component")
     end
   end.
@@ -134,8 +134,8 @@ Ltac rename_hyp1 h th :=
   | CompilEnv.NoDup _ => fresh "nodup_CE"
   | CompilEnv.NoDup_G ?s => fresh "nodup_G_CE_" s
   | CompilEnv.NoDup_G _ => fresh "nodup_G_CE"
-  | expression => fresh "e"
-  | statement => fresh "stmt"
+  | exp => fresh "e"
+  | stmt => fresh "stmt"
   | Cminor.expr => match goal with
                    | H: transl_expr ?stbl ?CE ?x = OK h |- _ => fresh x "_t"
                    | H: transl_name ?stbl ?CE ?x = OK h |- _ => fresh x "_t"
@@ -154,8 +154,8 @@ Ltac rename_hyp1 h th :=
     end
   | value =>
     match goal with
-    | H:  eval_expr _ _ ?e (Normal h) |- _ => fresh e "_v"
-    | H:  eval_expr _ _ ?e h |- _ => fresh e "_v"
+    | H:  evalExp _ _ ?e (OK h) |- _ => fresh e "_v"
+    | H:  evalExp _ _ ?e h |- _ => fresh e "_v"
     end
   end.
 
@@ -184,7 +184,7 @@ Qed.
 
 
 Lemma transl_literal_ok1 : forall g (l:literal) v,
-    eval_literal l (Normal v) ->
+    evalLiteral l (OK v) ->
     forall sp t_v,
       eval_constant g sp (transl_literal l) = Some t_v ->
       transl_value v t_v.
@@ -200,7 +200,7 @@ Proof.
 Qed.
 
 Lemma transl_literal_ok2 : forall g (l:literal) v,
-    eval_literal l (Normal v) ->
+    evalLiteral l (OK v) ->
     forall sp t_v,
       transl_value v t_v ->
       eval_constant g sp (transl_literal l) = Some t_v.
@@ -221,7 +221,7 @@ Proof.
 Qed.
 
 Lemma transl_literal_ok : forall g (l:literal) v,
-    eval_literal l (Normal v) ->
+    evalLiteral l (OK v) ->
     forall sp t_v,
       eval_constant g sp (transl_literal l) = Some t_v <->
       transl_value v t_v.
@@ -250,18 +250,18 @@ Ltac inv_rtc :=
   repeat
     progress
     (try match goal with
-         | H: rtc_binop ?op Undefined _ (Normal _) |- _ => now inversion H
-         | H: rtc_binop ?op _ Undefined (Normal _) |- _ => now inversion H
-         | H: rtc_binop ?op _ (ArrayV _) (Normal _) |- _ => now inv_if_intop op H
-         | H: rtc_binop ?op (ArrayV _) _ (Normal _) |- _ => now inv_if_intop op H
-         | H: rtc_binop ?op _ (RecordV _) (Normal _) |- _ => now inv_if_intop op H
-         | H: rtc_binop ?op (RecordV _) _ (Normal _) |- _ => now inv_if_intop op H
-         | H: rtc_binop ?op _ (Bool _) (Normal _) |- _ => inv_if_intop op H
+         | H: rtc_binop ?op Undefined _ (OK _) |- _ => now inversion H
+         | H: rtc_binop ?op _ Undefined (OK _) |- _ => now inversion H
+         | H: rtc_binop ?op _ (ArrayV _) (OK _) |- _ => now inv_if_intop op H
+         | H: rtc_binop ?op (ArrayV _) _ (OK _) |- _ => now inv_if_intop op H
+         | H: rtc_binop ?op _ (RecordV _) (OK _) |- _ => now inv_if_intop op H
+         | H: rtc_binop ?op (RecordV _) _ (OK _) |- _ => now inv_if_intop op H
+         | H: rtc_binop ?op _ (Bool _) (OK _) |- _ => inv_if_intop op H
          | H: Math.binary_operation ?op _ (Bool _) = (Some _) |- _ => inv_if_intop op H
-         | H: rtc_binop ?op (Bool _) _ (Normal _) |- _ => inv_if_intop op H
+         | H: rtc_binop ?op (Bool _) _ (OK _) |- _ => inv_if_intop op H
          | H: Math.binary_operation ?op (Bool _) _ = (Some _) |- _ => inv_if_intop op H
-         | H: do_overflow_check _ (Normal (Int _)) |- _ => !invclear H
-         | H: do_range_check _ _ _ (Normal (Int _)) |- _ => !invclear H
+         | H: overflowCheck _ (OK (Int _)) |- _ => !invclear H
+         | H: rangeCheck _ _ _ (OK (Int _)) |- _ => !invclear H
          | H: in_bound _ _ true |- _ => !invclear H
          | H:(_ >=? _) && (_ >=? _) = true |- _ =>
            rewrite andb_true_iff in H;
@@ -329,7 +329,7 @@ Qed.
 Definition check_overflow_value (v:value) :=
   match v with
   | Undefined => True
-  | Int n => do_overflow_check n (Normal (Int n))
+  | Int n => overflowCheck n (OK (Int n))
   | Bool n => True
   | ArrayV a => True(* FIXME *)
   | RecordV r => True (* FIXME *)
@@ -574,7 +574,7 @@ Proof.
 Qed.
 
 Lemma do_run_time_check_on_binop_ok: forall v1 v2 v op,
-    do_run_time_check_on_binop op v1 v2 (Normal v) ->
+    do_run_time_check_on_binop op v1 v2 (OK v) ->
     Math.binary_operation op v1 v2 = Some v.
 Proof.
   intros v1 v2 v op hdo_rtc.
@@ -583,6 +583,10 @@ Proof.
     assumption.
   - !invclear h_do_division_check;simpl in *.
     !invclear h_overf_check.
+    assumption.
+  - simpl.
+    !inversion h_do_division_check;cbn;subst.
+    cbn in heq_mod'.
     assumption.
   - assumption.
 Qed.
@@ -600,7 +604,7 @@ Ltac int_simpl :=
 Lemma add_ok : forall v v1 v2 n1 n2,
     check_overflow_value v1 ->
     check_overflow_value v2 ->
-    do_run_time_check_on_binop Plus v1 v2 (Normal v) ->
+    do_run_time_check_on_binop Plus v1 v2 (OK v) ->
     transl_value v1 n1 ->
     transl_value v2 n2 ->
     transl_value v (Values.Val.add n1 n2).
@@ -619,7 +623,7 @@ Qed.
 Lemma sub_ok : forall v v1 v2 n1 n2,
     check_overflow_value v1 ->
     check_overflow_value v2 ->
-    do_run_time_check_on_binop Minus v1 v2 (Normal v) ->
+    do_run_time_check_on_binop Minus v1 v2 (OK v) ->
     transl_value v1 n1 ->
     transl_value v2 n2 ->
     transl_value v (Values.Val.sub n1 n2).
@@ -638,7 +642,7 @@ Qed.
 Lemma mult_ok : forall v v1 v2 n1 n2,
     check_overflow_value v1 ->
     check_overflow_value v2 ->
-    do_run_time_check_on_binop Multiply v1 v2 (Normal v) ->
+    do_run_time_check_on_binop Multiply v1 v2 (OK v) ->
     transl_value v1 n1 ->
     transl_value v2 n2 ->
     transl_value v (Values.Val.mul n1 n2).
@@ -663,7 +667,7 @@ Qed.
 Lemma div_ok : forall v v1 v2 n n1 n2,
     check_overflow_value v1 ->
     check_overflow_value v2 ->
-    do_run_time_check_on_binop Divide v1 v2 (Normal v) ->
+    do_run_time_check_on_binop Divide v1 v2 (OK v) ->
     transl_value v1 n1 ->
     transl_value v2 n2 ->
     transl_value v n ->
@@ -734,7 +738,7 @@ Qed.
 Lemma binary_operator_ok: forall op (n n1 n2 : Values.val) (v v1 v2 : value),
     check_overflow_value v1 ->
     check_overflow_value v2 ->
-    do_run_time_check_on_binop op v1 v2 (Normal v) ->
+    do_run_time_check_on_binop op v1 v2 (OK v) ->
     transl_value v1 n1 ->
     transl_value v2 n2 ->
     transl_value v n ->
@@ -776,15 +780,16 @@ Proof.
                        heq_transl_value_v1_n1 heq_transl_value_v2_n2 heq_transl_value_v_n).
     intro h.
     assumption.
-Qed.
+  - admit. (* TODO mod_ok *)
+Admitted.
 
 
 (** * Memory invariant and bisimilarity *)
 
 
-Lemma eval_literal_overf : forall (l:literal) n,
-    eval_literal l (Normal (Int n)) ->
-    do_overflow_check n (Normal (Int n)).
+Lemma evalLiteral_overf : forall (l:literal) n,
+    evalLiteral l (OK (Int n)) ->
+    overflowCheck n (OK (Int n)).
 Proof.
   !intros.
   !inversion h_eval_literal.
@@ -798,7 +803,7 @@ Qed.
     TODO: extend with other values than Int: floats, arrays, records. *)
 Definition safe_stack s := forall id n,
     STACK.fetchG id s = Some (Int n) ->
-    do_overflow_check n (Normal (Int n)).
+    overflowCheck n (OK (Int n)).
 
 (** Hypothesis renaming stuff *)
 Ltac rename_hyp2' h th :=
@@ -810,10 +815,10 @@ Ltac rename_hyp2' h th :=
 
 Ltac rename_sparkprf ::= rename_hyp2'.
 
-Lemma eval_name_overf: forall s st nme n,
+Lemma evalName_overf: forall s st nme n,
     safe_stack s
-    -> eval_name st s nme (Normal (Int n))
-    -> do_overflow_check n (Normal (Int n)).
+    -> evalName st s nme (OK (Int n))
+    -> overflowCheck n (OK (Int n)).
 Proof using.
   !intros.
   !inversion h_eval_name_nme. (* l'environnement retourne toujours des valeur rangées. *)
@@ -831,19 +836,20 @@ Admitted.
 Lemma eval_expr_overf : forall st s,
     safe_stack s ->
     forall e n,
-      eval_expr st s e (Normal (Int n)) ->
-      do_overflow_check n (Normal (Int n)).
+      evalExp st s e (OK (Int n)) ->
+      overflowCheck n (OK (Int n)).
 Proof.
   !intros.
   revert h_safe_stack_s.
-  remember (Normal (Int n)) as hN.
+  remember (OK (Int n)) as hN.
   revert HeqhN.
   !induction h_eval_expr_e;!intros;subst;try discriminate.
-  - eapply eval_literal_overf;eauto.
-  - eapply eval_name_overf;eauto.
+  - eapply evalLiteral_overf;eauto.
+  - eapply evalName_overf;eauto.
   - !invclear h_do_rtc_binop.
     + inversion h_overf_check;subst;auto.
     + inversion h_overf_check;subst;auto.
+    + admit.
     + rewrite binopexp_ok in *.
       functional inversion heq_binary_operation;subst
       ;try match goal with H: ?A <> ?A |- _ => elim H;auto end.
@@ -852,27 +858,25 @@ Proof.
     + rewrite unopexp_ok in *.
       !functional inversion heq_unary_operation;subst
       ;try match goal with H: ?A <> ?A |- _ => elim H;auto end.
-      !invclear heq_unary_operation.
-      apply IHh_eval_expr_e;auto.
-Qed.
+Admitted.
 
-Lemma eval_expr_overf2 : forall st s,
+Lemma evalExp_overf2 : forall st s,
     safe_stack s ->
-    forall (e:expression) e_v,
-      eval_expr st s e (Normal e_v) -> check_overflow_value e_v.
+    forall (e:exp) e_v,
+      evalExp st s e (OK e_v) -> check_overflow_value e_v.
 Proof.
   !intros.
   destruct e_v;simpl in *;auto.
   eapply eval_expr_overf;eauto.
 Qed.
 
-Hint Resolve eval_expr_overf2.
+Hint Resolve evalExp_overf2.
 
 (* [make_load] does not fail on transl_type a translated variable coming
    from stbl *)
 Lemma make_load_no_fail: forall stbl t nme_t x2,
-    transl_type stbl t = OK x2 ->
-    exists load_addr_nme, make_load nme_t x2 = OK load_addr_nme.
+    transl_type stbl t = Errors.OK x2 ->
+    exists load_addr_nme, make_load nme_t x2 = Errors.OK load_addr_nme.
 Proof.
   !intros.
   unfold make_load.
@@ -892,7 +896,7 @@ Qed.
 (* THIS IS NOT TRUE: some variable may not be initialized at some point. *)
 Definition stack_complete stbl s CE := forall a nme addr_nme,
     transl_variable stbl CE a nme = OK addr_nme
-    -> exists v, eval_name stbl s (E_Identifier a nme) (Normal v).
+    -> exists v, evalName stbl s (Identifier a nme) (OK v).
 
 Definition stack_no_null_offset stbl CE := forall a nme δ_lvl δ_id,
     transl_variable stbl CE a nme = OK (build_loads δ_lvl δ_id) ->
@@ -922,7 +926,7 @@ Definition stack_match_addresses st sp CE locenv g m :=
 (* Observationnal equivalence of the spark dynamic stack and the compile environment. *)
 Definition stack_match st s CE sp locenv g m :=
   forall nme v addr_nme load_addr_nme typ_nme cm_typ_nme,
-    eval_name st s nme (Normal v) ->
+    evalName st s nme (OK v) ->
     type_of_name st nme = OK typ_nme ->
     transl_name st CE nme = OK addr_nme ->
     transl_type st typ_nme = OK cm_typ_nme ->
@@ -973,7 +977,7 @@ Definition stack_freeable st CE sp g locenv m :=
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g sp locenv m id_t (Values.Vptr b ofs) ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk st (E_Identifier a id) = OK chk ->
+    compute_chnk st (Identifier a id) = OK chk ->
     Mem.valid_access m chk b (Int.unsigned ofs) Freeable.
 
 
@@ -2487,7 +2491,7 @@ Qed.
 Lemma transl_expr_ok : forall stbl CE e e',
     transl_expr stbl CE e = OK e' ->
     forall locenv g m (s:STACK.stack)  (v:value) stkptr,
-      eval_expr stbl s e (Normal v) ->
+      eval_expr stbl s e (OK v) ->
       match_env stbl s CE stkptr locenv g m ->
       exists v_t,
         (transl_value v v_t /\ Cminor.eval_expr g stkptr locenv m e' v_t).
@@ -2571,7 +2575,7 @@ Scheme Equality for literal.
 
 Ltac finish_eqdec := try subst;try (left;reflexivity);(try now right;intro abs;inversion abs;contradiction).
 
-Lemma expression_dec: forall e1 e2:expression, ({e1=e2} + {e1<>e2})
+Lemma expression_dec: forall e1 e2:exp, ({e1=e2} + {e1<>e2})
 with name_dec: forall n1 n2:name, ({n1=n2} + {n1<>n2}).
 Proof.
   { intros e1 e2.
@@ -2582,18 +2586,18 @@ Proof.
       destruct (name_dec n0 n);finish_eqdec.
     - destruct (Nat.eq_dec a0 a);finish_eqdec.
       destruct (binary_operator_eq_dec b0 b);finish_eqdec.
-      destruct (expression_dec e3 e);finish_eqdec.
-      destruct (expression_dec e4 e0);finish_eqdec.
+      destruct (exp_dec e3 e);finish_eqdec.
+      destruct (exp_dec e4 e0);finish_eqdec.
     - destruct (Nat.eq_dec a0 a);finish_eqdec.
       destruct (unary_operator_eq_dec u0 u);finish_eqdec.
-      destruct (expression_dec e0 e);finish_eqdec. }
+      destruct (exp_dec e0 e);finish_eqdec. }
   { !intros.
     case n1;case n2;intros;finish_eqdec.
     - destruct (Nat.eq_dec a0 a);finish_eqdec.
       destruct (Nat.eq_dec i0 i);finish_eqdec.
     - destruct (Nat.eq_dec a0 a);finish_eqdec.
       destruct (name_dec n0 n);finish_eqdec.
-      destruct (expression_dec e0 e);finish_eqdec.
+      destruct (exp_dec e0 e);finish_eqdec.
     - destruct (Nat.eq_dec a0 a);finish_eqdec.
       destruct (name_dec n0 n);finish_eqdec.
       destruct (Nat.eq_dec i0 i);finish_eqdec. }
@@ -3006,7 +3010,7 @@ Qed.
 Lemma transl_name_OK_inv : forall stbl CE nme nme_t,
     transl_name stbl CE nme = OK nme_t
     -> exists astnum id, (transl_variable stbl CE astnum id =  OK nme_t
-                          /\ nme = E_Identifier astnum id).
+                          /\ nme = Identifier astnum id).
 Proof.
   !intros stbl CE nme nme_t H.
   functional inversion H.
@@ -3667,9 +3671,9 @@ Lemma assignment_preserve_stack_match :
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g stkptr locenv m id_t idaddr ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (E_Identifier a id) = OK chk ->
+    compute_chnk stbl (Identifier a id) = OK chk ->
     (* the two storing operation maintain match_env *)
-    storeUpdate stbl s (E_Identifier a id) e_v (Normal s') ->
+    storeUpdate stbl s (Identifier a id) e_v (OK s') ->
     Mem.storev chk m idaddr e_t_v = Some m' ->
     match_env stbl s CE stkptr locenv g m ->
     stack_match stbl s' CE stkptr locenv g m'.
@@ -3694,13 +3698,13 @@ Proof.
   !intros other_nme other_v addr_other load_addr_other type_other cm_typ_other;up_type.
   (* id can already be evaluated in s *)
   destruct (h_stk_cmpl_s_CE _ _ _ heq_transl_variable) as [v_id_prev h_eval_name_id_val_prev].
-  set (nme:=(E_Identifier a id)) in *.
+  set (nme:=(Identifier a id)) in *.
   (* Getting rid of erronous cases *)
   !functional inversion heq_transl_name.
   subst.
   (* done *)
   rename id0 into other_id.
-  set (other_nme:=(E_Identifier astnum other_id)) in *.
+  set (other_nme:=(Identifier astnum other_id)) in *.
   (* other_nme can already be evaluated in s *)
   destruct (h_stk_cmpl_s_CE _ _ _ heq_transl_variable0) as [v_other_id_prev h_eval_name_other_id_val_prev].
   destruct (h_stk_mtch_s_m _ _ _ _ _ _ h_eval_name_other_id_val_prev
@@ -3712,7 +3716,7 @@ Proof.
     !inversion heq_type_of_name.
     reflexivity. }
   assert (h_tr_exp_other:
-            transl_expr stbl CE (E_Name 1%nat (E_Identifier astnum other_id))
+            transl_expr stbl CE (E_Name 1%nat (Identifier astnum other_id))
                         =: load_addr_other). {
     simpl.
     simpl in heq_type_of_name.
@@ -3739,7 +3743,7 @@ Proof.
     rewrite (transl_variable_astnum _ _ _ _ _ heq_transl_variable0 a) in *.
     rewrite heq_transl_variable0 in heq_transl_variable.
     !invclear heq_transl_variable.
-    !assert (e_v = other_v). { eapply storeUpdate_id_ok_same_eval_name ;eauto. }
+    !assert (e_v = other_v). { eapply storeUpdate_id_ok_same_evalName ;eauto. }
                                subst other_v.
     exists e_t_v;split;auto.
     !functional inversion heq_make_load;subst.
@@ -3772,7 +3776,7 @@ Proof.
       functional inversion heq_compute_chnk; reflexivity. }
 
     assert (v_other_id_prev = other_v). {
-      eapply storeUpdate_id_ok_others_eval_name ;eauto. }
+      eapply storeUpdate_id_ok_others_evalName ;eauto. }
     subst.
     exists cm_v.
     split;auto.
@@ -3798,8 +3802,8 @@ Proof.
       unfold stack_separate in h_separate_CE_m.
 
 
-      eapply h_separate_CE_m with (nme:=(E_Identifier astnum id))
-                                    (nme':=(E_Identifier astnum other_id))
+      eapply h_separate_CE_m with (nme:=(Identifier astnum id))
+                                    (nme':=(Identifier astnum other_id))
                                     (k₂ := b0) (k₁:=b);
         clear h_separate_CE_m;simpl;try eassumption;auto.
         * rewrite heq_fetchvartyp.
@@ -3831,9 +3835,9 @@ Lemma assignment_preserve_stack_match_function :
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g stkptr locenv m id_t idaddr ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (E_Identifier a id) = OK chk ->
+    compute_chnk stbl (Identifier a id) = OK chk ->
     (* the two storing operation maintain match_env *)
-    storeUpdate stbl s (E_Identifier a id) e_v (Normal s') ->
+    storeUpdate stbl s (Identifier a id) e_v (OK s') ->
     Mem.storev chk m idaddr e_t_v = Some m' ->
     match_env stbl s CE stkptr locenv g m ->
     stack_match_functions stbl stkptr CE locenv g m'.
@@ -3921,7 +3925,7 @@ Lemma assignment_preserve_stack_match_CE :
     (* translating the variabe to a Cminor load address, so id belongs to CE *)
     transl_variable stbl CE a id = OK id_t ->
     (* the two storing operation maintain match_env *)
-    storeUpdate stbl s (E_Identifier a id) e_v (Normal s') ->
+    storeUpdate stbl s (Identifier a id) e_v (OK s') ->
     stack_match_CE s CE ->
     stack_match_CE s' CE.
 Proof.
@@ -3968,9 +3972,9 @@ Lemma assignment_preserve_stack_complete :
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g stkptr locenv m id_t idaddr ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (E_Identifier a id) = OK chk ->
+    compute_chnk stbl (Identifier a id) = OK chk ->
     (* the two storing operation maintain match_env *)
-    storeUpdate stbl s (E_Identifier a id) e_v (Normal s') ->
+    storeUpdate stbl s (Identifier a id) e_v (OK s') ->
     Mem.storev chk m idaddr e_t_v = Some m' ->
     stack_complete stbl s CE ->
     stack_complete stbl s' CE.
@@ -4004,7 +4008,7 @@ Lemma assignment_preserve_stack_separate :
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g stkptr locenv m id_t idaddr ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (E_Identifier a id) = OK chk ->
+    compute_chnk stbl (Identifier a id) = OK chk ->
     (* the two storing operation maintain match_env *)
     Mem.storev chk m idaddr e_t_v = Some m' ->
     match_env stbl s CE stkptr locenv g m ->
@@ -4047,9 +4051,9 @@ Lemma assignment_preserve_stack_no_null_offset :
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g stkptr locenv m id_t idaddr ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (E_Identifier a id) = OK chk ->
+    compute_chnk stbl (Identifier a id) = OK chk ->
     (* the two storing operation maintain match_env *)
-    storeUpdate stbl s (E_Identifier a id) e_v (Normal s') ->
+    storeUpdate stbl s (Identifier a id) e_v (OK s') ->
     Mem.storev chk m idaddr e_t_v = Some m' ->
     match_env stbl s CE stkptr locenv g m ->
     stack_no_null_offset stbl CE.
@@ -4068,19 +4072,19 @@ Lemma assignment_preserve_stack_safe :
     transl_value e_v e_t_v ->
     (* if e_v is an int, then it is not overflowing (we are not trying
        to add an overflowing value to the environment). *)
-    (forall n, e_v = Int n -> do_overflow_check n (Normal (Int n))) ->
+    (forall n, e_v = Int n -> overflowCheck n (OK (Int n))) ->
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g stkptr locenv m id_t idaddr ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (E_Identifier a id) = OK chk ->
+    compute_chnk stbl (Identifier a id) = OK chk ->
     (* the two storing operation maintain match_env *)
-    storeUpdate stbl s (E_Identifier a id) e_v (Normal s') ->
+    storeUpdate stbl s (Identifier a id) e_v (OK s') ->
     Mem.storev chk m idaddr e_t_v = Some m' ->
     match_env stbl s CE stkptr locenv g m ->
     safe_stack s'.
 Proof.
   !intros.
-  match goal with H: context C [do_overflow_check] |- _ => rename H into h_overf_e_v end.
+  match goal with H: context C [overflowCheck] |- _ => rename H into h_overf_e_v end.
   !destruct h_match_env.
   !destruct h_safe_cm_CE_m.
   !intros.
@@ -4103,7 +4107,7 @@ Lemma assignment_preserve_loads_offset_non_null:
   forall stbl s CE spb ofs locenv' g m x x0 nme_t nme_chk nme_t_addr e_t_v m',
     invariant_compile CE stbl ->
     match_env stbl s CE (Values.Vptr spb ofs) locenv' g m ->
-    transl_name stbl CE (E_Identifier x x0) =: nme_t ->
+    transl_name stbl CE (Identifier x x0) =: nme_t ->
     Cminor.eval_expr g (Values.Vptr spb ofs) locenv' m nme_t nme_t_addr ->
     Mem.storev nme_chk m nme_t_addr e_t_v = Some m' ->
     stack_localstack_aligned (Datatypes.length CE) locenv' g m' (Values.Vptr spb ofs).
@@ -4119,7 +4123,7 @@ Lemma assignment_preserve_stack_freeable:
   forall stbl s CE spb ofs locenv' g m x x0 nme_t nme_chk nme_t_addr e_t_v m',
     invariant_compile CE stbl ->
     match_env stbl s CE (Values.Vptr spb ofs) locenv' g m ->
-    transl_name stbl CE (E_Identifier x x0) =: nme_t ->
+    transl_name stbl CE (Identifier x x0) =: nme_t ->
     Cminor.eval_expr g (Values.Vptr spb ofs) locenv' m nme_t nme_t_addr ->
     Mem.storev nme_chk m nme_t_addr e_t_v = Some m' ->
     stack_freeable stbl CE (Values.Vptr spb ofs) g locenv' m'.
@@ -4148,9 +4152,9 @@ Lemma assignment_preserve_stack_match_addresses :
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g stkptr locenv m id_t idaddr ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (E_Identifier a id) = OK chk ->
+    compute_chnk stbl (Identifier a id) = OK chk ->
     (* the two storing operation maintain match_env *)
-    storeUpdate stbl s (E_Identifier a id) e_v (Normal s') ->
+    storeUpdate stbl s (Identifier a id) e_v (OK s') ->
     Mem.storev chk m idaddr e_t_v = Some m' ->
     match_env stbl s CE stkptr locenv g m ->
     stack_match_addresses stbl stkptr CE locenv g m'.
@@ -4739,7 +4743,7 @@ Lemma assignment_preserve_chained_stack_structure:
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g stkptr locenv m id_t idaddr ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (E_Identifier a id) = OK chk ->
+    compute_chnk stbl (Identifier a id) = OK chk ->
     Mem.storev chk m idaddr e_t_v = Some m' ->
     chained_stack_structure m' n stkptr.
 Proof.
@@ -4755,11 +4759,11 @@ Lemma assignment_preserve_safe_cm_env:
   forall stbl s CE spb ofs locenv locenv' g m x x0 nme_t nme_chk nme_t_addr e_v e_t_v s' m',
     invariant_compile CE stbl ->
     match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
-    transl_name stbl CE (E_Identifier x x0) =: nme_t ->
+    transl_name stbl CE (Identifier x x0) =: nme_t ->
     Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_addr ->
-    compute_chnk stbl (E_Identifier x x0) = OK nme_chk ->
+    compute_chnk stbl (Identifier x x0) = OK nme_chk ->
     transl_value e_v e_t_v ->
-    storeUpdate stbl s (E_Identifier x x0) e_v (Normal s') ->
+    storeUpdate stbl s (Identifier x x0) e_v (OK s') ->
     Mem.storev nme_chk m nme_t_addr e_t_v = Some m' ->
     safe_cm_env stbl CE (Values.Vptr spb ofs) locenv' g m'.
 Proof.
@@ -4791,8 +4795,8 @@ Lemma assignment_preserve_Nodup_s:
   forall stbl s CE x x0 nme_t e_v s',
     invariant_compile CE stbl ->
     NoDup s -> 
-    transl_name stbl CE (E_Identifier x x0) =: nme_t ->
-    storeUpdate stbl s (E_Identifier x x0) e_v (Normal s') ->
+    transl_name stbl CE (Identifier x x0) =: nme_t ->
+    storeUpdate stbl s (Identifier x x0) e_v (OK s') ->
     NoDup s'.
 Proof.
   !!intros.
@@ -4856,14 +4860,14 @@ Admitted.
 
 Lemma assignment_preserve_match_env:
   forall stbl s CE spb ofs locenv g m x x0 nme_t nme_chk nme_t_addr e_v e_t_v s' m',
-    forall h_overflow:(forall n, e_v = Int n -> do_overflow_check n (Normal (Int n))),
+    forall h_overflow:(forall n, e_v = Int n -> overflowCheck n (OK (Int n))),
       invariant_compile CE stbl ->
       match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
-      transl_name stbl CE (E_Identifier x x0) =: nme_t ->
+      transl_name stbl CE (Identifier x x0) =: nme_t ->
       Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_addr ->
-      compute_chnk stbl (E_Identifier x x0) = OK nme_chk ->
+      compute_chnk stbl (Identifier x x0) = OK nme_chk ->
       transl_value e_v e_t_v ->
-      storeUpdate stbl s (E_Identifier x x0) e_v (Normal s') ->
+      storeUpdate stbl s (Identifier x x0) e_v (OK s') ->
       Mem.storev nme_chk m nme_t_addr e_t_v = Some m' ->
       match_env stbl s' CE (Values.Vptr spb ofs) locenv g m'.
 Proof.
@@ -4895,7 +4899,7 @@ Proof.
   !intros.
   !functional inversion heq_transl_name;subst.
   functional inversion heq_transl_variable;subst.
-  assert (eval_name stbl s (E_Identifier astnum id) (Normal v)).
+  assert (evalName stbl s (Identifier astnum id) (OK v)).
   { admit. (* invariant_compile mplies that CE has no shadowing, thus  *)
 
   }
@@ -7087,7 +7091,7 @@ Inductive transl_prm_value_list : list parameter_specification -> store -> list 
 
 Definition transl_paramexprlist := Eval cbv beta delta [bind bind2 transl_paramexprlist] in transl_paramexprlist.
 
-Function function_utils_transl_paramexprlist (stbl : symboltable) (CE : compilenv) (el : list expression) (lparams : list parameter_specification) {struct el} :
+Function function_utils_transl_paramexprlist (stbl : symboltable) (CE : compilenv) (el : list exp) (lparams : list parameter_specification) {struct el} :
   res (list expr) :=
   let (l, l0) := (el, lparams) in
   match l with
@@ -7158,12 +7162,12 @@ Ltac rename_sparkprf ::= rename_tmp.
 (* 
 Lemma copy_in_cps:
   forall st s pb_lvl sto prmnme e_v lparam le res,
-  copy_in st s (push (pb_lvl, sto) prmnme e_v) lparam le (Normal (pb_lvl, res ++ sto))
-  -> copy_in st s (push (pb_lvl, nil) prmnme e_v) lparam le (Normal (push (pb_lvl, nil) prmnme e_v)).
+  copy_in st s (push (pb_lvl, sto) prmnme e_v) lparam le (OK (pb_lvl, res ++ sto))
+  -> copy_in st s (push (pb_lvl, nil) prmnme e_v) lparam le (OK (push (pb_lvl, nil) prmnme e_v)).
 Proof.
   !intros.
   remember (push (pb_lvl, sto) prmnme e_v) as h_push1.
-  remember (Normal (pb_lvl, res ++ sto)) as h_res.
+  remember (OK (pb_lvl, res ++ sto)) as h_res.
   revert Heqh_push1 Heqh_res.
   !induction h_copy_in; !intros;subst; try discriminate; try (now constructor).
   - unfold push;simpl.
@@ -7173,15 +7177,15 @@ Qed.
 
 (** eval_exprlist ok if copy_in ok *)
 (* We probably need to generalize this first, as copy_in is written in CPS. *)
-(* This is false, since for inout parameter, eval_name is called, and for our parameters, nothing is called. *)
+(* This is false, since for inout parameter, evalName is called, and for our parameters, nothing is called. *)
 
 Proposition copy_in_lvl : forall st s pb_lvl sto prms_profile args f,
-  copy_in st s (pb_lvl,sto) prms_profile args (Normal f) ->
+  copy_in st s (pb_lvl,sto) prms_profile args (OK f) ->
   exists sto', f = (pb_lvl,sto').
 Proof.
   !intros.
   remember (pb_lvl, sto) as pb_lvl_sto.
-  remember (Normal f) as h_norm_f.
+  remember (OK f) as h_norm_f.
   revert pb_lvl sto Heqh_norm_f Heqpb_lvl_sto.
   !induction h_copy_in; try discriminate;subst;repeat eq_same_clear;intros;subst.
   - inversion Heqh_norm_f; subst; eauto.
@@ -7209,14 +7213,14 @@ Lemma copy_in_spec:
     -> match_env st s CE (Values.Vptr spb ofs) locenv g m
     -> transl_paramexprlist st CE args prms_profile =: args_t
     (* je veux exprimer la propriété qui parle  *)
-    -> copy_in st s (pb_lvl,sto) prms_profile args (Normal (pb_lvl,sto'))
+    -> copy_in st s (pb_lvl,sto) prms_profile args (OK (pb_lvl,sto'))
     -> exists lval_t, eval_exprlist g (Values.Vptr spb ofs) locenv m args_t lval_t
-(*             sto'' /\ copy_in st s (pb_lvl,nil) prms_profile args (Normal (pb_lvl,sto'')) *)
+(*             sto'' /\ copy_in st s (pb_lvl,nil) prms_profile args (OK (pb_lvl,sto'')) *)
 (*                       /\ sto' = List.app sto'' sto *)
 .
 Proof.
   !intros.
-  remember (Normal (pb_lvl, sto')) as res_copy_in.
+  remember (OK (pb_lvl, sto')) as res_copy_in.
   remember (pb_lvl, sto) as pb_lvl_sto.
   revert heq_transl_params_args_t h_chain h_inv_comp_CE_st 
          h_match_env Heqres_copy_in Heqpb_lvl_sto .
@@ -7760,18 +7764,18 @@ Section is_copy.
       argument when In, its address otherwise (with the correct value at the
       address when In_Out).  *)
 
-  Inductive is_copy_in: list expression -> list parameter_specification -> store -> list Values.val -> Prop :=
+  Inductive is_copy_in: list exp -> list parameter_specification -> store -> list Values.val -> Prop :=
   | Is_copy_in_nil: forall sto, is_copy_in nil nil sto nil
   | Is_copy_in_In: ∀ e le prm lprm v sto sto' v_t lv_t,
       parameter_mode prm = In ->
-      eval_expr stbl s e (Normal v) ->
+      eval_expr stbl s e (OK v) ->
       transl_value v v_t ->
       is_copy_in le lprm (store_of sto) lv_t ->
       push sto (parameter_name prm) v = sto' ->
       is_copy_in (e::le) (prm::lprm) (store_of sto') (v_t::lv_t)
   | Is_copy_in_In_Out: ∀ ast_num nme le prm lprm v nme_t addr sto v_t lv_t,
       parameter_mode prm = In_Out ->
-      eval_name stbl s nme (Normal v) ->
+      evalName stbl s nme (OK v) ->
       transl_value v v_t ->
       transl_name stbl CE nme = OK nme_t ->
       Cminor.eval_expr g sp locenv m nme_t addr -> (* v_t is the value at address addr *)
@@ -8392,7 +8396,7 @@ Admitted.
 Lemma transl_stmt_normal_OK : forall stbl (stm:statement) s norms',
     eval_stmt stbl s stm norms' ->
     forall s' CE (stm':Cminor.stmt),
-      norms' = Normal s' ->
+      norms' = OK s' ->
       invariant_compile CE stbl ->
       transl_stmt stbl CE stm = (OK stm') ->
       forall lvl spb ofs f locenv g m stkptr,
@@ -8437,7 +8441,7 @@ Proof.
     (* transl_type never fails *)
     assert (hex:exists nme_type_t, transl_type stbl nme_type =: nme_type_t).
     { simpl in *.
-      assert (type_of_name stbl (E_Identifier astnum id) = OK nme_type).
+      assert (type_of_name stbl (Identifier astnum id) = OK nme_type).
       { simpl.
         rewrite heq_fetch_exp_type.
         reflexivity. }
@@ -8452,7 +8456,7 @@ Proof.
     { !destruct h_match_env.
       !destruct h_safe_cm_CE_m.
       unfold stack_match in h_stk_mtch_s_m.
-      generalize (h_stk_mtch_s_m (E_Identifier astnum id) x nme_t load_addr_nme nme_type nme_type_t).
+      generalize (h_stk_mtch_s_m (Identifier astnum id) x nme_t load_addr_nme nme_type nme_type_t).
       intro h.
       !destruct h;auto.
       (* correction of type_of_name wrt to stbl_exp_type *)
@@ -8519,7 +8523,7 @@ Proof.
       (* transl_type never fails *)
       assert (hex:exists nme_type_t, transl_type stbl nme_type =: nme_type_t).
       { simpl in *.
-        assert (type_of_name stbl (E_Identifier astnum id) = OK nme_type).
+        assert (type_of_name stbl (Identifier astnum id) = OK nme_type).
         { simpl.
           rewrite heq_fetch_exp_type.
           reflexivity. }
@@ -8532,7 +8536,7 @@ Proof.
                  Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t vaddr).
       { !destruct h_match_env.
         unfold stack_match in h_stk_mtch_s_m.
-        generalize (h_stk_mtch_s_m (E_Identifier astnum id) x nme_t load_addr_nme nme_type nme_type_t).
+        generalize (h_stk_mtch_s_m (Identifier astnum id) x nme_t load_addr_nme nme_type nme_type_t).
         intro h.
         !destruct h;auto.
         - simpl in *.
@@ -8867,7 +8871,7 @@ Proof.
           ∀ st s prms_v params args opt_s', 
             copy_out st s prms_v params args opt_s' ->
             ∀ s' g the_proc spb ofs spb_proc CE s_copyout m_postbdy m_postcpout locenv_postcpout trace_postcpout locenv_postbdy,
-              opt_s' = Normal s' ->
+              opt_s' = OK s' ->
               invariant_compile CE st ->
               level_of prms_v = (Datatypes.length CE - 1)%nat ->
               copy_out_params st CE params =: s_copyout ->
@@ -9116,7 +9120,7 @@ XXXX
           (* suffix_s' is not changed by copy_out, since that would
           imply an aliasing between the argument in params and the
           variable (still visible from proc since it is in suffix_s' *)
-          copy_out st (intact_s ++ suffix_s') (pb_lvl, f1'_p) params args (Normal (intact_s' ++ suffix_s')) ->
+          copy_out st (intact_s ++ suffix_s') (pb_lvl, f1'_p) params args (OK (intact_s' ++ suffix_s')) ->
           copy_out_params st ((pb_lvl, sto) :: CE_sufx) params =: s_copyout ->
           match_env st (intact_s ++ suffix_s') CE (Values.Vptr spb_proc ofs_proc) locenv_postbdy g m_postbdy ->
           (* strong_match implies that match_env suffix_s' CE_sufx (Vptr (Load^n 0) 0) holds too *)
@@ -9224,7 +9228,7 @@ XXXx
 
 
       Lemma copy_out_OK: forall intact_s suffix_s' pb_lvl f1'_p params args s',
-          copy_out st (intact_s ++ suffix_s') (pb_lvl, f1'_p) params args (Normal s') -> 
+          copy_out st (intact_s ++ suffix_s') (pb_lvl, f1'_p) params args (OK s') -> 
           match_env st ((pb_lvl, f1'_l ++ f1'_p) :: suffix_s') ((pb_lvl, sto) :: CE_sufx) (Values.Vptr spb_proc Int.zero)
                     locenv_postbdy g m_postbdy -> 
           exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) 
@@ -9311,7 +9315,7 @@ XXXXXXXXXXX
               !intros.
               red in h_stck_mtch_CE.
               specialize (h_stck_mtch_CE nme v nme_t load_addr_nme typ_nme cm_typ_nme).
-              !assert (eval_name st s nme (Normal v)).
+              !assert (evalName st s nme (OK v)).
               { admit. (* if it is mapped to v in suffix_s, then it is also in s (no clash name). *)  }
               specialize (h_stck_mtch_CE h_eval_name_nme_v0 heq_type_of_name heq_transl_name heq_transl_type heq_make_load).
               !!destruct h_stck_mtch_CE as [? [? ?]].
@@ -9334,13 +9338,13 @@ XXXXXXXXXXX
             !intros.
 
             (* We need to instantiate the stack_match hypothesis on something, we need first to prove that
-                 [eval_name st s nme (Normal v)].
+                 [evalName st s nme (OK v)].
                  Sketch: 
-                   -> [ eval_name st ((pb_lvl, [ ]) :: suffix_s) nme (Normal v)]
-                   -> [eval_name st suffix_s nme (Normal v)]
-                   -> [eval_name st s nme (Normal v)]
+                   -> [ evalName st ((pb_lvl, [ ]) :: suffix_s) nme (OK v)]
+                   -> [evalName st suffix_s nme (OK v)]
+                   -> [evalName st s nme (OK v)]
              *)
-            !assert (eval_name st suffix_s nme (Normal v)).
+            !assert (evalName st suffix_s nme (OK v)).
             { (* should be lemma about empty top frame.  *)
               !inversion h_eval_name_nme_v.
               - constructor.
@@ -9388,7 +9392,7 @@ XXXXXXXXXXX
             cbn in heq_lvloftop_m'.
             inversion heq_lvloftop_m'.
             subst m'; eq_same_clear.
-            !assert (transl_name st CE_sufx (E_Identifier astnum id) =:
+            !assert (transl_name st CE_sufx (Identifier astnum id) =:
                                  Ebinop Oadd (build_loads_ (pb_sub_lvl - lvl_id))
                                  (Econst (Ointconst (Int.repr δ_id)))).
             { unfold transl_name.

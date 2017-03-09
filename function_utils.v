@@ -1,5 +1,8 @@
 
-Require Import semantics LibHypsNaming Memory.
+Require Import eval LibHypsNaming Memory.
+Require Import Errors.
+Require Import Cminor.
+Require Import spark2Cminor.
 
 
 Open Scope Z_scope.
@@ -35,19 +38,10 @@ Functional Scheme binopnind := Induction for binopexp Sort Prop.
 Functional Scheme unopnind := Induction for unopexp Sort Prop.
 *)
 
-
 (* *** And of the hack *)
 
 Function unopexp (op : unary_operator) (v : value) :=
   match op with
-    | Unary_Plus =>
-      match v with
-        | Undefined => None
-        | Int _ => Some v
-        | Bool _ => None
-        | ArrayV _ => None
-        | RecordV _ => None
-      end
     | Unary_Minus =>
       match v with
         | Undefined => None
@@ -67,188 +61,189 @@ Function unopexp (op : unary_operator) (v : value) :=
   end.
 
 Function binopexp (op : binary_operator) (v1 v2 : value) :=
-  match op with
-    | And =>
-      match v1 with
+match op with
+| And =>
+    match v1 with
+    | Undefined => None
+    | Int _ => None
+    | Bool v1' =>
+        match v2 with
         | Undefined => None
         | Int _ => None
-        | Bool v1' =>
-          match v2 with
-            | Undefined => None
-            | Int _ => None
-            | Bool v2' => Some (Bool (v1' && v2'))
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
+        | Bool v2' => Some (Bool (v1' && v2'))
         | ArrayV _ => None
         | RecordV _ => None
-      end
-    | Or =>
-      match v1 with
+        end
+    | ArrayV _ => None
+    | RecordV _ => None
+    end
+| Or =>
+    match v1 with
+    | Undefined => None
+    | Int _ => None
+    | Bool v1' =>
+        match v2 with
         | Undefined => None
         | Int _ => None
-        | Bool v1' =>
-          match v2 with
-            | Undefined => None
-            | Int _ => None
-            | Bool v2' => Some (Bool (v1' || v2'))
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
+        | Bool v2' => Some (Bool (v1' || v2'))
         | ArrayV _ => None
         | RecordV _ => None
-      end
-    | Equal =>
-      match v1 with
+        end
+    | ArrayV _ => None
+    | RecordV _ => None
+    end
+| Equal =>
+    match v1 with
+    | Undefined => None
+    | Int v1' =>
+        match v2 with
         | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Bool (Zeq_bool v1' v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
+        | Int v2' => Some (Bool (Zeq_bool v1' v2'))
         | Bool _ => None
         | ArrayV _ => None
         | RecordV _ => None
-      end
-    | Not_Equal =>
-      match v1 with
+        end
+    | Bool _ => None
+    | ArrayV _ => None
+    | RecordV _ => None
+    end
+| Not_Equal =>
+    match v1 with
+    | Undefined => None
+    | Int v1' =>
+        match v2 with
         | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Bool (Zneq_bool v1' v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
+        | Int v2' => Some (Bool (Zneq_bool v1' v2'))
         | Bool _ => None
         | ArrayV _ => None
         | RecordV _ => None
-      end
-    | Less_Than =>
-      match v1 with
+        end
+    | Bool _ => None
+    | ArrayV _ => None
+    | RecordV _ => None
+    end
+| Less_Than =>
+    match v1 with
+    | Undefined => None
+    | Int v1' =>
+        match v2 with
         | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Bool (v1' <? v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
+        | Int v2' => Some (Bool (v1' <? v2'))
         | Bool _ => None
         | ArrayV _ => None
         | RecordV _ => None
-      end
-    | Less_Than_Or_Equal =>
-      match v1 with
+        end
+    | Bool _ => None
+    | ArrayV _ => None
+    | RecordV _ => None
+    end
+| Less_Than_Or_Equal =>
+    match v1 with
+    | Undefined => None
+    | Int v1' =>
+        match v2 with
         | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Bool (v1' <=? v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
+        | Int v2' => Some (Bool (v1' <=? v2'))
         | Bool _ => None
         | ArrayV _ => None
         | RecordV _ => None
-      end
-    | Greater_Than =>
-      match v1 with
+        end
+    | Bool _ => None
+    | ArrayV _ => None
+    | RecordV _ => None
+    end
+| Greater_Than =>
+    match v1 with
+    | Undefined => None
+    | Int v1' =>
+        match v2 with
         | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Bool (v1' >? v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
+        | Int v2' => Some (Bool (v1' >? v2'))
         | Bool _ => None
         | ArrayV _ => None
         | RecordV _ => None
-      end
-    | Greater_Than_Or_Equal =>
-      match v1 with
+        end
+    | Bool _ => None
+    | ArrayV _ => None
+    | RecordV _ => None
+    end
+| Greater_Than_Or_Equal =>
+    match v1 with
+    | Undefined => None
+    | Int v1' =>
+        match v2 with
         | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Bool (v1' >=? v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
+        | Int v2' => Some (Bool (v1' >=? v2'))
         | Bool _ => None
         | ArrayV _ => None
         | RecordV _ => None
-      end
-    | Plus =>
-      match v1 with
+        end
+    | Bool _ => None
+    | ArrayV _ => None
+    | RecordV _ => None
+    end
+| Plus =>
+    match v1 with
+    | Undefined => None
+    | Int v1' =>
+        match v2 with
         | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Int (v1' + v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
+        | Int v2' => Some (Int (v1' + v2'))
         | Bool _ => None
         | ArrayV _ => None
         | RecordV _ => None
-      end
-    | Minus =>
-      match v1 with
+        end
+    | Bool _ => None
+    | ArrayV _ => None
+    | RecordV _ => None
+    end
+| Minus =>
+    match v1 with
+    | Undefined => None
+    | Int v1' =>
+        match v2 with
         | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Int (v1' - v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
+        | Int v2' => Some (Int (v1' - v2'))
         | Bool _ => None
         | ArrayV _ => None
         | RecordV _ => None
-      end
-    | Multiply =>
-      match v1 with
+        end
+    | Bool _ => None
+    | ArrayV _ => None
+    | RecordV _ => None
+    end
+| Multiply =>
+    match v1 with
+    | Undefined => None
+    | Int v1' =>
+        match v2 with
         | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Int (v1' * v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
+        | Int v2' => Some (Int (v1' * v2'))
         | Bool _ => None
         | ArrayV _ => None
         | RecordV _ => None
-      end
-    | Divide =>
-      match v1 with
+        end
+    | Bool _ => None
+    | ArrayV _ => None
+    | RecordV _ => None
+    end
+| Divide =>
+    match v1 with
+    | Undefined => None
+    | Int v1' =>
+        match v2 with
         | Undefined => None
-        | Int v1' =>
-          match v2 with
-            | Undefined => None
-            | Int v2' => Some (Int (v1' ÷ v2'))
-            | Bool _ => None
-            | ArrayV _ => None
-            | RecordV _ => None
-          end
+        | Int v2' => Some (Int (v1' ÷ v2'))
         | Bool _ => None
         | ArrayV _ => None
         | RecordV _ => None
-      end
-  end.
+        end
+    | Bool _ => None
+    | ArrayV _ => None
+    | RecordV _ => None
+    end
+| Modulus => Math.mod' v1 v2
+end.
 
 Lemma binopexp_ok: forall x y z, Math.binary_operation x y z = binopexp x y z .
 Proof.
@@ -261,32 +256,30 @@ Proof.
 Qed.
 
 
-Require Import Errors.
-Require Import Cminor.
-Require Import spark2Cminor.
 
 (* Definition foo := Eval cbv beta delta [bind transl_expr] in transl_expr. *)
-Function transl_expr (stbl : symboltable) (CE : compilenv) 
-                (e : expression) {struct e} : res expr :=
+
+Function transl_expr
+         (stbl : Symbol_Table_Module.symboltable) (CE : compilenv) 
+         (e : exp) {struct e} : res expr :=
   match e with
-  | E_Literal _ lit => OK (Econst (transl_literal lit))
-  | E_Name _ (E_Identifier astnum1 id) =>
+  | Literal _ lit => OK (Econst (transl_literal lit))
+  | Name _ (Identifier astnum1 id) =>
       match transl_variable stbl CE astnum1 id with
       | OK x =>
           match fetch_exp_type astnum1 stbl with
           | Some typ => value_at_addr stbl typ x
           | None =>
               Error
-                [MSG "transl_expr unknown type at astnum: ";
-                CTX (Pos.of_nat astnum1)]
+                [MSG "transl_expr unknown type at astnum: "; CTX (Pos.of_nat astnum1)]
           end
       | Error msg => Error msg
       end
-  | E_Name _ (E_Indexed_Component _ _ _) =>
+  | Name _ (IndexedComponent _ _ _) =>
       Error (msg "transl_expr: Array not yet implemented")
-  | E_Name _ (E_Selected_Component _ _ _) =>
+  | Name _ (SelectedComponent _ _ _) =>
       Error (msg "transl_expr: record not yet implemented")
-  | E_Binary_Operation _ op e1 e2 =>
+  | BinOp _ op e1 e2 =>
       match transl_expr stbl CE e1 with
       | OK x =>
           match transl_expr stbl CE e2 with
@@ -295,7 +288,7 @@ Function transl_expr (stbl : symboltable) (CE : compilenv)
           end
       | Error msg => Error msg
       end
-  | E_Unary_Operation _ (Unary_Plus as op) e0 =>
+  | UnOp _ (Unary_Minus as op) e0 =>
       match transl_expr stbl CE e0 with
       | OK x =>
           match transl_unop op with
@@ -304,25 +297,12 @@ Function transl_expr (stbl : symboltable) (CE : compilenv)
           end
       | Error msg => Error msg
       end
-  | E_Unary_Operation _ (Unary_Minus as op) e0 =>
+  | UnOp _ Not e0 =>
       match transl_expr stbl CE e0 with
-      | OK x =>
-          match transl_unop op with
-          | OK x0 => OK (Eunop x0 x)
-          | Error msg => Error msg
-          end
-      | Error msg => Error msg
-      end
-  | E_Unary_Operation _ Not e0 =>
-      match transl_expr stbl CE e0 with
-      | OK x =>
-          OK
-            (Ebinop (Ocmp Integers.Ceq) x
-               (Econst (Ointconst Integers.Int.zero)))
+      | OK x => OK (Ebinop (Ocmp Integers.Ceq) x (Econst (Ointconst Integers.Int.zero)))
       | Error msg => Error msg
       end
   end.
-
 
 Lemma transl_expr_ok : forall x y z, transl_expr x y z = spark2Cminor.transl_expr x y z.
 Proof.
@@ -334,13 +314,11 @@ Qed.
 
 (* Definition transl_stmt := Eval cbv beta delta [bind bind2 transl_stmt] in transl_stmt. *)
 
-
-Function transl_stmt (stbl : Symbol_Table_Module.symboltable) 
-                (CE : compilenv) (e : statement) {struct e} : 
-res stmt :=
+Function transl_stmt (stbl : Symbol_Table_Module.symboltable) (CE : compilenv) 
+            (e : ast.stmt) {struct e} : res stmt :=
   match e with
-  | S_Null => OK Sskip
-  | S_Assignment _ nme e0 =>
+  | Null => OK Sskip
+  | Assign _ nme e0 =>
       match spark2Cminor.transl_expr stbl CE e0 with
       | OK x =>
           match transl_name stbl CE nme with
@@ -353,49 +331,42 @@ res stmt :=
           end
       | Error msg => Error msg
       end
-  | S_If _ e0 s1 s2 =>
+  | If _ e0 s1 s2 =>
       match spark2Cminor.transl_expr stbl CE e0 with
       | OK x =>
-          match
-            OK
-              (Ebinop (Ocmp Integers.Cne) x
-                 (Econst (Ointconst Integers.Int.zero)))
-          with
+          match transl_stmt stbl CE s1 with
           | OK x0 =>
-              match transl_stmt stbl CE s1 with
+              match transl_stmt stbl CE s2 with
               | OK x1 =>
-                  match transl_stmt stbl CE s2 with
-                  | OK x2 => OK (Sifthenelse x0 x1 x2)
-                  | Error msg => Error msg
-                  end
+                  OK
+                    (Sifthenelse
+                       (Ebinop (Ocmp Integers.Cne) x
+                          (Econst (Ointconst Integers.Int.zero))) x0 x1)
               | Error msg => Error msg
               end
           | Error msg => Error msg
           end
       | Error msg => Error msg
       end
-  | S_While_Loop _ _ _ => Error (msg "transl_stmt:Not yet implemented")
-  | S_Procedure_Call _ _ pnum lexp =>
+  | While _ _ _ => Error (msg "transl_stmt:Not yet implemented")
+  | Call _ _ pnum lexp =>
       match transl_params stbl pnum CE lexp with
       | OK x =>
           match transl_procsig stbl pnum with
           | OK (x0, y) =>
               let current_lvl := Datatypes.length CE in
-              let x1 := build_loads_ (Econst (Oaddrstack Integers.Int.zero)) (current_lvl - y) in
-                  match OK (x1 :: x) with
-                  | OK x2 =>
-                      OK
-                        (Scall None x0
-                           (Econst
-                              (Oaddrsymbol (transl_procid pnum)
-                                 (Integers.Int.repr 0))) x2)
-                  | Error msg => Error msg
-                  end
+              let addr_enclosing_frame :=
+                build_loads_ (Econst (Oaddrstack Integers.Int.zero)) (current_lvl - y)
+                in
+              OK
+                (Scall None x0
+                   (Econst (Oaddrsymbol (transl_procid pnum) (Integers.Int.repr 0)))
+                   (addr_enclosing_frame :: x))
           | Error msg => Error msg
           end
       | Error msg => Error msg
       end
-  | S_Sequence _ s1 s2 =>
+  | Seq _ s1 s2 =>
       match transl_stmt stbl CE s1 with
       | OK x =>
           match transl_stmt stbl CE s2 with
@@ -415,8 +386,7 @@ Proof.
 Qed.
 
 (* Definition transl_basetype := Eval lazy beta delta [transl_basetype bind] in spark2Cminor.transl_basetype. *)
-Function transl_basetype (stbl : Symbol_Table_Module.symboltable) 
-         (ty : base_type) {struct ty} :
+Function transl_basetype (stbl : Symbol_Table_Module.symboltable) (ty : base_type) {struct ty} :
   res Ctypes.type :=
   match ty with
   | BBoolean => OK (Ctypes.Tint Ctypes.I32 Ctypes.Signed Ctypes.noattr)
@@ -437,20 +407,19 @@ Qed.
 
 
 (* Definition transl_typenum := Eval lazy beta delta [transl_typenum bind] in spark2Cminor.transl_typenum. *)
-Function transl_typenum (stbl : Symbol_Table_Module.symboltable) 
-                   (id : typenum) {struct stbl} : res Ctypes.type :=
-  match Symbol_Table_Module.fetch_type id stbl with
-  | Some t =>
-      match type_of_decl t with
-      | OK x =>
-          match reduce_type stbl x max_recursivity with
-          | OK x0 => transl_basetype stbl x0
-          | Error msg => Error msg
-          end
-      | Error msg => Error msg
-      end
-  | None => Error (msg "transl_typenum: no such type")
-  end.
+Function transl_typenum (stbl : Symbol_Table_Module.symboltable) (id : typenum) :=
+match Symbol_Table_Module.fetch_type id stbl with
+| Some t =>
+    match type_of_decl t with
+    | OK x =>
+        match reduce_type stbl x max_recursivity with
+        | OK x0 => spark2Cminor.transl_basetype stbl x0
+        | Error msg => Error msg
+        end
+    | Error msg => Error msg
+    end
+| None => Error (msg "transl_typenum: no such type")
+end.
 
 Lemma transl_typenum_ok : forall x y, transl_typenum x y = spark2Cminor.transl_typenum x y.
 Proof.
@@ -458,7 +427,6 @@ Proof.
 Qed.
 
 (* Definition transl_type := Eval lazy iota beta delta [spark2Cminor.transl_type spark2Cminor.transl_basetype bind] in spark2Cminor.transl_type. *)
-
 Function transl_type (stbl : Symbol_Table_Module.symboltable) (t : type) :=
   match t with
   | Boolean => OK (Ctypes.Tint Ctypes.I32 Ctypes.Signed Ctypes.noattr)
@@ -497,25 +465,37 @@ Qed.
 
 (* Definition build_compilenv:= Eval lazy beta iota delta [build_compilenv bind bind2] in build_compilenv. *)
 (* using the explicit version because of a bug in Function. *)
-Function build_compilenv (stbl : Symbol_Table_Module.symboltable) (enclosingCE : compilenv) (lvl : Symbol_Table_Module.level)
-         (lparams : list parameter_specification) (decl : declaration) :=
-(* let stoszchainparam := @pair (list (prod nat Z)) Z (@cons (prod nat Z) (@pair nat Z O Z0) (@nil (prod nat Z))) (Zpos (xO (xO xH))) in *)
-let stoszchainparam := @pair (list (prod nat Z)) Z (@nil (prod nat Z)) (Zpos (xO (xO xH))) in
-match build_frame_lparams stbl stoszchainparam lparams return (res (prod (list (prod nat CompilEnv.store)) Z)) with
+
+Function build_compilenv
+         (stbl : Symbol_Table_Module.symboltable) (enclosingCE : compilenv)
+         (_ : Symbol_Table_Module.level) (lparams : list paramSpec) 
+         (decl : decl) :=
+let stoszchainparam :=
+    @pair (list (prod idnum OffsetEntry.T)) Z (@nil (prod idnum OffsetEntry.T))
+          (Zpos (xO (xO xH))) in
+match
+  build_frame_lparams stbl stoszchainparam lparams
+  return (res (prod (list (prod nat CompilEnv.store)) Z))
+with
 | OK x =>
-    match build_frame_decl stbl x decl return (res (prod (list (prod nat CompilEnv.store)) Z)) with
-    | OK p =>
-        match p return (res (prod (list (prod nat CompilEnv.store)) Z)) with
-        | pair x0 y =>
-            @OK (prod (list (prod nat CompilEnv.store)) Z)
-              (@pair (list (prod nat CompilEnv.store)) Z
-                 (@cons (prod nat CompilEnv.store) (@pair nat CompilEnv.store (@Datatypes.length CompilEnv.frame enclosingCE) x0)
-                    enclosingCE) y)
-        end
-    | Error msg => @Error (prod (list (prod nat CompilEnv.store)) Z) msg
+  match
+    build_frame_decl stbl x decl
+    return (res (prod (list (prod nat CompilEnv.store)) Z))
+  with
+  | OK p =>
+    match p return (res (prod (list (prod nat CompilEnv.store)) Z)) with
+    | pair x0 y =>
+      let scope_lvl := @Datatypes.length CompilEnv.frame enclosingCE in
+      @OK (prod (list (prod nat CompilEnv.store)) Z)
+          (@pair (list (prod nat CompilEnv.store)) Z
+                 (@cons (prod nat CompilEnv.store)
+                        (@pair nat CompilEnv.store scope_lvl x0) enclosingCE) y)
     end
+  | Error msg => @Error (prod (list (prod nat CompilEnv.store)) Z) msg
+  end
 | Error msg => @Error (prod (list (prod nat CompilEnv.store)) Z) msg
 end.
+
 
 Lemma build_compilenv_ok : build_compilenv = spark2Cminor.build_compilenv.
 Proof.
@@ -524,42 +504,29 @@ Qed.
 
 
 (* Definition foo_compute_chk:= Eval lazy beta iota delta [compute_chnk compute_chnk_id compute_chnk_astnum compute_chnk_of_type bind] in compute_chnk. *)
-Function compute_chnk (stbl : symboltable) (nme : name) :=
+
+Definition foo_compute_chk:= Eval lazy beta iota delta [compute_chnk compute_chnk_id compute_chnk_astnum compute_chnk_of_type bind] in compute_chnk.
+
+Function compute_chnk (stbl : Symbol_Table_Module.symboltable) (nme : name) :=
 match nme with
-| E_Identifier _ id =>
-    match fetch_var_type id stbl with
-    | OK x =>
-        match reduce_type stbl x max_recursivity with
-        | OK BBoolean => OK AST.Mint32
-        | OK (BInteger _) => OK AST.Mint32
-        | OK (BArray_Type _ _) => Error (msg "compute_chnk_of_type: Arrays types not yet implemented!!.")
-        | OK (BRecord_Type _) => Error (msg "compute_chnk_of_type: Records types not yet implemented!!.")
-        | Error x0 => Error x0
-        end
-    | Error msg => Error msg
+| Identifier _ id =>
+  match fetch_var_type id stbl with
+  | OK x =>
+    match reduce_type stbl x max_recursivity with
+    | OK BBoolean => OK AST.Mint32
+    | OK (BInteger _) => OK AST.Mint32
+    | OK (BArray_Type _ _) =>
+      Error (msg "compute_chnk_of_type: Arrays types not yet implemented!!.")
+    | OK (BRecord_Type _) =>
+      Error (msg "compute_chnk_of_type: Records types not yet implemented!!.")
+    | Error x0 => Error x0
     end
-| E_Indexed_Component _ _ _ => Error (msg "compute_chnk: arrays not implemented yet")
-| E_Selected_Component _ _ _ => Error (msg "compute_chnk: records not implemented yet")
+  | Error msg => Error msg
+  end
+| IndexedComponent _ _ _ => Error (msg "compute_chnk: arrays not implemented yet")
+| SelectedComponent _ _ _ => Error (msg "compute_chnk: records not implemented yet")
 end.
-(*
-Function compute_chnk (stbl' : symboltable) (nme : name) :=
-match nme with
-| E_Identifier _ idnt =>
-    match fetch_var_type idnt stbl' with
-    | OK x =>
-        match reduce_type stbl' x max_recursivity with
-        | OK BBoolean => OK AST.Mint32
-        | OK (BInteger _) => OK AST.Mint32
-        | OK (BArray_Type _ _) => Error (msg "compute_chnk_of_type: Arrays types not yet implemented!!.")
-        | OK (BRecord_Type _) => Error (msg "compute_chnk_of_type: Records types not yet implemented!!.")
-        | Error x0 => Error x0
-        end
-    | Error msge => Error msge
-    end
-| E_Indexed_Component _ _ _ => Error (msg "compute_chnk: arrays not implemented yet")
-| E_Selected_Component _ _ _ => Error (msg "compute_chnk: records not implemented yet")
-end.
-*)
+
 Lemma compute_chnk_ok : forall x y, spark2Cminor.compute_chnk x y = compute_chnk x y.
 Proof.
   reflexivity.
@@ -599,7 +566,7 @@ Qed.
 
 (* Definition build_frame_lparams:= Eval lazy beta iota delta [build_frame_lparams bind] in build_frame_lparams. *)
 
-Function build_frame_lparams (stbl : Symbol_Table_Module.symboltable) (fram_sz : localframe * Z) (lparam : list parameter_specification)
+Function build_frame_lparams (stbl : Symbol_Table_Module.symboltable) (fram_sz : localframe * Z) (lparam : list paramSpec)
                     {struct lparam} : res (localframe * Z) :=
   match lparam with
   | [ ] => OK fram_sz
@@ -619,23 +586,23 @@ Qed.
 
 (* Definition build_frame_decl := Eval lazy beta iota delta [build_frame_decl bind] in build_frame_decl. *)
 
-Function build_frame_decl (stbl : symboltable) (fram_sz : localframe * Z) 
-         (decl : declaration) {struct decl} : res (localframe * Z) :=
+Function build_frame_decl (stbl : Symbol_Table_Module.symboltable) (fram_sz : localframe * Z)
+                 (decl : decl) {struct decl} : res (localframe * Z) :=
   let (fram, sz) := fram_sz in
   match decl with
-  | D_Null_Declaration => OK fram_sz
-  | D_Type_Declaration _ _ => Error (msg "build_frame_decl: type decl no implemented yet")
-  | D_Object_Declaration _ objdecl =>
+  | NullDecl => OK fram_sz
+  | TypeDecl _ _ => Error (msg "build_frame_decl: type decl no implemented yet")
+  | ObjDecl _ objdecl =>
       match spark2Cminor.compute_size stbl (object_nominal_subtype objdecl) with
       | OK x =>
           let new_size := sz + x in
-          if new_size >=? compcert.lib.Integers.Int.modulus
+          if new_size >=? Integers.Int.modulus
           then Error (msg "build_frame_decl: memory would overflow")
           else OK ((object_name objdecl, sz) :: fram, new_size)
       | Error msg => Error msg
       end
-  | D_Procedure_Body _ _ => Error (msg "build_frame_decl: proc decl no implemented yet")
-  | D_Seq_Declaration _ decl1 decl2 =>
+  | ProcBodyDecl _ _ => Error (msg "build_frame_decl: proc decl no implemented yet")
+  | SeqDecl _ decl1 decl2 =>
       match build_frame_decl stbl fram_sz decl1 with
       | OK x => build_frame_decl stbl x decl2
       | Error msg => Error msg
@@ -654,21 +621,20 @@ Definition msg1:string := "transl_declaration: D_Type_Declaration not yet implem
 
 (* We add implicit args to Gfun "(AST.fundef function) unit" to work
    around a limitation of Function *)
-
-Function transl_procedure (stbl : Symbol_Table_Module.symboltable) (enclosingCE : compilenv)
-                 (lvl : Symbol_Table_Module.level) (pbdy : procedure_body) {struct pbdy} :
+Function transl_procedure  (stbl : Symbol_Table_Module.symboltable) (enclosingCE : compilenv)
+                 (lvl : Symbol_Table_Module.level) (pbdy : procBodyDecl) {struct pbdy} :
   res CMfundecls :=
   match pbdy with
-  | mkprocedure_body _ pnum lparams decl statm =>
-      match spark2Cminor.build_compilenv stbl enclosingCE lvl lparams decl with
+  | mkprocBodyDecl _ pnum lparams decl0 statm =>
+      match spark2Cminor.build_compilenv stbl enclosingCE lvl lparams decl0 with
       | OK (x, y) =>
           if y <=? Integers.Int.max_unsigned
           then
-           match transl_declaration stbl x (S lvl) decl with
+           match transl_declaration stbl x (S lvl) decl0 with
            | OK x0 =>
                match spark2Cminor.transl_stmt stbl x statm with
                | OK x1 =>
-                   match init_locals stbl x decl with
+                   match init_locals stbl x decl0 with
                    | OK x2 =>
                        match store_params stbl x lparams with
                        | OK x3 =>
@@ -678,8 +644,8 @@ Function transl_procedure (stbl : Symbol_Table_Module.symboltable) (enclosingCE 
                            match copy_out_params stbl x lparams with
                            | OK x4 =>
                                let proc_t :=
-                                   Sseq chain_param (Sseq (Sseq x3 (Sseq x2 Sskip))
-                                                          (Sseq x1 x4)) in
+                                 Sseq chain_param
+                                   (Sseq (Sseq x3 (Sseq x2 Sskip)) (Sseq x1 x4)) in
                                match
                                  transl_lparameter_specification_to_procsig stbl lvl
                                    lparams
@@ -695,7 +661,7 @@ Function transl_procedure (stbl : Symbol_Table_Module.symboltable) (enclosingCE 
                                           {|
                                           fn_sig := x5;
                                           fn_params := chaining_param :: tlparams;
-                                          fn_vars := transl_decl_to_lident stbl decl;
+                                          fn_vars := transl_decl_to_lident stbl decl0;
                                           fn_stackspace := y;
                                           fn_body := proc_t |})) in
                                    OK (newGfun :: x0)
@@ -711,20 +677,18 @@ Function transl_procedure (stbl : Symbol_Table_Module.symboltable) (enclosingCE 
                end
            | Error msg => Error msg
            end
-          else
-            Error (msg "spark2Cminor: too many local variables, stack size exceeded")
+          else Error (msg "spark2Cminor: too many local variables, stack size exceeded")
       | Error msg => Error msg
       end
   end
 with
 transl_declaration (stbl : Symbol_Table_Module.symboltable) 
                    (enclosingCE : compilenv) (lvl : Symbol_Table_Module.level)
-                   (decl : declaration) {struct decl} : res CMfundecls :=
+                   (decl : decl) {struct decl} : res CMfundecls :=
   match decl with
-  | D_Null_Declaration => OK [ ]
-  | D_Type_Declaration _ _ =>
-      Error (msg "transl_declaration: D_Type_Declaration not yet implemented")
-  | D_Object_Declaration _ objdecl =>
+  | NullDecl => OK [ ]
+  | TypeDecl _ _ => Error (msg "transl_declaration: TypeDecl not yet implemented")
+  | ObjDecl _ objdecl =>
       OK
         [(transl_paramid (object_name objdecl),
          AST.Gvar
@@ -733,8 +697,8 @@ transl_declaration (stbl : Symbol_Table_Module.symboltable)
            AST.gvar_init := [ ];
            AST.gvar_readonly := false;
            AST.gvar_volatile := false |})]
-  | D_Procedure_Body _ pbdy => transl_procedure stbl enclosingCE lvl pbdy
-  | D_Seq_Declaration _ decl1 decl2 =>
+  | ProcBodyDecl _ pbdy => transl_procedure stbl enclosingCE lvl pbdy
+  | SeqDecl _ decl1 decl2 =>
       match transl_declaration stbl enclosingCE lvl decl1 with
       | OK x =>
           match transl_declaration stbl enclosingCE lvl decl2 with
@@ -760,17 +724,18 @@ Proof.
 Qed.
 
 (* Definition copy_out_params:= Eval lazy beta iota delta [copy_out_params bind] in copy_out_params. *)
-Function copy_out_params (stbl : symboltable) (CE : compilenv) (lparams : list parameter_specification) {struct lparams} : 
+Function copy_out_params  (stbl : Symbol_Table_Module.symboltable) (CE : compilenv)
+                (lparams : list paramSpec) {struct lparams} : 
 res stmt :=
   match lparams with
   | [ ] => OK Sskip
   | prm :: lparams' =>
       let id := transl_paramid (parameter_name prm) in
-      match compute_chnk stbl (E_Identifier 0%nat (parameter_name prm)) with
+      match spark2Cminor.compute_chnk stbl (Identifier 0%nat (parameter_name prm)) with
       | OK x =>
           match copy_out_params stbl CE lparams' with
           | OK x0 =>
-              match transl_name stbl CE (E_Identifier 0%nat (parameter_name prm)) with
+              match transl_name stbl CE (Identifier 0%nat (parameter_name prm)) with
               | OK x1 =>
                   match parameter_mode prm with
                   | In => OK x0
@@ -793,17 +758,17 @@ Qed.
 (* Definition store_params:= Eval lazy beta iota delta [store_params bind] in store_params. *)
 
 Function store_params (stbl : Symbol_Table_Module.symboltable) (CE : compilenv)
-             (lparams : list parameter_specification) {struct lparams} : 
+             (lparams : list paramSpec) {struct lparams} : 
 res stmt :=
   match lparams with
   | [ ] => OK Sskip
   | prm :: lparams' =>
       let id := transl_paramid (parameter_name prm) in
-      match spark2Cminor.compute_chnk stbl (E_Identifier 0%nat (parameter_name prm)) with
+      match spark2Cminor.compute_chnk stbl (Identifier 0%nat (parameter_name prm)) with
       | OK x =>
           match store_params stbl CE lparams' with
           | OK x0 =>
-              match transl_name stbl CE (E_Identifier 0%nat (parameter_name prm)) with
+              match transl_name stbl CE (Identifier 0%nat (parameter_name prm)) with
               | OK x1 =>
                   let rexp :=
                     match parameter_mode prm with
@@ -826,20 +791,23 @@ Proof.
 Qed.
 
 (* Definition init_locals:= Eval lazy beta iota delta [init_locals bind] in init_locals. *)
-
 Function init_locals (stbl : Symbol_Table_Module.symboltable) (CE : compilenv) 
-            (decl : declaration) {struct decl} : res stmt :=
+            (decl : decl) {struct decl} : res stmt :=
   match decl with
-  | D_Null_Declaration => OK Sskip
-  | D_Type_Declaration _ _ => OK Sskip
-  | D_Object_Declaration _ objdecl =>
-      match initialization_expression objdecl with
+  | NullDecl => OK Sskip
+  | TypeDecl _ _ => OK Sskip
+  | ObjDecl _ objdecl =>
+      match initialization_exp objdecl with
       | Some e =>
-          match spark2Cminor.compute_chnk stbl (E_Identifier 0%nat (object_name objdecl)) with
+          match
+            spark2Cminor.compute_chnk stbl (Identifier 0%nat (object_name objdecl))
+          with
           | OK x =>
               match spark2Cminor.transl_expr stbl CE e with
               | OK x0 =>
-                  match transl_name stbl CE (E_Identifier 0%nat (object_name objdecl)) with
+                  match
+                    transl_name stbl CE (Identifier 0%nat (object_name objdecl))
+                  with
                   | OK x1 => OK (Sstore x x1 x0)
                   | Error msg => Error msg
                   end
@@ -849,8 +817,8 @@ Function init_locals (stbl : Symbol_Table_Module.symboltable) (CE : compilenv)
           end
       | None => OK Sskip
       end
-  | D_Procedure_Body _ _ => OK Sskip
-  | D_Seq_Declaration _ decl1 decl2 =>
+  | ProcBodyDecl _ _ => OK Sskip
+  | SeqDecl _ decl1 decl2 =>
       match init_locals stbl CE decl1 with
       | OK x =>
           match init_locals stbl CE decl2 with
