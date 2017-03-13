@@ -68,8 +68,8 @@ Ltac eq_same_clear :=
           (try match goal with
                | H: ?A = _ , H': ?A = _ |- _ => rewrite H in H'; !inversion H'
                | H: OK ?A = OK ?B |- _ => !inversion H
+               | H: Errors.OK ?A = Errors.OK ?B |- _ => !inversion H
                | H: Some ?A = Some ?B |- _ => !inversion H
-               | H: OK ?A = OK ?B |- _ => !inversion H
                | H: OK ?A = RTE ?B |- _ => discriminate H
                | H: RTE ?B= OK ?A |- _ => discriminate H
                | H: ?A <> ?A |- _ => elim H;reflexivity
@@ -137,11 +137,11 @@ Ltac rename_hyp1 h th :=
   | exp => fresh "e"
   | stmt => fresh "stmt"
   | Cminor.expr => match goal with
-                   | H: transl_expr ?stbl ?CE ?x = OK h |- _ => fresh x "_t"
-                   | H: transl_name ?stbl ?CE ?x = OK h |- _ => fresh x "_t"
+                   | H: transl_expr ?stbl ?CE ?x = Errors.OK h |- _ => fresh x "_t"
+                   | H: transl_name ?stbl ?CE ?x = Errors.OK h |- _ => fresh x "_t"
                    end
   | AST.memory_chunk => match goal with
-                   | H: compute_chnk ?stbl ?x = OK h |- _ => fresh x "_chk"
+                   | H: compute_chnk ?stbl ?x = Errors.OK h |- _ => fresh x "_chk"
                    end
   | SymTable_Exps.V =>
     match goal with
@@ -529,9 +529,8 @@ Lemma gt_ok: forall v1 v2 v0 x x0,
     transl_value v0 (Values.Val.cmp Integers.Cgt x x0).
 Proof.
   !intros.
-  !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *.
-  eq_same_clear.
-  inversion heq_transl_value_v1_x;subst;simpl.
+  !destruct v1;try discriminate; !destruct v2;try discriminate;simpl in *;
+  eq_same_clear; inversion heq_transl_value_v1_x;subst;simpl.
   inversion heq_transl_value_v2_x0;subst;simpl.
   rewrite Z.gtb_ltb.
   !destruct (Z.lt_decidable n0 n).
@@ -895,11 +894,11 @@ Qed.
 
 (* THIS IS NOT TRUE: some variable may not be initialized at some point. *)
 Definition stack_complete stbl s CE := forall a nme addr_nme,
-    transl_variable stbl CE a nme = OK addr_nme
+    transl_variable stbl CE a nme = Errors.OK addr_nme
     -> exists v, evalName stbl s (Identifier a nme) (OK v).
 
 Definition stack_no_null_offset stbl CE := forall a nme δ_lvl δ_id,
-    transl_variable stbl CE a nme = OK (build_loads δ_lvl δ_id) ->
+    transl_variable stbl CE a nme = Errors.OK (build_loads δ_lvl δ_id) ->
     4 <= Int.unsigned (Int.repr δ_id).
 
 (* CE gives the maximum number of loads. *)
@@ -910,7 +909,7 @@ Definition stack_localstack_aligned lvl locenv g m sp :=
       Cminor.eval_expr g sp locenv m (build_loads_ (Econst (Oaddrstack Int.zero)) δ_lvl) (Values.Vptr b_δ Int.zero).
 
 (* The spark dynamic and the compiler static stack have the same structure. *)
-Definition stack_match_CE (s : STACK.stack) (CE : compilenv) :=
+Definition stack_match_CE (s : STACK.state) (CE : compilenv) :=
   forall nme lvl sto,
     STACK.frameG nme s = Some (lvl,sto) ->
     exists CE_sto,
@@ -920,17 +919,17 @@ Definition stack_match_CE (s : STACK.stack) (CE : compilenv) :=
    correctly to an address. *)
 Definition stack_match_addresses st sp CE locenv g m :=
   forall nme addr_nme ,
-    transl_name st CE nme = OK addr_nme ->
+    transl_name st CE nme = Errors.OK addr_nme ->
     exists addr, Cminor.eval_expr g sp locenv m addr_nme addr.
 
 (* Observationnal equivalence of the spark dynamic stack and the compile environment. *)
 Definition stack_match st s CE sp locenv g m :=
   forall nme v addr_nme load_addr_nme typ_nme cm_typ_nme,
     evalName st s nme (OK v) ->
-    type_of_name st nme = OK typ_nme ->
-    transl_name st CE nme = OK addr_nme ->
-    transl_type st typ_nme = OK cm_typ_nme ->
-    make_load addr_nme cm_typ_nme = OK load_addr_nme ->
+    type_of_name st nme = Errors.OK typ_nme ->
+    transl_name st CE nme = Errors.OK addr_nme ->
+    transl_type st typ_nme = Errors.OK cm_typ_nme ->
+    make_load addr_nme cm_typ_nme = Errors.OK load_addr_nme ->
     exists v_t,
       (transl_value v v_t /\
        Cminor.eval_expr g sp locenv m load_addr_nme v_t).
@@ -944,7 +943,7 @@ Definition stack_match_functions st stckptr CE locenv g m :=
     symboltable.fetch_proc p st = Some (pb_lvl, pb) (* p exists in st *)
     -> exists CE' CE'' paddr pnum fction lglobdef, (* then there we can compute its address in Cminor. *)
       CompilEnv.cut_until CE pb_lvl CE' CE''
-      ∧ transl_procedure st CE'' pb_lvl pb = OK ((pnum,@AST.Gfun _ _ fction) :: lglobdef) (*  *)
+      ∧ transl_procedure st CE'' pb_lvl pb = Errors.OK ((pnum,@AST.Gfun _ _ fction) :: lglobdef) (*  *)
       ∧ Cminor.eval_expr g stckptr locenv m
                          (Econst (Oaddrsymbol (transl_procid p) (Int.repr 0))) paddr
       ∧ Globalenvs.Genv.find_funct g paddr = Some fction.
@@ -955,12 +954,12 @@ Definition stack_separate st CE sp locenv g m :=
   forall nme nme' addr_nme addr_nme'
          typ_nme typ_nme'  cm_typ_nme cm_typ_nme'
          k₁ δ₁ k₂ δ₂ chnk₁ chnk₂ ,
-    type_of_name st nme = OK typ_nme ->
-    type_of_name st nme' = OK typ_nme' ->
-    transl_name st CE nme = OK addr_nme ->
-    transl_name st CE nme' = OK addr_nme' ->
-    transl_type st typ_nme = OK cm_typ_nme ->
-    transl_type st typ_nme' = OK cm_typ_nme' ->
+    type_of_name st nme = Errors.OK typ_nme ->
+    type_of_name st nme' = Errors.OK typ_nme' ->
+    transl_name st CE nme = Errors.OK addr_nme ->
+    transl_name st CE nme' = Errors.OK addr_nme' ->
+    transl_type st typ_nme = Errors.OK cm_typ_nme ->
+    transl_type st typ_nme' = Errors.OK cm_typ_nme' ->
     Cminor.eval_expr g sp locenv m addr_nme (Values.Vptr k₁ δ₁) ->
     Cminor.eval_expr g sp locenv m addr_nme' (Values.Vptr k₂ δ₂) ->
     Ctypes.access_mode cm_typ_nme  = Ctypes.By_value chnk₁ ->
@@ -973,11 +972,11 @@ Definition stack_separate st CE sp locenv g m :=
 Definition stack_freeable st CE sp g locenv m :=
   forall a chk id id_t b ofs,
     (* translating the variabe to a Cminor load address *)
-    transl_variable st CE a id = OK id_t ->
+    transl_variable st CE a id = Errors.OK id_t ->
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g sp locenv m id_t (Values.Vptr b ofs) ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk st (Identifier a id) = OK chk ->
+    compute_chnk st (Identifier a id) = Errors.OK chk ->
     Mem.valid_access m chk b (Int.unsigned ofs) Freeable.
 
 
@@ -1039,7 +1038,7 @@ Definition upper_bound fr sz := forall nme nme_ofs,
     CompilEnv.fetches nme fr = Some nme_ofs -> Zlt nme_ofs sz.
 
 (** levels in the global stack match exactly their nesting levels. *)
-Inductive exact_levelG:  CompilEnv.stack -> Prop :=
+Inductive exact_levelG:  CompilEnv.state -> Prop :=
   | exact_levelG_nil: exact_levelG nil
   | exact_levelG_cons: ∀ stk fr,
       exact_levelG stk -> exact_levelG ((List.length stk, fr)::stk).
@@ -1049,8 +1048,8 @@ Inductive exact_levelG:  CompilEnv.stack -> Prop :=
 (*     exact_levelG stk -> StronglySorted gt_fst stk. *)
 
 Definition stbl_var_types_ok st :=
-  ∀ nme t, type_of_name st nme = OK t ->
-           ∃ nme_type_t, transl_type st t = OK nme_type_t.
+  ∀ nme t, type_of_name st nme = Errors.OK t ->
+           ∃ nme_type_t, transl_type st t = Errors.OK nme_type_t.
 
 (*
 (* The AST provided by gnat/sireum are supposed to have no two variables sharing
@@ -1168,7 +1167,7 @@ Hint Resolve me_stack_match_addresses me_stack_match_functions me_stack_separate
      me_stack_no_null_offset me_stack_freeable me_chain_struct.
 Hint Resolve me_stack_match me_stack_match_CE me_stack_complete me_overflow me_safe_cm_env.
 
-Inductive strong_match_env stbl: STACK.stack → compilenv → Values.val → env → genv → mem → Prop :=
+Inductive strong_match_env stbl: STACK.state → compilenv → Values.val → env → genv → mem → Prop :=
 | C1: forall v locenv g m,
     match_env stbl [] [] v locenv g m ->
     strong_match_env stbl [] [] v locenv g m
@@ -1187,7 +1186,7 @@ Inductive repeat_Mem_loadv (chk:AST.memory_chunk) (m : mem): forall (lvl:STACK.s
     repeat_Mem_loadv chk m (S lvl) sp sp''.
 
 
-Definition strong_match_env_2 (st : symboltable.symboltable) (s : STACK.stack) (CE : compilenv)
+Definition strong_match_env_2 (st : symboltable) (s : STACK.state) (CE : compilenv)
            (sp : Values.val) (locenv : env) (g : genv) (m : mem) : Prop :=
   forall lvl CE' CE'',
     CompilEnv.cut_until CE lvl CE' CE'' ->
@@ -1912,7 +1911,7 @@ Proof.
 Qed.
 
 Lemma eval_expr_transl_variable_inv_locenv: forall st CE astnum g sp locenv m nme nme_t v,
-          transl_variable st CE astnum nme = OK nme_t ->
+          transl_variable st CE astnum nme = Errors.OK nme_t ->
           Cminor.eval_expr g sp locenv m nme_t v ->
           forall locenv', Cminor.eval_expr g sp locenv' m nme_t v.
 Proof.
@@ -1922,7 +1921,7 @@ Proof.
 Qed.
 
 Lemma eval_expr_transl_name_inv_locenv: forall st CE  g sp locenv m nme nme_t v,
-          transl_name st CE nme = OK nme_t ->
+          transl_name st CE nme = Errors.OK nme_t ->
           Cminor.eval_expr g sp locenv m nme_t v ->
           forall locenv', Cminor.eval_expr g sp locenv' m nme_t v.
 Proof.
@@ -1942,7 +1941,7 @@ Proof.
   red in h_stk_mtch_addr_CE_m.
   specialize h_stk_mtch_addr_CE_m with (1:= heq_transl_name).
   decomp h_stk_mtch_addr_CE_m.
-  exists nme_t_v.
+  eexists.
   eapply eval_expr_transl_name_inv_locenv;eauto.
 Qed.
       
@@ -2273,13 +2272,13 @@ Proof.
 Qed.
 
 Lemma strong_match_env_cut_CE_cut_s:
-  ∀ (st : symboltable.symboltable) (s : STACK.stack) (CE : compilenv) (sp : Values.val) (locenv : env) (g : genv) 
+  ∀ (st : symboltable) (s : STACK.state) (CE : compilenv) (sp : Values.val) (locenv : env) (g : genv) 
                (m : mem),
     strong_match_env st s CE sp locenv g m
     → invariant_compile CE st
-    → ∀ (CE' CE'' : CompilEnv.stack)  (lvl : CompilEnv.scope_level), 
+    → ∀ (CE' CE'' : CompilEnv.state)  (lvl : CompilEnv.scope_level), 
         CompilEnv.cut_until CE lvl CE' CE'' -> 
-        exists (s': STACK.stack) (s'': STACK.stack), STACK.cut_until s lvl s' s''.
+        exists (s': STACK.state) (s'': STACK.state), STACK.cut_until s lvl s' s''.
 Proof.
   !intros.
   pose proof strong_match_env_lgth st sp locenv g m s CE h_strg_mtch_s_CE_m h_inv_comp_CE_st _ _ _ h_CEcut_CE_lvl.
@@ -2395,7 +2394,7 @@ Qed.
 
 (* Yet another hypothesis deducibility *)
 (*Lemma strong_match_env_match_env_sublist: 
-  forall (st : symboltable.symboltable) (s : STACK.stack) (CE : compilenv)
+  forall (st : symboltable.symboltable) (s : STACK.state) (CE : compilenv)
          (sp : Values.val) (locenv : env) (g : genv) (m : mem),
     strong_match_env st s CE sp locenv g m
     → invariant_compile CE st
@@ -2472,7 +2471,7 @@ Lemma eval_build_loads_offset_non_null_var:
     exact_levelG CE ->
     stack_no_null_offset stbl CE ->
     stack_localstack_aligned (Datatypes.length CE) locenv g m stkptr ->
-    transl_variable stbl CE a nme = OK bld_lds ->
+    transl_variable stbl CE a nme = Errors.OK bld_lds ->
     Cminor.eval_expr g stkptr locenv m bld_lds (Values.Vptr b ofs) ->
     4 <= Int.unsigned ofs.
 Proof.
@@ -2489,9 +2488,9 @@ Proof.
 Qed.
 
 Lemma transl_expr_ok : forall stbl CE e e',
-    transl_expr stbl CE e = OK e' ->
-    forall locenv g m (s:STACK.stack)  (v:value) stkptr,
-      eval_expr stbl s e (OK v) ->
+    transl_expr stbl CE e = Errors.OK e' ->
+    forall locenv g m (s:STACK.state)  (v:value) stkptr,
+      evalExp stbl s e (OK v) ->
       match_env stbl s CE stkptr locenv g m ->
       exists v_t,
         (transl_value v v_t /\ Cminor.eval_expr g stkptr locenv m e' v_t).
@@ -2501,7 +2500,7 @@ Proof.
   !invclear h_eval_expr_v;eq_same_clear.
   - inversion h_eval_literal;subst.
     + !destruct v0.
-      * eexists;split;!intros;econstructor;eauto.
+      * eexists;split;!intros; econstructor;eauto.
       * eexists;split;!intros;econstructor;eauto.
     + eexists;split;!intros.
       * eapply (transl_literal_ok g _ _ h_eval_literal stkptr).
@@ -2521,8 +2520,10 @@ Proof.
     assert (hex:or (exists b, v = Bool b) (exists n, v = Int n)). {
       apply do_run_time_check_on_binop_ok in h_do_rtc_binop.
       rewrite binopexp_ok in h_do_rtc_binop.
-      functional inversion h_do_rtc_binop;subst;eq_same_clear
-      ;try contradiction;eauto. }
+      !functional inversion h_do_rtc_binop;subst;eq_same_clear
+       ;try contradiction;eauto. 
+      admit. (* todo mod' *)
+    }
     decomp hex;subst.
     + destruct b; eexists;(split;[econstructor;eauto|]).
       * eapply eval_Ebinop;try econstructor;eauto.
@@ -2566,7 +2567,7 @@ Proof.
       simpl.
       unfold Values.Val.of_bool.
       reflexivity.
-Qed.
+Admitted.
 
 
 Scheme Equality for binary_operator.
@@ -2586,18 +2587,18 @@ Proof.
       destruct (name_dec n0 n);finish_eqdec.
     - destruct (Nat.eq_dec a0 a);finish_eqdec.
       destruct (binary_operator_eq_dec b0 b);finish_eqdec.
-      destruct (exp_dec e3 e);finish_eqdec.
-      destruct (exp_dec e4 e0);finish_eqdec.
+      destruct (expression_dec e3 e);finish_eqdec.
+      destruct (expression_dec e4 e0);finish_eqdec.
     - destruct (Nat.eq_dec a0 a);finish_eqdec.
       destruct (unary_operator_eq_dec u0 u);finish_eqdec.
-      destruct (exp_dec e0 e);finish_eqdec. }
+      destruct (expression_dec e0 e);finish_eqdec. }
   { !intros.
     case n1;case n2;intros;finish_eqdec.
     - destruct (Nat.eq_dec a0 a);finish_eqdec.
       destruct (Nat.eq_dec i0 i);finish_eqdec.
     - destruct (Nat.eq_dec a0 a);finish_eqdec.
       destruct (name_dec n0 n);finish_eqdec.
-      destruct (exp_dec e0 e);finish_eqdec.
+      destruct (expression_dec e0 e);finish_eqdec.
     - destruct (Nat.eq_dec a0 a);finish_eqdec.
       destruct (name_dec n0 n);finish_eqdec.
       destruct (Nat.eq_dec i0 i);finish_eqdec. }
@@ -2965,7 +2966,7 @@ Qed.
 
 Lemma add_to_frame_nodup: forall stbl subtyp_mrk new_sz nme fram_sz new_fram,
     CompilEnv.fetches nme (fst fram_sz) = None
-    -> add_to_frame stbl fram_sz nme subtyp_mrk = OK (new_fram, new_sz)
+    -> add_to_frame stbl fram_sz nme subtyp_mrk = Errors.OK (new_fram, new_sz)
     -> NoDupA eq_fst_idnum (fst fram_sz)
     -> NoDupA eq_fst_idnum new_fram.
 Proof.
@@ -3008,8 +3009,8 @@ Proof.
 Qed.
 
 Lemma transl_name_OK_inv : forall stbl CE nme nme_t,
-    transl_name stbl CE nme = OK nme_t
-    -> exists astnum id, (transl_variable stbl CE astnum id =  OK nme_t
+    transl_name stbl CE nme = Errors.OK nme_t
+    -> exists astnum id, (transl_variable stbl CE astnum id =  Errors.OK nme_t
                           /\ nme = Identifier astnum id).
 Proof.
   !intros stbl CE nme nme_t H.
@@ -3247,9 +3248,9 @@ Lemma transl_variable_inj : forall CE stbl a₁ a₂ id₁ id₂ k₁ k₂ δ₁
     all_frm_increasing CE ->
     all_addr_no_overflow CE ->
     (* translating the variabe to a Cminor load address *)
-    transl_variable stbl CE a₁ id₁ = OK (build_loads k₁ δ₁) ->
+    transl_variable stbl CE a₁ id₁ = Errors.OK (build_loads k₁ δ₁) ->
     (* translating the variabe to a Cminor load address *)
-    transl_variable stbl CE a₂ id₂ = OK   (build_loads k₂ δ₂) ->
+    transl_variable stbl CE a₂ id₂ = Errors.OK (build_loads k₂ δ₂) ->
     id₁ <> id₂ ->
     (k₁ <> k₂ \/ δ₁<> δ₂).
 Proof.
@@ -3291,7 +3292,7 @@ Proof.
 Qed.
 
 Lemma transl_variable_astnum: forall stbl CE astnum id' addrof_nme,
-    transl_variable stbl CE astnum id' = OK addrof_nme
+    transl_variable stbl CE astnum id' = Errors.OK addrof_nme
     -> forall a,transl_variable stbl CE a id' = transl_variable stbl CE astnum id'.
 Proof.
   !intros.
@@ -3304,8 +3305,8 @@ Qed.
 
 
 Lemma compute_chk_32 : forall stbl t,
-    compute_chnk_of_type stbl t = OK AST.Mint32
-    -> transl_type stbl t = OK (Ctypes.Tint Ctypes.I32 Ctypes.Signed Ctypes.noattr).
+    compute_chnk_of_type stbl t = Errors.OK AST.Mint32
+    -> transl_type stbl t = Errors.OK (Ctypes.Tint Ctypes.I32 Ctypes.Signed Ctypes.noattr).
 Proof.
   !intros.
   functional inversion heq_compute_chnk_of_type;subst;simpl.
@@ -3316,7 +3317,7 @@ Proof.
 Qed.
 
 
-Notation " x =: y" := (x = OK y) (at level 90).
+Notation " x =: y" := (x = Errors.OK y) (at level 90).
 Notation " x =! y" := (x = Error y) (at level 120).
 
 Ltac simplify_do :=
@@ -3665,13 +3666,13 @@ Lemma assignment_preserve_stack_match :
     exact_levelG CE ->
     all_frm_increasing CE ->
     (* translating the variabe to a Cminor load address *)
-    transl_variable stbl CE a id = OK id_t ->
+    transl_variable stbl CE a id = Errors.OK id_t ->
     (* translating the value, we may need a overflow hypothesis on e_v/e_t_v *)
     transl_value e_v e_t_v ->
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g stkptr locenv m id_t idaddr ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (Identifier a id) = OK chk ->
+    compute_chnk stbl (Identifier a id) = Errors.OK chk ->
     (* the two storing operation maintain match_env *)
     storeUpdate stbl s (Identifier a id) e_v (OK s') ->
     Mem.storev chk m idaddr e_t_v = Some m' ->
@@ -3716,7 +3717,7 @@ Proof.
     !inversion heq_type_of_name.
     reflexivity. }
   assert (h_tr_exp_other:
-            transl_expr stbl CE (E_Name 1%nat (Identifier astnum other_id))
+            transl_expr stbl CE (Name 1%nat (Identifier astnum other_id))
                         =: load_addr_other). {
     simpl.
     simpl in heq_type_of_name.
@@ -3743,7 +3744,7 @@ Proof.
     rewrite (transl_variable_astnum _ _ _ _ _ heq_transl_variable0 a) in *.
     rewrite heq_transl_variable0 in heq_transl_variable.
     !invclear heq_transl_variable.
-    !assert (e_v = other_v). { eapply storeUpdate_id_ok_same_evalName ;eauto. }
+    !assert (e_v = other_v). { eapply storeUpdate_id_ok_same_eval_name ;eauto. }
                                subst other_v.
     exists e_t_v;split;auto.
     !functional inversion heq_make_load;subst.
@@ -3776,7 +3777,7 @@ Proof.
       functional inversion heq_compute_chnk; reflexivity. }
 
     assert (v_other_id_prev = other_v). {
-      eapply storeUpdate_id_ok_others_evalName ;eauto. }
+      eapply storeUpdate_id_ok_others_eval_name ;eauto. }
     subst.
     exists cm_v.
     split;auto.
@@ -3829,13 +3830,13 @@ Lemma assignment_preserve_stack_match_function :
     exact_levelG CE ->
     all_frm_increasing CE ->
     (* translating the variabe to a Cminor load address *)
-    transl_variable stbl CE a id = OK id_t ->
+    transl_variable stbl CE a id = Errors.OK id_t ->
     (* translating the value, we may need a overflow hypothesis on e_v/e_t_v *)
     transl_value e_v e_t_v ->
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g stkptr locenv m id_t idaddr ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (Identifier a id) = OK chk ->
+    compute_chnk stbl (Identifier a id) = Errors.OK chk ->
     (* the two storing operation maintain match_env *)
     storeUpdate stbl s (Identifier a id) e_v (OK s') ->
     Mem.storev chk m idaddr e_t_v = Some m' ->
@@ -3923,7 +3924,7 @@ Qed.
 Lemma assignment_preserve_stack_match_CE :
   forall stbl CE s a id id_t e_v s',
     (* translating the variabe to a Cminor load address, so id belongs to CE *)
-    transl_variable stbl CE a id = OK id_t ->
+    transl_variable stbl CE a id = Errors.OK id_t ->
     (* the two storing operation maintain match_env *)
     storeUpdate stbl s (Identifier a id) e_v (OK s') ->
     stack_match_CE s CE ->
@@ -3957,7 +3958,7 @@ Proof.
       assumption. }
     !destruct h_ex.
     rename x0 into sto'.
-    specialize H with (1:=heq_frameG0).
+    specialize H with (2:=heq_frameG0).
     eapply h_stk_mtch_CE_s_CE;eauto. 
 Qed.
 
@@ -3966,13 +3967,13 @@ Qed.
 Lemma assignment_preserve_stack_complete :
   forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
     (* translating the variabe to a Cminor load address *)
-    transl_variable stbl CE a id = OK id_t ->
+    transl_variable stbl CE a id = Errors.OK id_t ->
     (* translating the value, we may need a overflow hypothesis on e_v/e_t_v *)
     transl_value e_v e_t_v ->
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g stkptr locenv m id_t idaddr ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (Identifier a id) = OK chk ->
+    compute_chnk stbl (Identifier a id) = Errors.OK chk ->
     (* the two storing operation maintain match_env *)
     storeUpdate stbl s (Identifier a id) e_v (OK s') ->
     Mem.storev chk m idaddr e_t_v = Some m' ->
@@ -4002,13 +4003,13 @@ Lemma assignment_preserve_stack_separate :
   forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr m',
     invariant_compile CE stbl ->
     (* translating the variabe to a Cminor load address *)
-    transl_variable stbl CE a id = OK id_t ->
+    transl_variable stbl CE a id = Errors.OK id_t ->
     (* translating the value, we may need a overflow hypothesis on e_v/e_t_v *)
     transl_value e_v e_t_v ->
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g stkptr locenv m id_t idaddr ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (Identifier a id) = OK chk ->
+    compute_chnk stbl (Identifier a id) = Errors.OK chk ->
     (* the two storing operation maintain match_env *)
     Mem.storev chk m idaddr e_t_v = Some m' ->
     match_env stbl s CE stkptr locenv g m ->
@@ -4045,13 +4046,13 @@ Qed.
 Lemma assignment_preserve_stack_no_null_offset :
   forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
     (* translating the variabe to a Cminor load address *)
-    transl_variable stbl CE a id = OK id_t ->
+    transl_variable stbl CE a id = Errors.OK id_t ->
     (* translating the value, we may need a overflow hypothesis on e_v/e_t_v *)
     transl_value e_v e_t_v ->
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g stkptr locenv m id_t idaddr ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (Identifier a id) = OK chk ->
+    compute_chnk stbl (Identifier a id) = Errors.OK chk ->
     (* the two storing operation maintain match_env *)
     storeUpdate stbl s (Identifier a id) e_v (OK s') ->
     Mem.storev chk m idaddr e_t_v = Some m' ->
@@ -4067,7 +4068,7 @@ Qed.
 Lemma assignment_preserve_stack_safe :
   forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
     (* translating the variabe to a Cminor load address *)
-    transl_variable stbl CE a id = OK id_t ->
+    transl_variable stbl CE a id = Errors.OK id_t ->
     (* translating the value, we may need a overflow hypothesis on e_v/e_t_v *)
     transl_value e_v e_t_v ->
     (* if e_v is an int, then it is not overflowing (we are not trying
@@ -4076,7 +4077,7 @@ Lemma assignment_preserve_stack_safe :
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g stkptr locenv m id_t idaddr ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (Identifier a id) = OK chk ->
+    compute_chnk stbl (Identifier a id) = Errors.OK chk ->
     (* the two storing operation maintain match_env *)
     storeUpdate stbl s (Identifier a id) e_v (OK s') ->
     Mem.storev chk m idaddr e_t_v = Some m' ->
@@ -4146,13 +4147,13 @@ Lemma assignment_preserve_stack_match_addresses :
   forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
     invariant_compile CE stbl ->
     (* translating the variabe to a Cminor load address *)
-    transl_variable stbl CE a id = OK id_t ->
+    transl_variable stbl CE a id = Errors.OK id_t ->
     (* translating the value, we may need a overflow hypothesis on e_v/e_t_v *)
     transl_value e_v e_t_v ->
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g stkptr locenv m id_t idaddr ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (Identifier a id) = OK chk ->
+    compute_chnk stbl (Identifier a id) = Errors.OK chk ->
     (* the two storing operation maintain match_env *)
     storeUpdate stbl s (Identifier a id) e_v (OK s') ->
     Mem.storev chk m idaddr e_t_v = Some m' ->
@@ -4430,10 +4431,9 @@ Proof.
     cbn in h_CM_eval_expr_v.
     !inversion h_CM_eval_expr_v;subst.
     change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Int.zero)) n)) with (build_loads_ (Econst (Oaddrstack Int.zero)) (S n)) in h_CM_eval_expr_vaddr.
-    specialize IHn with (2:=h_CM_eval_expr_vaddr).
     !assert (chained_stack_structure m (S n) sp).
     { eapply chained_stack_structure_le;eauto. }
-    specialize IHn with (1:=h_chain_sp0).
+    specialize IHn with (1:=h_chain_sp0) (2:=h_CM_eval_expr_vaddr).
     decomp IHn.
     exists sp';split;auto.
     cbn.
@@ -4739,11 +4739,11 @@ Lemma assignment_preserve_chained_stack_structure:
     stack_no_null_offset stbl CE -> 
     exact_levelG CE ->
     (* translating the variabe to a Cminor load address *)
-    transl_variable stbl CE a id = OK id_t ->
+    transl_variable stbl CE a id = Errors.OK id_t ->
     (* Evaluating var address in Cminor *)
     Cminor.eval_expr g stkptr locenv m id_t idaddr ->
     (* Size of variable in Cminor memorry *)
-    compute_chnk stbl (Identifier a id) = OK chk ->
+    compute_chnk stbl (Identifier a id) = Errors.OK chk ->
     Mem.storev chk m idaddr e_t_v = Some m' ->
     chained_stack_structure m' n stkptr.
 Proof.
@@ -4761,7 +4761,7 @@ Lemma assignment_preserve_safe_cm_env:
     match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
     transl_name stbl CE (Identifier x x0) =: nme_t ->
     Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_addr ->
-    compute_chnk stbl (Identifier x x0) = OK nme_chk ->
+    compute_chnk stbl (Identifier x x0) = Errors.OK nme_chk ->
     transl_value e_v e_t_v ->
     storeUpdate stbl s (Identifier x x0) e_v (OK s') ->
     Mem.storev nme_chk m nme_t_addr e_t_v = Some m' ->
@@ -4865,7 +4865,7 @@ Lemma assignment_preserve_match_env:
       match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
       transl_name stbl CE (Identifier x x0) =: nme_t ->
       Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_addr ->
-      compute_chnk stbl (Identifier x x0) = OK nme_chk ->
+      compute_chnk stbl (Identifier x x0) = Errors.OK nme_chk ->
       transl_value e_v e_t_v ->
       storeUpdate stbl s (Identifier x x0) e_v (OK s') ->
       Mem.storev nme_chk m nme_t_addr e_t_v = Some m' ->
@@ -5099,7 +5099,7 @@ Lemma exec_store_params_preserve_forbidden_subproof:
   forall lparams st CE initparams,
     exact_levelG CE ->    
     stack_no_null_offset st CE ->
-    store_params st CE lparams = OK initparams -> 
+    store_params st CE lparams = Errors.OK initparams -> 
     forall astnum g proc_t sp e_chain e_chain' m t2 m' lvl,
       Datatypes.length CE = lvl -> 
       chained_stack_structure m lvl sp ->
@@ -6069,8 +6069,8 @@ Qed.
 
 
 Lemma build_compilenv_stack_no_null_offset:
-  ∀ (st : symboltable) (CE : CompilEnv.stack) (proc_lvl : level) (lparams : list parameter_specification) 
-    (decl : declaration) (CE' : compilenv) (sz : Z),
+  ∀ (st : symboltable) (CE : CompilEnv.state) (proc_lvl : level) (lparams : list paramSpec) 
+    (decl : decl) (CE' : compilenv) (sz : Z),
     exact_levelG CE →
     stack_no_null_offset st CE →
     build_compilenv st CE proc_lvl lparams decl =: (CE', sz) →
@@ -6078,11 +6078,11 @@ Lemma build_compilenv_stack_no_null_offset:
 Proof.
   !intros.
   rewrite <- build_compilenv_ok  in heq_build_compilenv.
-  functional inversion heq_build_compilenv;subst; rewrite build_compilenv_ok in *.
-  rewrite function_utils.build_frame_decl_ok in H2.
-  destruct x.
+  !functional inversion heq_build_compilenv;subst; rewrite build_compilenv_ok in *.
+  rewrite function_utils.build_frame_decl_ok in heq_build_frame_decl.
+  !destruct x.
   subst stoszchainparam.
-  pose proof build_frame_lparams_mon' _ _ _ _ _ H1 as h_bld_frm.
+  pose proof build_frame_lparams_mon' _ _ _ _ _ heq_bld_frm_lparams as h_bld_frm.
   cbn in h_bld_frm.
   !!assert (4 <= Int.modulus). {
     vm_compute.
@@ -6096,7 +6096,7 @@ Proof.
     functional inversion heq_CEfetches_nme. }
   !!assert (4 <= 4) by omega.
   specialize (h_bld_frm2 h_ftch_nil h_le0).
-  pose proof build_frame_decl_mon _ _ _ _ _ H2 as h_bld_decl.
+  pose proof build_frame_decl_mon _ _ _ _ _ heq_build_frame_decl as h_bld_decl.
   cbn in h_bld_decl.
   !destruct h_bld_frm1.
   specialize (h_bld_decl h_le_z_modulus).
@@ -6163,6 +6163,7 @@ Proof.
     unfold transl_variable.
     cbn.
     rewrite heq_lvloftop_CE_top_CE.
+    unfold scope_lvl in heq_transl_variable.
     rewrite heq_length in heq_transl_variable.
     !!destruct (CompilEnv.fetchG nme CE) eqn:?;destruct (CompilEnv.frameG nme CE) eqn:?;cbn in * ;eauto.
     destruct f;cbn in *.
@@ -6552,13 +6553,15 @@ Proof.
          !assert (exact_levelG CE).
          { apply h_inv_comp_CE_st. }         
          pose proof (exact_levelG_lgth _ _ _ _ h_exact_lvlG_CE heq_CEframeG_nme).
-         exfalso;omega.
+         exfalso.
+         subst scope_lvl.
+         omega.
       -- eapply h_CEnodupGCE;eauto.
 Admitted.
 
 Lemma add_to_frame_sz: forall stbl fram_sz parname parsubtype p sz,
     spark2Cminor.add_to_frame stbl fram_sz parname parsubtype =: p
-    -> spark2Cminor.compute_size stbl parsubtype = OK sz
+    -> spark2Cminor.compute_size stbl parsubtype = Errors.OK sz
     -> snd p = snd fram_sz + sz.
 Proof.
   !!intros until 1.
@@ -6866,7 +6869,7 @@ Lemma build_frame_lparams_nodup: forall stbl lparam fram_sz res,
     -> NoDupA eq_param_name lparam    
     -> fresh_params lparam (fst fram_sz)
     -> upper_bound (fst fram_sz) (snd fram_sz)
-    -> build_frame_lparams stbl fram_sz lparam = OK res
+    -> build_frame_lparams stbl fram_sz lparam = Errors.OK res
     -> NoDupA eq_fst_idnum (fst fram_sz)
     -> NoDupA eq_fst_idnum (fst res).
 Proof.
@@ -6995,16 +6998,16 @@ Proof.
 Qed.
 
 (* Extract the list of object names from a declaration block *)
-Fixpoint decl_to_lident (stbl:symboltable) (decl:declaration): list idnum :=
+Fixpoint decl_to_lident (stbl:symboltable) (decl:decl): list idnum :=
   match decl with
-  | D_Null_Declaration => nil
-  | D_Seq_Declaration _ decl1 decl2 =>
+  | NullDecl => nil
+  | SeqDecl _ decl1 decl2 =>
     let lident1 := decl_to_lident stbl decl1 in
     let lident2 := decl_to_lident stbl decl2 in
     List.app lident1 lident2
-  | D_Object_Declaration _ objdecl => (objdecl.(object_name) :: nil)
-  | D_Type_Declaration x x0 => nil
-  | D_Procedure_Body x x0 => nil
+  | ObjDecl _ objdecl => (objdecl.(object_name) :: nil)
+  | TypeDecl x x0 => nil
+  | ProcBodyDecl x x0 => nil
   end.
 
 (*
@@ -7082,7 +7085,7 @@ Inductive transl_value_list : list value -> list Values.val -> Prop :=
   tr_lval_nil : transl_value_list nil nil
 | tr_lval_cons: forall x x' l l', transl_value x x' -> transl_value_list l l' -> transl_value_list (x::l) (x'::l'). 
 
-Inductive transl_prm_value_list : list parameter_specification -> store -> list Values.val -> Prop :=
+Inductive transl_prm_value_list : list paramSpec -> store -> list Values.val -> Prop :=
   tr_lprmval_nil : transl_prm_value_list nil nil nil
 | tr_lprmval_cons: forall x x' l l' prm lprm,
     transl_value x x' -> transl_prm_value_list lprm l l' ->
@@ -7091,12 +7094,12 @@ Inductive transl_prm_value_list : list parameter_specification -> store -> list 
 
 Definition transl_paramexprlist := Eval cbv beta delta [bind bind2 transl_paramexprlist] in transl_paramexprlist.
 
-Function function_utils_transl_paramexprlist (stbl : symboltable) (CE : compilenv) (el : list exp) (lparams : list parameter_specification) {struct el} :
+Function function_utils_transl_paramexprlist (stbl : symboltable) (CE : compilenv) (el : list exp) (lparams : list paramSpec) {struct el} :
   res (list expr) :=
   let (l, l0) := (el, lparams) in
   match l with
   | nil => match l0 with
-           | nil => OK nil
+           | nil => Errors.OK nil
            | _ :: _ => Error (msg "Bad number of arguments")
            end
   | e1 :: e2 =>
@@ -7106,39 +7109,39 @@ Function function_utils_transl_paramexprlist (stbl : symboltable) (CE : compilen
           match parameter_mode p1 with
           | In =>
               match transl_expr stbl CE e1 with
-              | OK x => match function_utils_transl_paramexprlist stbl CE e2 p2 with
-                        | OK x0 => OK (x :: x0)
+              | Errors.OK x => match function_utils_transl_paramexprlist stbl CE e2 p2 with
+                        | Errors.OK x0 => Errors.OK (x :: x0)
                         | Error msg => Error msg
                         end
               | Error msg => Error msg
               end
           | Out =>
               match e1 with
-              | E_Literal _ _ => Error (msg "Out or In Out parameters should be names")
-              | E_Name _ nme =>
+              | Literal _ _ => Error (msg "Out or In Out parameters should be names")
+              | Name _ nme =>
                   match transl_name stbl CE nme with
-                  | OK x => match function_utils_transl_paramexprlist stbl CE e2 p2 with
-                            | OK x0 => OK (x :: x0)
+                  | Errors.OK x => match function_utils_transl_paramexprlist stbl CE e2 p2 with
+                            | Errors.OK x0 => Errors.OK (x :: x0)
                             | Error msg => Error msg
                             end
                   | Error msg => Error msg
                   end
-              | E_Binary_Operation _ _ _ _ => Error (msg "Out or In Out parameters should be names")
-              | E_Unary_Operation _ _ _ => Error (msg "Out or In Out parameters should be names")
+              | BinOp _ _ _ _ => Error (msg "Out or In Out parameters should be names")
+              | UnOp _ _ _ => Error (msg "Out or In Out parameters should be names")
               end
           | In_Out =>
               match e1 with
-              | E_Literal _ _ => Error (msg "Out or In Out parameters should be names")
-              | E_Name _ nme =>
+              | Literal _ _ => Error (msg "Out or In Out parameters should be names")
+              | Name _ nme =>
                   match transl_name stbl CE nme with
-                  | OK x => match function_utils_transl_paramexprlist stbl CE e2 p2 with
-                            | OK x0 => OK (x :: x0)
+                  | Errors.OK x => match function_utils_transl_paramexprlist stbl CE e2 p2 with
+                            | Errors.OK x0 => Errors.OK (x :: x0)
                             | Error msg => Error msg
                             end
                   | Error msg => Error msg
                   end
-              | E_Binary_Operation _ _ _ _ => Error (msg "Out or In Out parameters should be names")
-              | E_Unary_Operation _ _ _ => Error (msg "Out or In Out parameters should be names")
+              | BinOp _ _ _ _ => Error (msg "Out or In Out parameters should be names")
+              | UnOp _ _ _ => Error (msg "Out or In Out parameters should be names")
               end
           end
       end
@@ -7180,7 +7183,7 @@ Qed.
 (* This is false, since for inout parameter, evalName is called, and for our parameters, nothing is called. *)
 
 Proposition copy_in_lvl : forall st s pb_lvl sto prms_profile args f,
-  copy_in st s (pb_lvl,sto) prms_profile args (OK f) ->
+  copyIn st s (pb_lvl,sto) prms_profile args (OK f) ->
   exists sto', f = (pb_lvl,sto').
 Proof.
   !intros.
@@ -7213,7 +7216,7 @@ Lemma copy_in_spec:
     -> match_env st s CE (Values.Vptr spb ofs) locenv g m
     -> transl_paramexprlist st CE args prms_profile =: args_t
     (* je veux exprimer la propriété qui parle  *)
-    -> copy_in st s (pb_lvl,sto) prms_profile args (OK (pb_lvl,sto'))
+    -> copyIn st s (pb_lvl,sto) prms_profile args (OK (pb_lvl,sto'))
     -> exists lval_t, eval_exprlist g (Values.Vptr spb ofs) locenv m args_t lval_t
 (*             sto'' /\ copy_in st s (pb_lvl,nil) prms_profile args (OK (pb_lvl,sto'')) *)
 (*                       /\ sto' = List.app sto'' sto *)
@@ -7222,19 +7225,21 @@ Proof.
   !intros.
   remember (OK (pb_lvl, sto')) as res_copy_in.
   remember (pb_lvl, sto) as pb_lvl_sto.
-  revert heq_transl_params_args_t h_chain h_inv_comp_CE_st 
+  revert heq_transl_paramexprlist h_chain h_inv_comp_CE_st 
          h_match_env Heqres_copy_in Heqpb_lvl_sto .
   revert spb ofs locenv g m sto pb_lvl args_t sto'.
-  !induction h_copy_in; try discriminate;subst;repeat eq_same_clear;intros.
+  !induction h_copy_in; try discriminate;subst;repeat eq_same_clear;!intros.
   - subst.
-    rewrite <- transl_paramexprlist_ok in heq_transl_params_args_t;
-    functional inversion heq_transl_params_args_t;subst;
-      rewrite ?transl_paramexprlist_ok in *.
-    inversion Heqres_copy_in;subst;clear Heqres_copy_in.
+    rewrite <- transl_paramexprlist_ok in heq_transl_paramexprlist;
+      functional inversion heq_transl_paramexprlist;
+      subst;
+      rewrite ?transl_paramexprlist_ok in * ;
+      idtac.
+    inversion heq_OK;subst;clear heq_OK.
     exists  (@nil Values.val).
     constructor.
-  - rewrite <- transl_paramexprlist_ok in heq_transl_params_args_t;
-      functional inversion heq_transl_params_args_t;subst; rewrite ?transl_paramexprlist_ok in *;
+  - rewrite <- transl_paramexprlist_ok in heq_transl_paramexprlist;
+      functional inversion heq_transl_paramexprlist;subst; rewrite ?transl_paramexprlist_ok in *;
       match goal with
       | H:parameter_mode param = ?a , H': parameter_mode param = ?b |- _ => try now (rewrite H in H';discriminate H')
       end.
@@ -7244,8 +7249,8 @@ Proof.
       !!destruct h_transl as [v_t [? ?]].
       exists (x_v::x1);repeat split;eauto.
       econstructor;eauto.
-  - rewrite <- transl_paramexprlist_ok in heq_transl_params_args_t;
-      functional inversion heq_transl_params_args_t;subst; rewrite ?transl_paramexprlist_ok in *;
+  - rewrite <- transl_paramexprlist_ok in heq_transl_paramexprlist;
+      functional inversion heq_transl_paramexprlist;subst; rewrite ?transl_paramexprlist_ok in *;
       match goal with
       | H:parameter_mode param = ?a , H': parameter_mode param = ?b |- _ => try now (rewrite H in H';discriminate H')
       end.
@@ -7255,8 +7260,8 @@ Proof.
       !!destruct h_transl as [v_t [? ?]].
       exists (x_v::x1);repeat split;eauto.
       econstructor;eauto.
-  - !!(rewrite <- transl_paramexprlist_ok in heq_transl_params_args_t;
-       functional inversion heq_transl_params_args_t;subst; rewrite ?transl_paramexprlist_ok in *;
+  - !!(rewrite <- transl_paramexprlist_ok in heq_transl_paramexprlist;
+       functional inversion heq_transl_paramexprlist;subst; rewrite ?transl_paramexprlist_ok in *;
       match goal with
       | H:parameter_mode param = ?a , H': parameter_mode param = ?b |- _ => try now (rewrite H in H';discriminate H')
       end).
@@ -7272,28 +7277,28 @@ Proof.
          evaluated and it went well, so the variable was evaluated also in Cminor,
          so its address too. *)
       (* First some premisses for stack_match. *)
-      assert (h_ex:exists typ_nme, type_of_name st n =: typ_nme).
+      assert (h_ex:exists typ_nme, type_of_name st nm =: typ_nme).
       { admit. (* well typedness of the program? *) }
       !!destruct h_ex as [typ_nme ?] .
       assert (h_ex:exists typ, transl_type st typ_nme =: typ).
       { admit. (* completness of type translation? *) }
       !!destruct h_ex as [typ ?].
-      assert (h_ex: exists load_addr_nme, make_load n_t typ =: load_addr_nme).
+      assert (h_ex: exists load_addr_nme, make_load nm_t typ =: load_addr_nme).
       { admit. (* completness of make_load? *) }
       !!destruct h_ex as [load_addr_nme ?].
       assert (h_stack_mtch:=(me_stack_match h_match_env)).
       red in h_stack_mtch.
-      !!destruct (h_stack_mtch _ _ _ _ _ _ h_eval_name_n_v heq_type_of_name heq_transl_name heq_transl_type heq_make_load) as [v_t [htrsl h_eval]];eauto.
+      !!destruct (h_stack_mtch _ _ _ _ _ _ h_eval_name_nm_v heq_type_of_name heq_transl_name heq_transl_type heq_make_load) as [v_t [htrsl h_eval]];eauto.
       up_type.
       (* Currently we only have by_value loads (but with arrays this may change) *)
       !functional inversion heq_make_load.
       subst.
       (* From [Cminor.eval_expr (Eload chunk x) v_t] we can deduce that [x] itself can be evaluated to a value. *)
       !inversion h_CM_eval_expr_load_addr_nme_load_addr_nme_v;subst.
-      exists (n_t_v::le_t_v).
+      exists (nm_t_v::le_t_v).
       constructor;auto.
-  - !!(rewrite <- transl_paramexprlist_ok in heq_transl_params_args_t;
-       functional inversion heq_transl_params_args_t;subst; rewrite ?transl_paramexprlist_ok in *;
+  - !!(rewrite <- transl_paramexprlist_ok in heq_transl_paramexprlist;
+       functional inversion heq_transl_paramexprlist;subst; rewrite ?transl_paramexprlist_ok in *;
        match goal with
        | H:parameter_mode param = ?a , H': parameter_mode param = ?b |- _ => try now (rewrite H in H';discriminate H')
        end).
@@ -7309,29 +7314,29 @@ Proof.
          evaluated and it went well, so the variable was evaluated also in Cminor,
          so its address too. *)
       (* First some premisses for stack_match. *)
-      assert (h_ex:exists typ_nme, type_of_name st n =: typ_nme).
+      assert (h_ex:exists typ_nme, type_of_name st nm =: typ_nme).
       { admit. (* well typedness of the program? *) }
       !!destruct h_ex as [typ_nme ?] .
       assert (h_ex:exists typ, transl_type st typ_nme =: typ).
       { admit. (* completness of type translation? *) }
       !!destruct h_ex as [typ ?].
-      assert (h_ex: exists load_addr_nme, make_load n_t typ =: load_addr_nme).
+      assert (h_ex: exists load_addr_nme, make_load nm_t typ =: load_addr_nme).
       { admit. (* completness of make_load? *) }
       !!destruct h_ex as [load_addr_nme ?].
       assert (h_stack_mtch:=(me_stack_match h_match_env)).
       red in h_stack_mtch.
-      !!destruct (h_stack_mtch _ _ _ _ _ _ h_eval_name_n heq_type_of_name heq_transl_name heq_transl_type heq_make_load) as [v_t [htrsl h_eval]];eauto.
+      !!destruct (h_stack_mtch _ _ _ _ _ _ h_eval_name_nm heq_type_of_name heq_transl_name heq_transl_type heq_make_load) as [v_t [htrsl h_eval]];eauto.
       up_type.
       (* Currently we only have by_value loads (but with arrays this may change) *)
       functional inversion heq_make_load.
       subst.
       (* From [Cminor.eval_expr (Eload chunk x) v_t] we can deduce that [x] itself can be evaluated to a value. *)
       !inversion h_CM_eval_expr_load_addr_nme_load_addr_nme_v;subst.
-      exists (n_t_v::le_t_v).
+      exists (nm_t_v::le_t_v).
       constructor;auto.
   - up_type.
-    !!(rewrite <- transl_paramexprlist_ok in heq_transl_params_args_t;
-       functional inversion heq_transl_params_args_t;subst; rewrite ?transl_paramexprlist_ok in *;
+    !!(rewrite <- transl_paramexprlist_ok in heq_transl_paramexprlist;
+       functional inversion heq_transl_paramexprlist;subst; rewrite ?transl_paramexprlist_ok in *;
        match goal with
        | H:parameter_mode param = ?a , H': parameter_mode param = ?b |- _ => try now (rewrite H in H';discriminate H')
        end).
@@ -7344,14 +7349,14 @@ Proof.
          by well_formedness/well_typedness it should correctly evaluate
          to an address. Even if it is not guaranteed that this address
          contains a value in the current case: (Out parameter). *)
-      assert (h_ex:∃ n_t_v, Cminor.eval_expr g (Values.Vptr spb ofs) locenv m n_t n_t_v).
+      assert (h_ex:∃ n_t_v, Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nm_t n_t_v).
       { !!pose proof (me_stack_match_addresses (me_safe_cm_env h_match_env)).
         red in h_stk_mtch_addr_CE_m.
         eapply h_stk_mtch_addr_CE_m.
         eassumption. }
 
       !!destruct h_ex as [? ?].
-      exists (n_t_v::le_t_v).
+      exists (nm_t_v::le_t_v).
       constructor;auto.
 Admitted.
 
@@ -7732,12 +7737,12 @@ Qed.
 (* inversion lemma that let the match lvlv with unresolved. *)
 Lemma compilenv_inv:
   forall (stbl : symboltable) (enclosingCE : compilenv) (lvl : level)
-         (lparams : list parameter_specification) (decl : declaration) res,
-    build_compilenv stbl enclosingCE lvl lparams decl = OK res
+         (lparams : list paramSpec) (decl : decl) res,
+    build_compilenv stbl enclosingCE lvl lparams decl = Errors.OK res
     -> exists sto sz init_sto_sz fr_prm, res = (((Datatypes.length enclosingCE, sto)::enclosingCE),sz)
                                          /\ init_sto_sz = (nil, 4)
-                                         /\ build_frame_lparams stbl init_sto_sz lparams = OK fr_prm
-                                         /\ build_frame_decl stbl fr_prm decl = OK (sto, sz).
+                                         /\ build_frame_lparams stbl init_sto_sz lparams = Errors.OK fr_prm
+                                         /\ build_frame_decl stbl fr_prm decl = Errors.OK (sto, sz).
 Proof.
   intros stbl enclosingCE lvl lparams decl res heq_bldCE.
   rewrite <- build_compilenv_ok in heq_bldCE.
@@ -7875,15 +7880,18 @@ Proof.
   - destruct addr_v;try discriminate. 
     up_type.
     simpl in heq_storev_a_v_m'.
-    eapply Mem.store_unchanged_on;eauto.
-    !intros.
-    intros [abs1 abs2].
-    red in abs1.
-    !functional inversion heq_transl_name;subst.
-    simpl in heq_compute_chnk_nme_chunk.
-    rewrite <- transl_variable_astnum with (a:=astnum) (1:=heq_transl_variable) in heq_transl_variable.
-    specialize (abs1 id addr chunk b i heq_transl_variable heq_compute_chnk_nme_chunk h_CM_eval_expr_addr_addr_v). 
-    destruct abs1;auto;omega.
+    split.
+    + admit.
+    + !intros.
+      eapply Mem.store_unchanged_on;eauto.
+      !intros.
+      intros [abs1 abs2].
+      red in abs1.
+      !functional inversion heq_transl_name;subst.
+      simpl in heq_compute_chnk_nme_chunk.
+      rewrite <- transl_variable_astnum with (a:=astnum) (1:=heq_transl_variable) in heq_transl_variable.
+      specialize (abs1 id addr chunk b i heq_transl_variable heq_compute_chnk_nme_chunk h_CM_eval_expr_addr_addr_v). 
+      destruct abs1;auto;omega.
   (* Scall => chained_struct *)
   - admit.
   (* Scall => unchanged on forbidden *)
