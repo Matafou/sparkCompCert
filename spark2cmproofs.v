@@ -3958,7 +3958,7 @@ Proof.
       assumption. }
     !destruct h_ex.
     rename x0 into sto'.
-    specialize H with (2:=heq_frameG0).
+    specialize H with (1:=heq_frameG0).
     eapply h_stk_mtch_CE_s_CE;eauto. 
 Qed.
 
@@ -7856,15 +7856,15 @@ Lemma exec_preserve_invisible:
       chained_stack_structure m lvl stkptr ->
       invariant_compile CE st ->
       transl_stmt st CE stmt =: stmt_t ->
-      chained_stack_structure m' lvl stkptr ∧ 
-      forall astnum,
+      chained_stack_structure m' lvl stkptr
+      ∧ forall astnum,
           (* eval_stmt st s stmt s' -> *)
           Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m'.
 Proof.
   !!intros until 1.
-  !induction h_exec_stmt_stmt_t_outc;!intros.
-  match goal with
-  | H: transl_stmt st CE stmt = _ |- _ => 
+  !induction h_exec_stmt_stmt_t_outc;!intros;
+    match goal with
+  | H: transl_stmt ?st ?CE ?stmt = _ |- _ => 
     rewrite <- transl_stmt_ok in H;
     !functional inversion H
   end;
@@ -7888,17 +7888,16 @@ Proof.
       intros [abs1 abs2].
       red in abs1.
       !functional inversion heq_transl_name;subst.
-      simpl in heq_compute_chnk_nme_chunk.
+      simpl in heq_compute_chnk_nme.
       rewrite <- transl_variable_astnum with (a:=astnum) (1:=heq_transl_variable) in heq_transl_variable.
-      specialize (abs1 id addr chunk b i heq_transl_variable heq_compute_chnk_nme_chunk h_CM_eval_expr_addr_addr_v). 
+      specialize (abs1 id addr chunk b i heq_transl_variable heq_compute_chnk_nme h_CM_eval_expr_addr_addr_v). 
       destruct abs1;auto;omega.
   (* Scall => chained_struct *)
   - admit.
   (* Scall => unchanged on forbidden *)
-  - rename x1 into chaining_arg.
-    rename x into args_t.
+  - rename x into args_t.
     rename lexp into args.
-    rename bl into all_args_t.
+(*     rename bl into all_args_t. *)
     rename a_v into proc_addr.
     rename fd into proc_value.
     rename y into proc_lvl.
@@ -7913,7 +7912,7 @@ Proof.
          ∃ CE_prfx CE_sufx pbdy X lotherproc,
            CompilEnv.cut_until CE proc_lvl CE_prfx CE_sufx /\
            transl_procedure st CE_sufx proc_lvl pbdy (* prov_lvl+1? *)
-           = OK ((X, AST.Gfun (AST.Internal f0))::lotherproc) /\
+           = Errors.OK ((X, AST.Gfun (AST.Internal f0))::lotherproc) /\
            ∀ i : AST.ident,
              List.In i (transl_decl_to_lident st (procedure_declarative_part pbdy))
              → i ≠ chaining_param).
@@ -7926,13 +7925,13 @@ Proof.
         !destruct t0.
         specialize (h_stk_mtch_fun l p eq_refl).
         decomp h_stk_mtch_fun.
-        exists CE' CE''.
+        exists CE', CE''.
         !!destruct 
           (transl_lparameter_specification_to_procsig
              st l (procedure_parameter_profile p)) eqn:?;try discriminate.
         simpl in heq_transl_procsig_pnum.
         !invclear heq_transl_procsig_pnum.
-        exists p pnum0 lglobdef.
+        exists p, pnum0, lglobdef.
         split;[ | split].
         + assumption.
         + subst_det_addrstack_zero.
@@ -7954,7 +7953,7 @@ Proof.
       set (proc_t := {|
                       fn_sig := x5;
                       fn_params := chaining_param :: tlparams;
-                      fn_vars := transl_decl_to_lident st decl;
+                      fn_vars := transl_decl_to_lident st decl0;
                       fn_stackspace := y;
                       fn_body := pbody_t |}) in *.
       rename x into CE_proc.
@@ -8022,15 +8021,15 @@ Proof.
           - omega.
           - assumption. }
         assert (Datatypes.length CE_proc = S (Datatypes.length CE_sufx)) as heq_lgth_CE_proc.
-        { rewrite <- build_compilenv_ok in heq0.
-          functional inversion heq0.
+        { rewrite <- build_compilenv_ok in heq_build_compilenv.
+          functional inversion heq_build_compilenv.
           reflexivity. }
         (* Since the chaining param is not the translation of a spark variable, 
            we stay in callers environment, that is: from m1 to m4 there is no change
            in the addresses visible in m. *)
         !assert (Mem.unchanged_on (forbidden st CE g astnum e sp m m_chain) m_pre_chain m_chain).
-        { unfold chain_param in h_exec_stmt_chain_param.
-          !inversion h_exec_stmt_chain_param.
+        { unfold chain_param in h_exec_stmt_chain_param_Out_normal.
+          !inversion h_exec_stmt_chain_param_Out_normal.
           unfold Mem.storev in heq_storev_v_m_chain.
           destruct vaddr;try discriminate.
           apply Mem.store_unchanged_on with (1:=heq_storev_v_m_chain).
@@ -8056,11 +8055,11 @@ Proof.
         { eapply malloc_preserves_chained_structure;eauto. }
 
         !assert(chained_stack_structure m_chain (Datatypes.length CE_sufx) (Values.Vptr b' Int.zero)).
-        { !!inversion heq;clear heq.
-          rewrite <- heq_all_args_t in h_CM_eval_exprl_bl_vargs.
+        { !!inversion heq_lgth_CE_proc;clear heq_lgth_CE_proc.
+(*           rewrite <- heq_all_args_t in h_CM_eval_exprl_bl_vargs. *)
           !inversion h_CM_eval_exprl_bl_vargs.
-          unfold chain_param in h_exec_stmt_chain_param.
-          !inversion h_exec_stmt_chain_param.
+          unfold chain_param in h_exec_stmt_chain_param_Out_normal.
+          !inversion h_exec_stmt_chain_param_Out_normal.
           unfold sp_proc in h_CM_eval_expr_vaddr.
           repeat subst_det_addrstack_zero.
           eapply storev_outside_struct_chain_preserves_chained_structure with (m:=m_pre_chain) (g:=g)(e:=e) (sp0:=sp0).
@@ -8074,17 +8073,18 @@ Proof.
           + eassumption. }
           
         !assert (chained_stack_structure m_chain (S (Datatypes.length CE_sufx)) sp_proc).
-        { !!inversion heq;clear heq.
-          rewrite <- heq_all_args_t in h_CM_eval_exprl_bl_vargs.
+        { !!inversion heq_lgth_CE_proc;clear heq_lgth_CE_proc.
+(*           rewrite <- heq_all_args_t in h_CM_eval_exprl_bl_vargs. *)
           !inversion h_CM_eval_exprl_bl_vargs.
-          unfold chain_param in h_exec_stmt_chain_param.
-          !inversion h_exec_stmt_chain_param.
+          unfold chain_param in h_exec_stmt_chain_param_Out_normal.
+          !inversion h_exec_stmt_chain_param_Out_normal.
           !inversion h_CM_eval_expr_v.
-          cbn [set_params] in heq_mget.          
-          rewrite map_get_set_same_nodup in heq_mget.
+          cbn [set_params] in heq_mget_chaining_param_v.          
+          rewrite map_get_set_same_nodup in heq_mget_chaining_param_v;auto.
           !assert (chained_stack_structure m (Datatypes.length CE - Datatypes.length CE_sufx) sp).
           { eapply chained_stack_structure_le;eauto;omega. }
           pose proof chain_repeat_loadv _ _ _ h_chain_sp _ g e h_repeat_loadv.
+          rewrite heq_length.
           apply chained_S with (b':=b').
           - !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain.
             decomp h_ex.
@@ -8105,9 +8105,8 @@ Proof.
             repeat  subst_det_addrstack_zero.
             cbn in heq_storev_v_m_chain |- * .
             rewrite (Mem.load_store_same _ _ _ _ _ _ heq_storev_v_m_chain).
-            inversion heq_mget.
-            reflexivity.
-          - apply h_pbdy_chainarg_noclash. }
+            inversion heq_mget_chaining_param_v.
+            reflexivity. }
 
         (* This is from m_chain only. *)
         (* TODO: prove that (forbidden m_chain m_chain) x y <=>
@@ -8117,7 +8116,7 @@ Proof.
                  ∧ chained_stack_structure m_init_params (Datatypes.length CE_proc) sp_proc
                  ∧ unchange_forbidden st CE_proc g astnum e_chain e_initparams sp_proc m_chain m_init_params).
         { eapply init_params_preserves_structure;eauto.
-          - eapply build_compilenv_exact_lvl with (2:=heq0);eauto.
+          - eapply build_compilenv_exact_lvl with (2:=heq_build_compilenv);eauto.
             eapply exact_lvlG_cut_until;eauto.
           - eapply build_compilenv_stack_no_null_offset with (CE:=CE_sufx).
             + eapply exact_lvlG_cut_until;eauto.
@@ -8134,7 +8133,7 @@ Proof.
             move sp_proc after t5.
             move current_lvl after t5.
             move tlparams after t5.
-            set (initlocenv:= set_locals (transl_decl_to_lident st decl)
+            set (initlocenv:= set_locals (transl_decl_to_lident st decl0)
                                          (set_params vargs (chaining_param :: tlparams))) in *|- *.
             move initlocenv after proc_t.
             !assert (stack_localstack_aligned (Datatypes.length CE_sufx) e g m sp'').
@@ -8150,19 +8149,19 @@ Proof.
               (* Then prove that nothing visible from there has change (use unchanged_on forbidden hyps)  *)
               red in h_aligned_g_m.
               !assert (δ_lvl ≤ Datatypes.length CE_sufx).
-              { rewrite <-build_compilenv_ok in heq0.
-                functional inversion heq0.
-                rewrite build_compilenv_ok in heq0;subst.
+              { rewrite <-build_compilenv_ok in heq_build_compilenv.
+                functional inversion heq_build_compilenv.
+                rewrite build_compilenv_ok in heq_build_compilenv;subst.
                 cbn in h_le_δ_lvl.
                 omega. }
-              specialize (h_aligned_g_m δ_lvl h_le_δ_lvl0).
+              specialize (h_aligned_g_m _ h_le_δ_lvl0).
               decomp h_aligned_g_m.
-              unfold chaining_arg in *.
-              !!inversion heq;clear heq.
-              rewrite <- heq_all_args_t in h_CM_eval_exprl_bl_vargs.
+(*               unfold chaining_arg in *. *)
+(*               !!inversion heq;clear heq. *)
+(*               rewrite <- heq_all_args_t in h_CM_eval_exprl_bl_vargs. *)
               !inversion h_CM_eval_exprl_bl_vargs.
-              unfold initlocenv,chain_param in h_exec_stmt_chain_param.
-              !inversion h_exec_stmt_chain_param.
+              unfold initlocenv,chain_param in h_CM_eval_expr_addr_enclosing_frame_addr_enclosing_frame_v.
+              !inversion h_exec_stmt_chain_param_Out_normal.
               unfold current_lvl in *.
               (* needed by the next omega. *)
               unfold sp_proc in h_CM_eval_expr_vaddr.
@@ -8170,8 +8169,8 @@ Proof.
               (* cleaning + recollecting all the occurrencies. *)
               subst sp_proc.
               set (sp_proc:=(Values.Vptr sp0 Int.zero)) in *|-*.
-              subst initlocenv.
-              set (initlocenv := set_locals (transl_decl_to_lident st decl) (set_params (v1 :: vl) (chaining_param :: tlparams))) in *|-*.
+(*               subst initlocenv. *)
+              set (initlocenv := set_locals (transl_decl_to_lident st decl0) (set_params (addr_enclosing_frame_v :: vl) (chaining_param :: tlparams))) in *|-*.
               set (whole_trace := (Events.Eapp Events.E0 (Events.Eapp (Events.Eapp t2 t4) (Events.Eapp t0 t5)))) in *|-* .
               up_type.
               (* end cleaning *)
@@ -8193,20 +8192,20 @@ Proof.
                 decomp h_ex.
                 subst sp'' .
                 !inversion h_CM_eval_expr_v.
-                unfold initlocenv in heq_mget.
+                unfold initlocenv in heq_mget_chaining_param_initlocenv_v.
                 !assert ( Maps.PTree.get chaining_param
-                                         (set_locals (transl_decl_to_lident st decl) (Maps.PTree.set chaining_param v1 (set_params vl tlparams)))
-                          = Some v1).
+                                         (set_locals (transl_decl_to_lident st decl0) (Maps.PTree.set chaining_param addr_enclosing_frame_v (set_params vl tlparams)))
+                          = Some addr_enclosing_frame_v).
                 { eapply map_get_set_same_nodup.
                   !intros.
                   eapply h_pbdy_chainarg_noclash.
                   cbn.
                   assumption. }
                   subst chain_param.
-                  subst chaining_arg.
-                  cbn [set_params] in heq_mget.
-                  rewrite heq_mget in heq_mget0.
-                  !invclear heq_mget0.
+(*                   subst chaining_arg. *)
+                  cbn [set_params] in heq_mget_chaining_param_initlocenv_v.
+                  rewrite heq_mget_chaining_param_initlocenv_v in heq_mget_chaining_param_addr_enclosing_frame_v.
+                  !invclear heq_mget_chaining_param_addr_enclosing_frame_v.
                   !assert (chained_stack_structure m (Datatypes.length CE - Datatypes.length CE_sufx) sp).
                   { eapply chained_stack_structure_le;eauto;omega. }
                   !!pose proof chain_repeat_loadv _ _ _ h_chain_sp _ g e h_repeat_loadv.
