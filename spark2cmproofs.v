@@ -8227,8 +8227,8 @@ Proof.
 
                 (* malloc + store didnt change chaingin struct. *)
                 - unfold sp_proc in *.
-                  assert ((Values.Vptr b' Int.zero) = v1).
-                  { eapply det_eval_expr;eauto. }
+                  assert ((Values.Vptr b' Int.zero) = addr_enclosing_frame_v).
+                  { eapply det_eval_expr ;eauto. }
                   subst.
                   cbn in heq_storev_v_m_chain |-* .
                   rewrite (Mem.load_store_same _ _ _ _ _ _ heq_storev_v_m_chain).
@@ -8241,17 +8241,16 @@ Proof.
                 -- cbn in heq_storev_v_m_chain |- *.
                    !assert (v = sp'').
                    { 
-                     transitivity v1.
+                     transitivity addr_enclosing_frame_v.
                      - subst sp_proc.
-                       rename v1 into chaining_value.
                        !inversion h_CM_eval_expr_v.
-                       unfold initlocenv in heq0.
-                       unfold initlocenv in heq_mget.
-                       rewrite map_get_set_locals_diff in heq_mget.
+(*                        unfold initlocenv in heq0. *)
+                       unfold initlocenv in heq_mget_chaining_param_initlocenv_v.
+                       rewrite map_get_set_locals_diff in heq_mget_chaining_param_initlocenv_v.
                        2: admit. (* chaingin_param not in decl *)
-                       cbn [set_params] in heq_mget.
-                       rewrite Maps.PTree.gss in heq_mget.
-                       inversion heq_mget.
+                       cbn [set_params] in heq_mget_chaining_param_initlocenv_v.
+                       rewrite Maps.PTree.gss in heq_mget_chaining_param_initlocenv_v.
+                       inversion heq_mget_chaining_param_initlocenv_v.
                        reflexivity.
                      - apply chain_repeat_loadv with (g:=g)(e:=e) in h_repeat_loadv.
                        + subst_det_addrstack_zero.
@@ -8325,7 +8324,7 @@ Proof.
           (* splitting in m -> m_pre_chain  -> m_chain *)
           assert (Mem.perm m_pre_chain x y Cur perm).
           { eapply Mem.perm_alloc_1 with (m1:=m);eauto. }
-          !inversion h_exec_stmt_chain_param.
+          !inversion h_exec_stmt_chain_param_Out_normal.
           unfold sp_proc in h_CM_eval_expr_vaddr.
           subst_det_addrstack_zero.
           unfold Mem.storev in heq_storev_v_m_chain.
@@ -8337,11 +8336,11 @@ Proof.
                 ∧ chained_stack_structure m_locvarinit (S (Datatypes.length CE_sufx)) sp_proc
                 ∧ unchange_forbidden st CE_proc g astnum e_initparams e_locvarinit sp_proc m_init_params m_locvarinit).
         { !inversion h_exec_stmt_locvarinit;eq_same_clear.
-          !inversion h_exec_stmt.
+          !inversion h_exec_stmt_Sskip_Out_normal.
           eapply init_locals_preserves_structure.
-          - eapply build_compilenv_exact_lvl with (2:=heq0) ;eauto.
+          - eapply build_compilenv_exact_lvl with (2:=heq_build_compilenv) ;eauto.
             eapply exact_lvlG_cut_until;eauto.
-          - eapply build_compilenv_stack_no_null_offset with (3:=heq0);eauto.
+          - eapply build_compilenv_stack_no_null_offset with (3:=heq_build_compilenv);eauto.
             eapply exact_lvlG_cut_until;eauto.
           - eassumption.
           - assumption.
@@ -8372,7 +8371,9 @@ Proof.
   - destruct b.
     + eapply IHh_exec_stmt_stmt_t_outc;eauto.
     + eapply IHh_exec_stmt_stmt_t_outc;eauto.
-  - specialize (IHh_exec_stmt_stmt_t_outc1 _ _ _ _ _ h_wf_st_st (eq_refl _) h_strg_mtch_s_CE_m h_chain_lvl_sp h_inv_comp_CE_st heq__res2).
+  - specialize IHh_exec_stmt_stmt_t_outc1
+      with (1:=h_wf_st_st) (2:=eq_refl _) (3:=h_strg_mtch_s_CE_m)
+           (4:=h_chain_lvl_sp) (5:=h_inv_comp_CE_st) (6:=heq_transl_stmt0).
     (* Needing match_env preserved here. *)
     admit.
   (* specialize (IHh_exec_stmt_stmt_t_outc2 _ _ _ _ ?  heq0). *)
@@ -8380,10 +8381,10 @@ Proof.
      Compcert, by changing its definition. *)
 
   - !assert (chained_stack_structure m1 (Datatypes.length CE) sp
-             ∧ (∀ astnum : language_basics.astnum, Mem.unchanged_on (forbidden st CE g astnum e sp m m) m m1)).
+             ∧ (∀ astnum : ast_basics.astnum, Mem.unchanged_on (forbidden st CE g astnum e sp m m) m m1)).
     { eapply IHh_exec_stmt_stmt_t_outc1;eauto. }
     !assert (chained_stack_structure m2 (Datatypes.length CE) sp
-             ∧ (∀ astnum : language_basics.astnum, Mem.unchanged_on (forbidden st CE g astnum e1 sp m1 m1) m1 m2)).
+             ∧ (∀ astnum : ast_basics.astnum, Mem.unchanged_on (forbidden st CE g astnum e1 sp m1 m1) m1 m2)).
     { eapply IHh_exec_stmt_stmt_t_outc2;eauto.
       - admit. (* need to enrich the property. *)
       - eapply IHh_exec_stmt_stmt_t_outc1;eauto. }
