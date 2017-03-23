@@ -4858,6 +4858,24 @@ Qed.
 *)
 Admitted.
 
+
+Lemma assignment_preserve_strong_match_env:
+  forall stbl s CE spb ofs locenv g m x x0 nme_t nme_chk nme_t_addr e_v e_t_v s' m',
+    forall h_overflow:(forall n, e_v = Int n -> overflowCheck n (OK (Int n))),
+      invariant_compile CE stbl ->
+      strong_match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
+      transl_name stbl CE (Identifier x x0) =: nme_t ->
+      Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_addr ->
+      compute_chnk stbl (Identifier x x0) = Errors.OK nme_chk ->
+      transl_value e_v e_t_v ->
+      storeUpdate stbl s (Identifier x x0) e_v (OK s') ->
+      Mem.storev nme_chk m nme_t_addr e_t_v = Some m' ->
+      strong_match_env stbl s' CE (Values.Vptr spb ofs) locenv g m'.
+Proof.
+  
+Qed.
+
+
 Lemma assignment_preserve_match_env:
   forall stbl s CE spb ofs locenv g m x x0 nme_t nme_chk nme_t_addr e_v e_t_v s' m',
     forall h_overflow:(forall n, e_v = Int n -> overflowCheck n (OK (Int n))),
@@ -7844,8 +7862,6 @@ Ltac rename_wf_st h th :=
   end.
 Ltac rename_sparkprf ::= rename_wf_st.
 
-
-(* TODO: Adapt the proof thh changed statement.  *)
 Lemma exec_preserve_invisible:
   ∀ g func stkptr locenv m stmt_t tr locenv' m' outc,
     exec_stmt g func stkptr locenv m stmt_t tr locenv' m' outc -> 
@@ -8399,14 +8415,13 @@ Admitted.
 
 
 
-
 (* replacing match-env by strong_match_env + unchange_on (forbidden). *)
-Lemma transl_stmt_normal_OK : forall stbl (stm:statement) s norms',
-    eval_stmt stbl s stm norms' ->
+Lemma transl_stmt_normal_OK : forall stbl (stm:stmt) s norms',
+    evalStmt stbl s stm norms' ->
     forall s' CE (stm':Cminor.stmt),
       norms' = OK s' ->
       invariant_compile CE stbl ->
-      transl_stmt stbl CE stm = (OK stm') ->
+      transl_stmt stbl CE stm = (Errors.OK stm') ->
       forall lvl spb ofs f locenv g m stkptr,
         lvl = Datatypes.length CE -> 
         stkptr = Values.Vptr spb ofs -> 
@@ -8422,10 +8437,14 @@ Proof.
   !!intros until 1.
   Opaque transl_stmt.
   induction h_eval_stmt;simpl in *;intros ; rename_all_hyps ; eq_same_clear;
-  try (rewrite <- transl_stmt_ok in heq_transl_stmt_stm';
-        !functional inversion heq_transl_stmt_stm';
-        subst;
-        try rewrite -> transl_stmt_ok in * ); eq_same_clear.
+  try (
+      let h := match goal with
+               | H: transl_stmt _ _ _ = _ |- _ => H
+               end in
+      rewrite <- transl_stmt_ok in h;
+      !functional inversion h;
+      subst;
+      try rewrite -> transl_stmt_ok in * ); eq_same_clear.
   (* Skip *)
   - eexists. eexists. eexists.
     repeat (apply conj;!!intros).
@@ -8449,7 +8468,7 @@ Proof.
     (* transl_type never fails *)
     assert (hex:exists nme_type_t, transl_type stbl nme_type =: nme_type_t).
     { simpl in *.
-      assert (type_of_name stbl (Identifier astnum id) = OK nme_type).
+      assert (type_of_name stbl (Identifier astnum id) = Errors.OK nme_type).
       { simpl.
         rewrite heq_fetch_exp_type.
         reflexivity. }
@@ -8512,13 +8531,16 @@ Proof.
       assert (e_t_v0 = e_t_v).
       { eapply det_eval_expr;eauto. }
       subst e_t_v0.
-      assert (match_env stbl s' CE (Values.Vptr spb ofs) locenv g m').
+      !assert (match_env stbl s' CE (Values.Vptr spb ofs) locenv g m').
       { eapply assignment_preserve_match_env;eauto.
         !intros.
         subst.
         eapply eval_expr_overf;eauto. }
+      up_type.
       
+      apply assignment_preserve_chained_stack_structure_aux with (m:=m).
       admit. (* TODO strong match instead. *)
+    *
   (* Assignment with satisifed range constraint (Range l u) *)
   - rename x into nme.
     rename st into stbl.
