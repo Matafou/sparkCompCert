@@ -4861,9 +4861,10 @@ Admitted.
 
 Lemma assignment_preserve_strong_match_env:
   forall stbl s CE spb ofs locenv g m x x0 nme_t nme_chk nme_t_addr e_v e_t_v s' m',
+    transl_name stbl CE (Identifier x x0) =: nme_t ->
+    strong_match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
     forall h_overflow:(forall n, e_v = Int n -> overflowCheck n (OK (Int n))),
       invariant_compile CE stbl ->
-      strong_match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
       transl_name stbl CE (Identifier x x0) =: nme_t ->
       Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_addr ->
       compute_chnk stbl (Identifier x x0) = Errors.OK nme_chk ->
@@ -4872,8 +4873,25 @@ Lemma assignment_preserve_strong_match_env:
       Mem.storev nme_chk m nme_t_addr e_t_v = Some m' ->
       strong_match_env stbl s' CE (Values.Vptr spb ofs) locenv g m'.
 Proof.
-  
-Qed.
+  !!intros until 1.
+  !functional inversion heq_transl_name;subst.
+  clear heq_transl_name.
+  !functional inversion heq_transl_variable.
+  clear heq_transl_variable.
+  revert stbl s spb ofs locenv g m  nme_chk nme_t_addr e_v e_t_v s' m' δ_x0 lvl_x0 fr_x0 m'0 heq_CEfetchG_x0_CE heq_CEframeG_x0_CE heq_lvloftop_CE_m'0 heq_build_loads.
+  !!functional induction CompilEnv.fetchG x0 CE;!intros.
+  - !inversion heq_Some; clear heq_Some.
+    functional inversion heq_CEframeG_x0;subst; simpl in *.
+    + !inversion h_strg_mtch_s.
+      !inversion h_storeUpd;subst.
+      simpl in heq_updateG_x0.
+    admit. (*  *)
+    + admit. (* use IH *)
+  - admit.
+  - !inversion h_strg_mtch_s;subst.
+    !inversion h_storeUpd;subst.
+    functional inversion heq_updateG_x0.
+Admitted.
 
 
 Lemma assignment_preserve_match_env:
