@@ -134,6 +134,8 @@ Ltac rename_hyp1 h th :=
   | CompilEnv.NoDup _ => fresh "nodup_CE"
   | CompilEnv.NoDup_G ?s => fresh "nodup_G_CE_" s
   | CompilEnv.NoDup_G _ => fresh "nodup_G_CE"
+  | CompilEnv.exact_levelG ?CE => fresh "h_exct_lvlG_" CE
+  | CompilEnv.exact_levelG ?CE => fresh "h_exct_lvlG"
   | exp => fresh "e"
   | stmt => fresh "stmt"
   | Cminor.expr => match goal with
@@ -1078,12 +1080,6 @@ Definition all_addr_no_overflow CE := forall id δ,
 Definition upper_bound fr sz := forall nme nme_ofs,
     CompilEnv.fetches nme fr = Some nme_ofs -> Zlt nme_ofs sz.
 
-(** levels in the global stack match exactly their nesting levels. *)
-Inductive exact_levelG:  CompilEnv.state -> Prop :=
-  | exact_levelG_nil: exact_levelG nil
-  | exact_levelG_cons: ∀ stk fr,
-      exact_levelG stk -> exact_levelG ((List.length stk, fr)::stk).
-
 (* the global stack is in incresing level. *)
 (* Lemma exact_level_increasing_orderG: ∀ stk: CompilEnv.stack, *)
 (*     exact_levelG stk -> StronglySorted gt_fst stk. *)
@@ -1165,6 +1161,7 @@ Record match_env st s CE sp locenv g m: Prop :=
       me_stack_match_CE: stack_match_CE s CE;
       me_noDup_s: STACK.NoDup s;
       me_noDup_G_s: STACK.NoDup_G s;
+      me_exact_levelG: STACK.exact_levelG s;
       me_stack_complete: stack_complete st s CE;
       me_safe_cm_env: safe_cm_env st CE sp locenv g m;
       me_overflow: safe_stack s; (* Put this somewhere else, concerns only s *)
@@ -1175,6 +1172,7 @@ Arguments me_stack_match_addresses : default implicits.
 Arguments me_stack_match_CE : default implicits.
 Arguments me_noDup_s : default implicits.
 Arguments me_noDup_G_s : default implicits.
+Arguments me_exact_levelG : default implicits.
 Arguments me_stack_match_functions : default implicits.
 Arguments me_overflow : default implicits.
 Arguments me_stack_no_null_offset : default implicits.
@@ -1190,7 +1188,7 @@ Arguments me_chain_struct : default implicits.
  - In each frame variables are numbered in increasing order
  - variable addresses do not overflow. *)
 Record invariant_compile CE stbl :=
-  { ci_exact_lvls: exact_levelG CE ;
+  { ci_exact_lvls: CompilEnv.exact_levelG CE ;
     ci_increasing_ids: all_frm_increasing CE ;
     ci_no_overflow: all_addr_no_overflow CE ;
     ci_stbl_var_types_ok: stbl_var_types_ok stbl;
@@ -1317,8 +1315,6 @@ Ltac rename_sparkprf ::= rename_hyp4.
 
 Ltac rename_hyp_cut h th :=
   match th with
-  | exact_levelG ?CE => fresh "h_exct_lvl_" CE
-  | exact_levelG ?CE => fresh "h_exct_lvl"
   | CompilEnv.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_CEcut_" CE "_" lvl
   | CompilEnv.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_CEcut_" CE
   | CompilEnv.cut_until ?CE ?lvl ?CE' ?CE'' => fresh "h_CEcut"
@@ -1358,54 +1354,7 @@ Ltac rename_sparkprf ::= rename_hyp_strong.
 
 Definition eq_param_name p1 p2 := p1.(parameter_name) = p2.(parameter_name).
 
-(* Properties of compile_env *)
-Lemma exact_levelG_sublist: forall x CE,
-    exact_levelG (x::CE)
-    -> exact_levelG CE.
-Proof.
-  intros x CE H.
-  inversion H;cbn in *;auto.
-Qed.
 
-Lemma cut_until_exact_levelG:
-  forall s pb_lvl s' s'' ,
-    exact_levelG s ->
-    (pb_lvl <= Datatypes.length s)%nat ->
-    CompilEnv.cut_until s pb_lvl s'  s'' ->
-    pb_lvl = Datatypes.length s''.
-Proof.
-  intros s pb_lvl s' s'' h_exactlvlG.
-  revert pb_lvl s' s''.
-  induction h_exactlvlG;simpl;intros ? ? ? h_lt h_cut.
-  - inversion h_cut;subst;simpl in *.
-    omega.
-  - inversion h_lt;subst.
-    + clear h_lt.        
-      inversion h_cut;subst.
-      * reflexivity.
-      * simpl in *.
-        exfalso;omega.
-    + simpl in *.
-      inversion h_cut;subst;simpl in *.
-      * exfalso;omega.
-      * eapply IHh_exactlvlG;eauto.
-Qed.
-
-Lemma cut_until_exact_levelG_2:
-  forall s pb_lvl s' s'' ,
-    exact_levelG s ->
-    (pb_lvl > Datatypes.length s)%nat ->
-    CompilEnv.cut_until s pb_lvl s'  s'' ->
-    Datatypes.length s = Datatypes.length s''.
-Proof.
-  intros s pb_lvl s' s'' h_exactlvlG.
-  !destruct h_exactlvlG;simpl;!intros.
-  - inversion h_CEcut.
-    reflexivity.
-  - inversion h_CEcut;simpl in *;subst.
-    + reflexivity.
-    + exfalso;omega.
-Qed.
 
 Lemma all_frm_increasing_sublist: forall x CE,
     all_frm_increasing (x::CE)
@@ -1441,7 +1390,7 @@ Qed.
 Lemma stack_push_all_new_subcons:
   forall a CE,
     CompilEnv.NoDup_G (a :: CE) ->
-    exact_levelG (a :: CE) ->
+    CompilEnv.exact_levelG (a :: CE) ->
     stack_push_all_new a CE.
 Proof.
   !intros.
@@ -1458,214 +1407,20 @@ Proof.
     - omega.
     - !!destruct CE eqn:?.
       + constructor.
-      + !!inversion h_exct_lvl;subst.
+      + !!inversion h_exct_lvlG;subst.
         cbn.
         constructor 2.
-        inversion h_exct_lvl0.
+        inversion h_exct_lvlG0.
         cbn.
         omega. }
   specialize (h_CEnodupG h_CEcut).
   assumption.
 Qed.
 
-Lemma compilenv_exact_lvl_level_of_top:
-  forall l',
-    exact_levelG  l' ->
-    forall nme lvl_nme fr_nme,
-      CompilEnv.frameG nme l' = Some (lvl_nme, fr_nme) -> 
-      exists top,
-        CompilEnv.level_of_top l' = Some top /\
-        (lvl_nme ≤ top)%nat.
-Proof.
-  !!intros until 1.
-  induction h_exct_lvl_l';!intros;subst.
-  - discriminate.
-  - cbn in heq_CEframeG_nme.
-    destruct (CompilEnv.resides nme fr) eqn:heq.
-    + !inversion heq_CEframeG_nme.
-      cbn.
-      eauto with arith.
-    + cbn.
-      exists (Datatypes.length stk);split;auto.
-      !!edestruct IHh_exct_lvl_l';eauto.
-      decomp h_and.
-      destruct stk;cbn in heq_lvloftop_stk_x;try discriminate.
-      !destruct f.
-      !invclear heq_lvloftop_stk_x.
-      cbn.
-      inversion h_exct_lvl_l';subst.
-      auto with arith.
-Qed.
 
-Lemma nodup_G_cons :
-  forall a l nme ,
-    exact_levelG (a::l) ->
-    CompilEnv.NoDup_G (a::l) -> CompilEnv.resideG nme l = true -> CompilEnv.reside nme a = false.
-Proof.
-  !intros.
-  !!destruct (CompilEnv.reside nme a) eqn:?;auto.
-  specialize (h_CEnodupG nme (CompilEnv.level_of a) (CompilEnv.store_of a) [a] l).
-  cbn in h_CEnodupG.
-  rewrite heq_resideG,heq_reside in h_CEnodupG.
-  !assert (Some a = Some (CompilEnv.level_of a, CompilEnv.store_of a)).
-  { destruct a;auto. }
-  specialize (h_CEnodupG heq_Some).
-  clear heq_Some.
-  !assert (CompilEnv.cut_until (a :: l) (CompilEnv.level_of a) [a] l).
-  { constructor 3.
-    - omega.
-    - destruct l.
-      + constructor 1.
-      + constructor 2.
-        !inversion h_exct_lvl.
-        inversion h_exct_lvl0.
-        subst.
-        cbn.
-        omega.  }
-  specialize (h_CEnodupG h_CEcut).
-  discriminate.
-Qed.
-
-Lemma nodup_G_cons_2 :
-  forall a l nme ,
-    exact_levelG (a::l) ->
-    CompilEnv.NoDup_G (a::l) -> CompilEnv.reside nme a = true -> CompilEnv.resideG nme l = false.
-Proof.
-  !intros.
-  !!destruct (CompilEnv.resideG nme l) eqn:?;try discriminate;auto.
-
-  specialize (h_CEnodupG nme (CompilEnv.level_of a) (CompilEnv.store_of a) [a] l).
-  cbn in h_CEnodupG.
-  rewrite heq_reside,heq_resideG in h_CEnodupG.
-  !assert (Some a = Some (CompilEnv.level_of a, CompilEnv.store_of a)).
-  { destruct a;auto. }
-  specialize (h_CEnodupG heq_Some).
-  clear heq_Some.
-  !assert (CompilEnv.cut_until (a :: l) (CompilEnv.level_of a) [a] l).
-  { constructor 3.
-    - omega.
-    - destruct l.
-      + constructor 1.
-      + constructor 2.
-        !inversion h_exct_lvl.
-        inversion h_exct_lvl0.
-        subst.
-        cbn.
-        omega.  }
-  specialize (h_CEnodupG h_CEcut).
-  discriminate.
-Qed.
-
-Lemma stack_CE_NoDup_G_cons: forall l',
-    exact_levelG l' ->
-    forall l a,
-      l'= a::l ->
-      CompilEnv.NoDup_G (a::l) -> CompilEnv.NoDup_G l.
-Proof.
-  !!intros ? ?.
-  !induction h_exct_lvl_l';subst; !intros; unfold CompilEnv.NoDup_G in *;!intros;up_type.
-  - inversion heq_nil.
-  - !invclear heq_cons.
-    remember (Datatypes.length l, fr) as a0.
-    !assert (exact_levelG (a0 :: l)).
-    { subst a0.
-      constructor;auto. }
-    !assert (CompilEnv.reside nme a0 = false).
-    { eapply nodup_G_cons;eauto.
-      eapply  CompilEnv.frameG_resideG;eauto. }
-
-    !assert (CompilEnv.frameG nme (a0 :: l) = Some (lvl_nme, fr_nme)).
-    { cbn.
-      rewrite heq_reside.
-      apply heq_CEframeG_nme_l. }
-
-    eapply h_CEnodupG with (1:= heq_CEframeG_nme) (s':= a0 :: s').
-    constructor 3.
-    + pose proof compilenv_exact_lvl_level_of_top (a0::l) as h.
-      specialize h with (1:=h_exct_lvl) (2:=heq_CEframeG_nme).
-      decomp h.
-      enough (lvl_nme ≤ CompilEnv.level_of a0)%nat by omega.
-
-      assert (top = CompilEnv.level_of a0).
-      { cbn in heq_lvloftop_top.
-        destruct a0;cbn.
-        inversion heq_lvloftop_top;reflexivity. }
-      subst top;auto with arith.
-    + assumption.
-Qed.
-
-Lemma stack_CE_NoDup_cons: forall l',
-    exact_levelG l' ->
-    CompilEnv.NoDup_G l' ->
-    CompilEnv.NoDup l' ->
-    forall l a,
-      l'= a::l ->
-      CompilEnv.NoDup l.
-Proof.
-  !intros.
-  red.
-  !intros.
-  red in h_CEnodup_l'.
-  apply (h_CEnodup_l' nme lvl_nme fr_nme sto' sto'').
-  - subst.
-    simpl.
-    red in h_CEnodupGl'.
-    !assert (CompilEnv.reside nme a = false).
-    { eapply nodup_G_cons;eauto.
-      eapply  CompilEnv.frameG_resideG;eauto. }
-    rewrite heq_reside.
-    assumption.
-  - assumption.
-Qed.
-
-
-Lemma stack_CE_NoDup_G_sublist: forall CE1 CE2,
-    exact_levelG (CE1 ++ CE2) ->
-    CompilEnv.NoDup_G (CE1++CE2) ->
-    CompilEnv.NoDup_G CE2.
-Proof.
-  !!induction CE1;!intros.
-  - simpl List.app in h_CEnodupG.
-    assumption.
-  - apply IHCE1.
-    { eapply exact_levelG_sublist;eauto. }
-    cbn in h_CEnodupG.
-    eapply stack_CE_NoDup_G_cons;eauto;cbn;auto.
-Qed.
-
-Lemma stack_CE_NoDup_sublist: forall CE1 CE2,
-    exact_levelG (CE1 ++ CE2) ->
-    CompilEnv.NoDup_G (CE1++CE2) ->
-    CompilEnv.NoDup (CE1++CE2) ->
-    CompilEnv.NoDup CE2.
-Proof.
-  !!induction CE1;!intros.
-  - simpl List.app in h_CEnodup.
-    assumption.
-  - apply IHCE1.
-    + eapply exact_levelG_sublist;eauto.
-    + eapply stack_CE_NoDup_G_cons;eauto;reflexivity.
-    + cbn in h_CEnodup.
-      eapply stack_CE_NoDup_cons;eauto;cbn;auto.
-Qed.
-
-Lemma cut_until_exct_lvl:
-  forall CE lvl x,
-    exact_levelG ((lvl,x)::CE) ->
-    CompilEnv.cut_until CE lvl [] CE.
-Proof.
-  !intros.
-  destruct CE;cbn in *.
-  - constructor 1.
-  - constructor 2.
-    !inversion h_exct_lvl;subst.
-    !inversion h_exct_lvl0.
-    cbn.
-    omega.
-Qed.
 
 Lemma stack_CE_NoDup_G_stack_push_all_new: forall x CE,
-    exact_levelG (x::CE) ->
+    CompilEnv.exact_levelG (x::CE) ->
     CompilEnv.NoDup_G (x::CE) -> 
     stack_push_all_new x CE.
 Proof.
@@ -1678,7 +1433,7 @@ Proof.
   - rewrite heq_reside.
     reflexivity.
   - constructor 3;auto with arith.
-    eapply cut_until_exct_lvl;eauto.
+    eapply CompilEnv.cut_until_exct_lvl;eauto.
 Qed.
 
 
@@ -1689,12 +1444,12 @@ Proof.
   !intros.
   inversion h_inv_comp_st;cbn in *.
   split;eauto.
-  - eapply exact_levelG_sublist;eauto.
+  - eapply CompilEnv.exact_levelG_sublist;eauto.
   - eapply all_frm_increasing_sublist;eauto.
   - eapply all_addr_no_overflow_sublist;eauto.
     apply stack_CE_NoDup_G_stack_push_all_new;auto.
-  - eapply stack_CE_NoDup_cons;eauto.
-  - eapply stack_CE_NoDup_G_cons;eauto.
+  - eapply CompilEnv.stack_CE_NoDup_cons;eauto.
+  - eapply CompilEnv.stack_CE_NoDup_G_cons;eauto.
 Qed.
 
 
@@ -1714,7 +1469,7 @@ Qed.
 
 
 Lemma exact_lvlG_lgth: forall CE lvl,
-    exact_levelG CE ->
+    CompilEnv.exact_levelG CE ->
     CompilEnv.level_of_top CE = Some lvl ->
     List.length CE = S lvl.
 Proof.
@@ -1729,7 +1484,7 @@ Proof.
 Qed.
 
 Lemma exact_lvlG_lgth_none: forall CE,
-    exact_levelG CE ->
+    CompilEnv.exact_levelG CE ->
     CompilEnv.level_of_top CE = None ->
     List.length CE = 0%nat.
 Proof.
@@ -1741,30 +1496,30 @@ Qed.
 
 
 Lemma exact_lvlG_cut_until: forall CE lvl CE' CE'',
-    exact_levelG CE ->
+    CompilEnv.exact_levelG CE ->
     CompilEnv.cut_until CE lvl CE' CE'' ->
-    exact_levelG CE''.
+    CompilEnv.exact_levelG CE''.
 Proof.
   !!intros until 1.
   revert lvl CE' CE''.
-  !induction h_exct_lvl_CE;!intros .
+  !induction h_exct_lvlG_CE;!intros .
   - !inversion h_CEcut;subst.
     constructor.
   - !inversion h_CEcut.
     + constructor.
       assumption.
-    + eapply IHh_exct_lvl_CE;eauto.
+    + eapply IHh_exct_lvlG_CE;eauto.
 Qed.
 
 Lemma exact_lvlG_nil_left: forall CE,
-  exact_levelG CE ->
+  CompilEnv.exact_levelG CE ->
   CompilEnv.cut_until CE (Datatypes.length CE) [ ] CE.
 Proof.
   intros CE.
   destruct CE;simpl;!intros.
   - constructor.
   - constructor.
-    inversion h_exct_lvl.
+    inversion h_exct_lvlG.
     simpl.
     omega.
 Qed.
@@ -1849,7 +1604,7 @@ Lemma match_env_empty: forall st sp b sp' locenv locenv' g m,
 Proof.
   !intros.
   split (* apply h_match_env. *).
-  6: split.
+  7: split.
   + apply stack_match_empty.
   + red;!intros.
     split;!intros.
@@ -1858,6 +1613,7 @@ Proof.
       discriminate.
   + apply stack_NoDup_empty.
   + apply stack_NoDup_G_empty.
+  + constructor.
   + red;!intros.
     !functional inversion heq_transl_variable.
     functional inversion heq_CEfetchG_nme.
@@ -2023,7 +1779,7 @@ Lemma match_env_inv_locenv : forall st s CE sp locenv g m,
     forall locenv', match_env st s CE sp locenv' g m.
 Proof.
   !intros.
-  split;[ | | | | | split | ];try now apply h_match_env.  
+  split;[ | | | | | | split | ];try now apply h_match_env.  
   - eapply stack_match_inv_locenv;eauto.
   - eapply stack_match_addr_inv_locenv; eauto.
   - pose proof me_stack_match_functions (me_safe_cm_env h_match_env) as h_mtch_fun.
@@ -2142,7 +1898,7 @@ Qed.
 
 Lemma cut_until_exact_lvl:
   forall stoCE CE lvl,
-    exact_levelG (stoCE :: CE)
+    CompilEnv.exact_levelG (stoCE :: CE)
     -> CompilEnv.cut_until (stoCE :: CE) lvl [ ] (stoCE :: CE)
     -> CompilEnv.cut_until CE lvl [ ] CE.
 Proof.
@@ -2151,10 +1907,10 @@ Proof.
   - constructor.
   - !inversion h_CEcut;subst.
     !destruct f.
-    !inversion h_exct_lvl;subst;simpl in *.
+    !inversion h_exct_lvlG;subst;simpl in *.
     constructor 2.
     simpl.
-    inversion h_exct_lvl0;subst.
+    inversion h_exct_lvlG0;subst.
     omega.
 Qed.
 
@@ -2253,7 +2009,7 @@ Proof.
       repeat progress (simpl in *;subst).
       clear h_lt0.
       apply match_env_inv_locenv with locenv'.
-      assert (exact_levelG ((lvl, stoCE) :: CE)).
+      assert (CompilEnv.exact_levelG ((lvl, stoCE) :: CE)).
       { apply h_inv_comp_st. }
       !inversion H.
       exfalso;omega.
@@ -2283,7 +2039,7 @@ Proof.
         !assert (CE' = [] ∧ CE''=CE).
         { !inversion h_CEcut_CE_lvl0;auto.
           !!pose proof (ci_exact_lvls _ _ h_inv_comp_CE_st).
-          !inversion h_exct_lvl.
+          !inversion h_exct_lvlG.
           cbn in H.
           exfalso;omega. }
         decomp h_and.
@@ -2354,7 +2110,7 @@ Proof.
     { eapply invariant_compile_subcons;eauto. }
     assert (lvl=Datatypes.length CE).
     { !!pose proof (ci_exact_lvls _ _ h_inv_comp_st).
-      !inversion h_exct_lvl.
+      !inversion h_exct_lvlG.
       reflexivity. }
 
     rename v' into sp.
@@ -2420,10 +2176,10 @@ Proof.
         !inversion h_stkcut_s_lvl;auto.
         cbn -[minus] in *.
         !!pose proof (ci_exact_lvls _ _ h_inv_comp_CE_st).
-        !inversion h_exct_lvl.
+        !inversion h_exct_lvlG.
         exfalso;omega.
       - !!pose proof (ci_exact_lvls _ _ h_inv_comp_CE_st).
-        !inversion h_exct_lvl.
+        !inversion h_exct_lvlG.
         cbn in *.
         exfalso;omega. }
     decomp h_and.
@@ -2515,7 +2271,7 @@ Qed.
     zero offset, the offset of a variable in CE must be more than 3. *)
 Lemma eval_build_loads_offset_non_null_var:
   forall stbl CE g stkptr locenv m nme a bld_lds b ofs,
-    exact_levelG CE ->
+    CompilEnv.exact_levelG CE ->
     stack_no_null_offset stbl CE ->
     stack_localstack_aligned (Datatypes.length CE) locenv g m stkptr ->
     transl_variable stbl CE a nme = Errors.OK bld_lds ->
@@ -3066,26 +2822,26 @@ Proof.
 Qed.
 
 Lemma exact_level_top_lvl: forall CE s3,
-    exact_levelG CE ->
+    CompilEnv.exact_levelG CE ->
     CompilEnv.level_of_top CE = Some s3 ->
     List.length CE = S s3.
 Proof.
   !intros.
-  inversion h_exact_lvlG_CE;subst;cbn in *;try discriminate.
+  inversion h_exct_lvlG_CE;subst;cbn in *;try discriminate.
   inversion heq_lvloftop_CE_s3.
   reflexivity.
 Qed.
 
 
 Lemma increase_order_level_of_top_ge: forall CE id s s0 s3,
-    exact_levelG CE ->
+    CompilEnv.exact_levelG CE ->
     CompilEnv.frameG id CE = Some (s, s0) ->
     CompilEnv.level_of_top CE = Some s3 ->
     (s3 >= s)%nat.
 Proof.
   !!intros until 1.
   revert id s s0 s3.
-  !induction h_exact_lvlG_CE;cbn.
+  !induction h_exct_lvlG_CE;cbn.
   - discriminate.
   - !intros.
     destruct (CompilEnv.resides id fr) eqn:heq_resides.
@@ -3094,12 +2850,12 @@ Proof.
       auto.
     + !invclear heq_Some0.
       destruct (CompilEnv.level_of_top stk) eqn:heq_lvltop.
-      * specialize(IHh_exact_lvlG_CE id s s0 s1).
-        specialize (exact_level_top_lvl _ _ h_exact_lvlG_CE heq_lvltop).
+      * specialize(IHh_exct_lvlG_CE id s s0 s1).
+        specialize (exact_level_top_lvl _ _ h_exct_lvlG_CE heq_lvltop).
         !intro.
         red.
         apply Nat.le_trans with s1.
-        -- apply IHh_exact_lvlG_CE;auto.
+        -- apply IHh_exct_lvlG_CE;auto.
         -- omega.
       * destruct stk.
         -- cbn in heq_Some.
@@ -3188,7 +2944,7 @@ Qed.
 
 
 Lemma exact_levelG_lgth: forall stk id lvl_id fr_id,
-    exact_levelG stk
+    CompilEnv.exact_levelG stk
     -> CompilEnv.frameG id stk = Some (lvl_id, fr_id)
     -> (lvl_id < Datatypes.length stk)%nat.
 Proof.
@@ -3204,7 +2960,7 @@ Proof.
 Qed.
 
 Lemma CEfetchG_inj : forall CE id₁ id₂,
-    exact_levelG CE ->
+    CompilEnv.exact_levelG CE ->
     all_frm_increasing CE ->
     forall  δ₁ δ₂ k₁ k₂ frm₁ frm₂,
       CompilEnv.fetchG id₁ CE = Some δ₁ ->
@@ -3217,7 +2973,7 @@ Proof.
   intros until 0.
   !intro.
 
-  !induction h_exact_lvlG_CE;!intros;simpl in *;try discriminate.
+  !induction h_exct_lvlG_CE;!intros;simpl in *;try discriminate.
   unfold CompilEnv.level_of in *.
   destruct (CompilEnv.fetch id₁ (Datatypes.length stk, fr)) eqn:heq_fetch_id₁;
     destruct (CompilEnv.fetch id₂ (Datatypes.length stk, fr)) eqn:heq_fetch_id₂;
@@ -3245,7 +3001,7 @@ Proof.
   - apply CEfetch_reside_false in heq_fetch_id₁.
     apply CEfetch_reside_false in heq_fetch_id₂.
     rewrite heq_fetch_id₁,heq_fetch_id₂ in *.
-    eapply IHh_exact_lvlG_CE ;eauto.
+    eapply IHh_exct_lvlG_CE ;eauto.
     inversion h_allincr.
     assumption.
 Qed.
@@ -3290,7 +3046,7 @@ Qed.
 
 Lemma transl_variable_inj : forall CE stbl a₁ a₂ id₁ id₂ k₁ k₂ δ₁ δ₂,
     (* Frame are numbered with different (increasing) numers *)
-    exact_levelG CE ->
+    CompilEnv.exact_levelG CE ->
     (* In each frame, stacks are also numbered with (increasing) numbers *)
     all_frm_increasing CE ->
     all_addr_no_overflow CE ->
@@ -3309,7 +3065,7 @@ Proof.
   destruct (CompilEnv.frameG id₂ CE) eqn:h₂';simpl in *;try discriminate.
   destruct f.
   destruct f0.
-  assert (hh:=CEfetchG_inj _ _ _ h_exact_lvlG_CE h_allincr_CE _ _ _ _ _ _  h₁ h₂ h₁' h₂' hneq).
+  assert (hh:=CEfetchG_inj _ _ _ h_exct_lvlG_CE h_allincr_CE _ _ _ _ _ _  h₁ h₂ h₁' h₂' hneq).
   destruct (CompilEnv.level_of_top CE) eqn:hlvlofCE.
   - (* remember here refrain inversion to bizarrely unfold too much. *)
     remember (build_loads (s3 - s1) t0) as fooo.
@@ -3594,7 +3350,7 @@ Qed.
      never change. *)
 Lemma wf_chain_load_var:
   forall stbl CE g locenv stkptr astnum chk m m' b ofs e_t_v id load_id vaddr,
-    exact_levelG CE ->
+    CompilEnv.exact_levelG CE ->
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
     -> (stack_localstack_aligned (Datatypes.length CE) locenv g m' stkptr)
     -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
@@ -3609,7 +3365,7 @@ Proof.
   rename m'0 into max_lvl.
   set (δ_lvl:=(max_lvl - lvl_id)%nat) in *.
   eapply wf_chain_load';eauto.
-  pose proof exact_lvlG_lgth _ _ h_exact_lvlG_CE heq_lvloftop_CE_m'0.
+  pose proof exact_lvlG_lgth _ _ h_exct_lvlG_CE heq_lvloftop_CE_m'0.
   rewrite H in *.
   subst δ_lvl.
   omega.
@@ -3622,7 +3378,7 @@ Qed.
      never change. *)
 Lemma wf_chain_load_var':
   forall stbl CE g locenv stkptr astnum chk m m' b ofs e_t_v id load_id vaddr,
-    exact_levelG CE ->
+    CompilEnv.exact_levelG CE ->
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
     -> (stack_localstack_aligned (Datatypes.length CE) locenv g m stkptr)
     -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
@@ -3637,7 +3393,7 @@ Proof.
   rename m'0 into max_lvl.
   set (δ_lvl:=(max_lvl - lvl_id)%nat) in *.
   eapply wf_chain_load'_2;eauto.
-  pose proof exact_lvlG_lgth _ _ h_exact_lvlG_CE heq_lvloftop_CE_m'0.
+  pose proof exact_lvlG_lgth _ _ h_exct_lvlG_CE heq_lvloftop_CE_m'0.
   rewrite H in *.
   subst δ_lvl.
   omega.
@@ -3710,7 +3466,7 @@ Qed.
 
 Lemma assignment_preserve_stack_match :
   forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
-    exact_levelG CE ->
+    CompilEnv.exact_levelG CE ->
     all_frm_increasing CE ->
     (* translating the variabe to a Cminor load address *)
     transl_variable stbl CE a id = Errors.OK id_t ->
@@ -3833,7 +3589,7 @@ Proof.
     !functional inversion heq_make_load;subst.
     !inversion cm_eval_m_v_other.
     generalize (wf_chain_load_var _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-                                  h_exact_lvlG_CE
+                                  h_exct_lvlG_CE
                                   heq_storev_e_t_v_m' h_aligned_m'
                                   h_ofs_nonzero heq_transl_variable0
                                   h_CM_eval_expr_addr_other_addr_other_v).
@@ -3874,7 +3630,7 @@ Qed.
 
 Lemma assignment_preserve_stack_match_function :
   forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
-    exact_levelG CE ->
+    CompilEnv.exact_levelG CE ->
     all_frm_increasing CE ->
     (* translating the variabe to a Cminor load address *)
     transl_variable stbl CE a id = Errors.OK id_t ->
@@ -4793,7 +4549,7 @@ Lemma assignment_preserve_chained_stack_structure:
     Datatypes.length CE ≤ n -> (* the chaining structure must be at least as deep as CE *)
     (*     stack_localstack_aligned CE locenv g m ->  *)
     stack_no_null_offset stbl CE -> 
-    exact_levelG CE ->
+    CompilEnv.exact_levelG CE ->
     (* translating the variabe to a Cminor load address *)
     transl_variable stbl CE a id = Errors.OK id_t ->
     (* Evaluating var address in Cminor *)
@@ -4915,35 +4671,17 @@ Qed.
 **)
 Admitted.
 
+Function my_update (f: frame) (x: idnum) (v: V): option frame := 
+  match updates (store_of f) x v with 
+  | Some s => Some (level_of f, s)
+  | None => None 
+  end.
 
-Lemma exact_lvl_level_of_top:
-  forall l',
-    exact_levelG  l' ->
-    forall nme lvl_nme fr_nme,
-      frameG nme l' = Some (lvl_nme, fr_nme) -> 
-      exists top,
-        level_of_top l' = Some top /\
-        (lvl_nme ≤ top)%nat.
+Lemma my_update_ok: forall (f: frame) (x: idnum) (v: V), ST.update f x v = my_update f x v.
 Proof.
-  !!intros until 1.
-  induction h_exct_lvl_l';!intros;subst.
-  - discriminate.
-  - cbn in heq_CEframeG_nme.
-    destruct (CompilEnv.resides nme fr) eqn:heq.
-    + !inversion heq_CEframeG_nme.
-      cbn.
-      eauto with arith.
-    + cbn.
-      exists (Datatypes.length stk);split;auto.
-      !!edestruct IHh_exct_lvl_l';eauto.
-      decomp h_and.
-      destruct stk;cbn in heq_lvloftop_stk_x;try discriminate.
-      !destruct f.
-      !invclear heq_lvloftop_stk_x.
-      cbn.
-      inversion h_exct_lvl_l';subst.
-      auto with arith.
+  reflexivity.
 Qed.
+
 
 Lemma assignment_preserve_strong_match_env:
   forall stbl s CE spb ofs locenv g m x x0 nme_t nme_chk nme_t_addr e_v e_t_v s' m',
@@ -4969,8 +4707,19 @@ Proof.
   all: swap 3 1.
   all: swap 3 2.
   - discriminate.
-  - !inversion heq_Some. clear heq_Some.
+  - (* x0 belongs to top frame f *)
+    !inversion heq_Some. clear heq_Some.
     !inversion h_storeUpd;subst. clear h_storeUpd.
+    !invclear h_strg_mtch_s.
+    !functional inversion heq_updateG_s_x0;subst.
+    + rewrite my_update_ok in heq_update_x0.
+      !functional inversion heq_update_x0;subst.
+      rewrite <- my_update_ok in heq_update_x0.
+      cbn in heq_updates_x0.
+      econstructor 2;eauto.
+      
+    cbn in heq_updateG_s_x0.
+    
     !functional inversion heq_CEframeG_x0;subst; simpl in *.
     + rewrite heq_reside in heq_CEframeG_x0.
       clear heq_CEframeG_x0.
@@ -5003,10 +4752,20 @@ Proof.
           simpl in heq_frameG.
           !!pose proof fetch_ok_none _ _ heq_update_x0.
           setoid_rewrite heq_reside0 in heq_frameG.
-          specialize compilenv_exact_lvl_level_of_top with (2:=heq_frameG);!intro.
-          cbn in H.
+          specialize exact_lvl_level_of_top with (2:=heq_frameG);!intro.
+          !assert (exact_levelG s0).
+          { !inversion h_strg_mtch_s;subst.
+            assert (exact_levelG ((lvl_x0, sto) :: s0)).
+            !inversion h_match_env0.
+            + assumption.
+            + inversion H0.
+              assumption. }
+          specialize (H h_exct_lvl_s0).
 
           destruct (reside x0 (lvl_x0, sto)) eqn:heq_reside_x0;eauto.
+          setoid_rewrite heq_reside_x0 in heq_reside0.
+          discriminate.
+
           - destruct (fetch x0 (lvl_x0, sto)) eqn:heq_fetch_x0.
             + eauto.
             + !!pose proof fetch_ok_none _ _ heq_fetch_x0.
@@ -5267,7 +5026,7 @@ Ltac rename_sparkprf ::= rename_hyp_forbid_unch.
    parameters in the local stack. + chained_structure preserved.  *)
 Lemma exec_store_params_preserve_forbidden_subproof:
   forall lparams st CE initparams,
-    exact_levelG CE ->    
+    CompilEnv.exact_levelG CE ->    
     stack_no_null_offset st CE ->
     store_params st CE lparams = Errors.OK initparams -> 
     forall astnum g proc_t sp e_chain e_chain' m t2 m' lvl,
@@ -5289,7 +5048,7 @@ Proof.
   (* The three following cases are identical, i.e. the parameter mode
        should not be case split but functional induction does and I don't
        want to make the induction by hand. *)
-  - specialize (IHr _ h_exact_lvlG_CE h_nonul_ofs heq_store_params).
+  - specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs heq_store_params).
     !invclear h_exec_stmt_initparams_Out_normal; eq_same_clear.
     specialize (fun h_chain h_align => IHr astnum _ _ _ _ _ _ _ _ _ heq_length h_chain h_align h_exec_stmt_x0_Out_normal).
     rename m1 into m_mid.
@@ -5386,7 +5145,7 @@ Proof.
           destruct x1_v; try discriminate.
           eapply Mem.perm_store_2 in abs2;eauto.
           eapply abs;eassumption. }
-  - specialize (IHr _ h_exact_lvlG_CE h_nonul_ofs heq_store_params).
+  - specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs heq_store_params).
     !invclear h_exec_stmt_initparams_Out_normal; eq_same_clear.
     specialize (fun h_chain h_align => IHr astnum _ _ _ _ _ _ _ _ _ heq_length h_chain h_align h_exec_stmt_x0_Out_normal).
     rename m1 into m_mid.
@@ -5483,7 +5242,7 @@ Proof.
           destruct x1_v; try discriminate.
           eapply Mem.perm_store_2 in abs2;eauto.
           eapply abs;eassumption. }
-  - specialize (IHr _ h_exact_lvlG_CE h_nonul_ofs heq_store_params).
+  - specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs heq_store_params).
     !invclear h_exec_stmt_initparams_Out_normal; eq_same_clear.
     specialize (fun h_chain h_align => IHr astnum _ _ _ _ _ _ _ _ _ heq_length h_chain h_align h_exec_stmt_x0_Out_normal).
     rename m1 into m_mid.
@@ -5587,7 +5346,7 @@ Qed.
 
 Lemma exec_store_params_unchanged_on_subproof:
   forall lparams st CE initparams,
-    exact_levelG CE ->
+    CompilEnv.exact_levelG CE ->
     stack_no_null_offset st CE ->
     store_params st CE lparams =: initparams ->
     forall astnum g proc_t sp e_chain m t2 e_postchain m' lvl,
@@ -5599,11 +5358,11 @@ Lemma exec_store_params_unchanged_on_subproof:
 Proof.
   !intros.
   !!pose proof (exec_store_params_preserve_forbidden_subproof
-                  _ _ _ _ h_exact_lvlG_CE h_nonul_ofs heq_store_prms_lparams_initparams
+                  _ _ _ _ h_exct_lvlG_CE h_nonul_ofs heq_store_prms_lparams_initparams
                   astnum _ proc_t _ _ _ _ _ _ _ heq_length h_chain_lvl_sp h_aligned_g_m
                   h_exec_stmt_initparams_Out_normal).
   decomp h_and.
-  revert initparams h_exact_lvlG_CE h_nonul_ofs heq_store_prms_lparams_initparams astnum g proc_t
+  revert initparams h_exct_lvlG_CE h_nonul_ofs heq_store_prms_lparams_initparams astnum g proc_t
          sp e_chain m t2 e_postchain m' lvl heq_length h_aligned_g_m h_exec_stmt_initparams_Out_normal
          h_unch_forbid_m_m' h_chain_lvl_sp h_chain_lvl_sp0.
   rewrite store_params_ok.
@@ -5624,7 +5383,7 @@ Proof.
       destruct prm_name_t_v;try now (cbn in heq_storev_v_m1; discriminate).
       eapply wf_chain_load_aligned;eauto.
       eapply eval_build_loads_offset_non_null_var;eauto. }
-    specialize (IHr _ h_exact_lvlG_CE h_nonul_ofs heq_store_params astnum
+    specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs heq_store_params astnum
                     _ _ _ _ _ _ _ _ _ heq_length h_aligned_g_m1 h_exec_stmt_initparams'_Out_normal).
     rename m1 into m_mid.
     rename e1 into e_mid.
@@ -5667,7 +5426,7 @@ Proof.
       destruct prm_name_t_v;try now (cbn in heq_storev_v_m1; discriminate).
       eapply wf_chain_load_aligned;eauto.
       eapply eval_build_loads_offset_non_null_var;eauto. }
-    specialize (IHr _ h_exact_lvlG_CE h_nonul_ofs heq_store_params astnum
+    specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs heq_store_params astnum
                     _ _ _ _ _ _ _ _ _ heq_length h_aligned_g_m1 h_exec_stmt_initparams'_Out_normal).
     rename m1 into m_mid.
     rename e1 into e_mid.
@@ -5710,7 +5469,7 @@ Proof.
       destruct prm_name_t_v;try now (cbn in heq_storev_v_m1; discriminate).
       eapply wf_chain_load_aligned;eauto.
       eapply eval_build_loads_offset_non_null_var;eauto. }
-    specialize (IHr _ h_exact_lvlG_CE h_nonul_ofs heq_store_params astnum
+    specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs heq_store_params astnum
                     _ _ _ _ _ _ _ _ _ heq_length h_aligned_g_m1 h_exec_stmt_initparams'_Out_normal).
     rename m1 into m_mid.
     rename e1 into e_mid.
@@ -5751,7 +5510,7 @@ Qed.
    parameters in the local stack.  *)
 Lemma exec_init_locals_preserve_forbidden_subproof:
   forall decl st CE locvarinit,
-    exact_levelG CE ->    
+    CompilEnv.exact_levelG CE ->    
     stack_no_null_offset st CE ->
     init_locals st CE decl =: locvarinit ->
     forall astnum g proc_t sp e_chain e_chain' m t2 m' lvl,
@@ -5875,7 +5634,7 @@ Qed.
 
 Lemma init_locals_unchanged_on_subproof:
   forall decl st CE locvarinit,
-    exact_levelG CE ->
+    CompilEnv.exact_levelG CE ->
     stack_no_null_offset st CE ->
     init_locals st CE decl =: locvarinit ->
     forall astnum g proc_t sp e_chain m t2 e_postchain m' lvl,
@@ -5888,10 +5647,10 @@ Proof.
   !intros.
   up_type.
   !!pose proof (exec_init_locals_preserve_forbidden_subproof
-                  _ _ _ _ h_exact_lvlG_CE h_nonul_ofs heq_init_lcl_decl_locvarinit astnum _ proc_t
+                  _ _ _ _ h_exct_lvlG_CE h_nonul_ofs heq_init_lcl_decl_locvarinit astnum _ proc_t
                   _ _ _ _ _ _ lvl heq_length h_chain_lvl_sp h_aligned_g_m h_exec_stmt_locvarinit_Out_normal).
   decomp h_and.
-  revert locvarinit h_exact_lvlG_CE h_nonul_ofs heq_init_lcl_decl_locvarinit astnum g proc_t sp
+  revert locvarinit h_exct_lvlG_CE h_nonul_ofs heq_init_lcl_decl_locvarinit astnum g proc_t sp
          e_chain m t2 e_postchain m' h_aligned_g_m lvl heq_length h_exec_stmt_locvarinit_Out_normal
          h_unch_forbid_m_m' h_chain_lvl_sp h_chain_lvl_sp0.
   rewrite init_locals_ok.
@@ -5947,7 +5706,7 @@ Qed.
 
 Lemma init_params_preserves_structure:
   forall lparams st CE initparams,
-    exact_levelG CE ->
+    CompilEnv.exact_levelG CE ->
     stack_no_null_offset st CE ->
     store_params st CE lparams =: initparams ->
     forall astnum g proc_t sp e_chain m t2 e_chain' m' lvl,
@@ -5966,7 +5725,7 @@ Qed.
 
 Lemma init_locals_preserves_structure:
   forall decl st CE locvarinit,
-    exact_levelG CE ->
+    CompilEnv.exact_levelG CE ->
     stack_no_null_offset st CE ->
     init_locals st CE decl =: locvarinit ->
     forall astnum g proc_t sp e_chain m t2 e_chain' m' lvl,
@@ -5985,9 +5744,9 @@ Qed.
 
 Lemma build_compilenv_exact_lvl:
   forall st CE proc_lvl lparams decl CE' sz,
-    exact_levelG CE ->
+    CompilEnv.exact_levelG CE ->
     build_compilenv st CE proc_lvl lparams decl =: (CE',sz) ->
-    exact_levelG CE'.
+    CompilEnv.exact_levelG CE'.
 Proof.
   !intros.
   rewrite <- build_compilenv_ok  in heq_build_compilenv.
@@ -6241,7 +6000,7 @@ Qed.
 Lemma build_compilenv_stack_no_null_offset:
   ∀ (st : symboltable) (CE : CompilEnv.state) (proc_lvl : level) (lparams : list paramSpec) 
     (decl : decl) (CE' : compilenv) (sz : Z),
-    exact_levelG CE →
+    CompilEnv.exact_levelG CE →
     stack_no_null_offset st CE →
     build_compilenv st CE proc_lvl lparams decl =: (CE', sz) →
     stack_no_null_offset st CE'.
@@ -6720,9 +6479,9 @@ Proof.
     * !!pose proof (ce_nodup_G_CE h_inv_comp_CE_st).
       !inversion h_CEcut.
       -- cbn in *.
-         !assert (exact_levelG CE).
+         !assert (CompilEnv.exact_levelG CE).
          { apply h_inv_comp_CE_st. }         
-         pose proof (exact_levelG_lgth _ _ _ _ h_exact_lvlG_CE heq_CEframeG_nme).
+         pose proof (CompilEnv.exact_levelG_lgth _ _ _ _ h_exct_lvlG_CE heq_CEframeG_nme).
          exfalso.
          subst scope_lvl.
          omega.
@@ -8181,8 +7940,8 @@ Proof.
         !assert (proc_lvl<=Datatypes.length CE)%nat.
         { admit. }
         assert (proc_lvl = Datatypes.length CE_sufx)%nat.
-        { !!assert (exact_levelG CE) by eauto.
-          eapply cut_until_exact_levelG;eauto. }
+        { !!assert (CompilEnv.exact_levelG CE) by eauto.
+          eapply cut_until_CompilEnv.exact_levelG;eauto. }
         subst proc_lvl.        
         !assert (chained_stack_structure m (Datatypes.length CE_sufx) sp'').
         { eapply (repeat_Mem_loadv_cut_mem_loadv _ _ _ h_chain_lvl_sp (Datatypes.length CE - Datatypes.length CE_sufx)).
@@ -8928,7 +8687,7 @@ Proof.
     assert (hnodup_arg:NoDupA eq_param_name procedure_parameter_profile) by admit. (* spark typing *)
     assert (hnodup_decl:NoDupA eq (decl_to_lident st procedure_declarative_part)) by admit. (* spark typing *)
     assert (heq_lgth_CE_sufx:Datatypes.length CE_sufx = pb_lvl).
-    { erewrite (cut_until_exact_levelG _ _ _ _ _ _ h_CEcut_CE_pb_lvl).
+    { erewrite (cut_until_CompilEnv.exact_levelG _ _ _ _ _ _ h_CEcut_CE_pb_lvl).
       reflexivity. }
     rewrite heq_lgth_CE_sufx in heq.
     !invclear heq.
@@ -9547,7 +9306,7 @@ XXXXXXXXXXX
             
             !assert (exists pb_lvl_sub, (pb_lvl = S pb_lvl_sub /\ CompilEnv.level_of_top CE_sufx = Some pb_lvl_sub)).
             { !!assert (h_ce_lvl := ci_exact_lvls _ _ h_inv_CE''_bld).
-              !inversion h_exact_lvlG.
+              !inversion h_exct_lvlG.
               destruct (Datatypes.length CE_sufx) eqn:heq_lgthCE_sufx.
               - apply length_zero_iff_nil in heq_lgthCE_sufx.
                 subst.
@@ -9556,9 +9315,9 @@ XXXXXXXXXXX
                 !assert (invariant_compile CE_sufx st).
                 { eapply invariant_compile_sublist with (CE1:=[(S n, sto)]);auto. }
                 !!pose proof ci_exact_lvls _ _ h_inv_comp_CE_sufx_st.
-                inversion h_exact_lvlG_CE_sufx0.
+                inversion h_exct_lvlG_CE_sufx0.
                 + subst CE_sufx.
-                  !inversion h_exact_lvlG;subst.
+                  !inversion h_exct_lvlG;subst.
                   inversion heq.
                 + cbn.
                   subst CE_sufx.
