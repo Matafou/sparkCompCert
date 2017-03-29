@@ -1,6 +1,30 @@
-Require Import LibHypsNaming spark2Cminor more_stdlib.
-Import ZArith Memory Cminor Integers Errors.
+Require Import LibHypsNaming more_stdlib Memory Ctypes.
+Require Import ZArith Memory Cminor Integers Errors.
 Open Scope Z_scope.
+
+Axiom det_eval_expr: forall g stkptr locenv m e v v',
+    Cminor.eval_expr g stkptr locenv m e v
+    -> Cminor.eval_expr g stkptr locenv m e v'
+    -> v = v'.
+
+(** [build_loads_ m] returns the expression denoting the mth
+    indirection of the variable of offset Zero (i.e. the pointer to
+    enclosing procedure). This is the way we access to enclosing
+    procedure frame. The type of all Load is ( void * ). *)
+Function build_loads_ base (m:nat) {struct m} : Cminor.expr :=
+  match m with
+    | O => base
+    | S m' => let subloads := build_loads_ base m' in
+              Eload AST.Mint32 subloads
+  end.
+
+(** [build_loads m n] is the expression denoting the address
+    of the variable at offset [n] in the enclosing frame [m] levels
+    above the current frame. This is done by following pointers from
+    frames to frames. (Load^m 0)+n. *)
+Definition build_loads (m:nat) (n:Z) :=
+  let indirections := build_loads_ (Econst (Oaddrstack Integers.Int.zero)) m in
+  Ebinop Oadd indirections (Econst (Ointconst (Integers.Int.repr n))).
 
 (* no permission mean free. *)
 Definition is_free_block := fun m sp_id ofs_id => forall perm, ~ Mem.perm m sp_id ofs_id Cur perm.
@@ -114,17 +138,22 @@ Ltac rename_hyp1 h th :=
     | Maps.PTree.get ?k _ = Some _ => fresh "heq_mget_" k
     | Maps.PTree.get _ _ = Some _ => fresh "heq_mget"
 
+    | build_loads ?n ?z = _ => fresh "heq_build_loads_" n "_" z
+    | build_loads _ _ = _ => fresh "heq_build_loads"
+    | build_loads_ ?n ?z = _ => fresh "heq_build_loads_" n "_" z
+    | build_loads_ _ _ = _ => fresh "heq_build_loads"
+
     | is_free_block ?m ?sp ?ofs => fresh "h_free_blck_" m "_" sp "_" ofs
     | is_free_block ?m ?sp ?ofs => fresh "h_free_blck_" sp "_" ofs
     | is_free_block ?m ?sp ?ofs => fresh "h_free_blck_" m
     | is_free_block ?m ?sp ?ofs => fresh "h_free_blck"
+
   end.
 
 Ltac rename_hyp2 h th :=
   match th with
     | _ => rename_hyp1 h th
     | _ => (more_stdlib.rename_hyp1 h th)
-    | _ => (spark2Cminor.rename_hyp1 h th)
     | _ => (LibHypsNaming.rename_hyp_neg h th)
   end.
 
@@ -240,3 +269,143 @@ Proof.
       constructor 1.
       reflexivity.
 Qed.
+
+
+Lemma build_loads_compos : forall i x j,
+    build_loads_ x (i+j)%nat = build_loads_ (build_loads_ x j) i.
+Proof.
+  !!induction i;!intros.
+  - cbn in *.
+    reflexivity.
+  - cbn in *.
+    erewrite IHi.
+   reflexivity.
+Qed.
+
+Lemma build_loads_compos_comm : forall i x j,
+    build_loads_ x (i+j)%nat = build_loads_ (build_loads_ x i) j.
+Proof.
+  !!intros.
+  rewrite Nat.add_comm.
+  apply build_loads_compos.
+Qed.
+
+Lemma occur_build_loads: forall x n, x = build_loads_ x n -> n = 0%nat.
+Proof.
+  induction x;cbn;!intros; try now (destruct n;cbn in *; auto).
+  apply IHx.
+  destruct n.
+  + reflexivity.
+  + cbn in *.
+    !invclear heq_Eload.
+    rewrite <- heq_x at 2.
+    !!pose proof (build_loads_compos_comm 1 x n).
+    cbn in *.
+    now symmetry.
+Qed.
+
+Lemma build_loads__inj : forall x i₁ i₂,
+    (* translating the variabe to a Cminor load address *)
+    build_loads_ x i₁ = build_loads_ x i₂ ->
+    i₁ = i₂.
+Proof.
+  intros x i₁.
+  !induction i₁;!intros.
+  - cbn in *.
+    destruct i₂;auto.
+    apply occur_build_loads in heq_build_loads_x_O.
+    exfalso;omega.
+  - destruct i₂.
+    + unfold build_loads_ in heq_build_loads at 2.
+      eapply occur_build_loads;eauto.
+    + cbn in *.
+      inversion heq_build_loads.
+      f_equal.
+      eapply IHi₁;auto.
+Qed.
+
+Lemma build_loads__inj_neq : forall x i₁ i₂,
+    i₁ <> i₂ ->
+    forall e₁ e₂ ,
+      (* translating the variabe to a Cminor load address *)
+      build_loads_ (Econst x) i₁ = e₁ ->
+      (* translating the variabe to a Cminor load address *)
+      build_loads_ (Econst x) i₂ = e₂ ->
+      e₁ <> e₂.
+Proof.
+  !intros.
+  intro abs.
+  subst.
+  eapply build_loads__inj in abs.
+  contradiction.
+Qed.
+
+Lemma build_loads_inj : forall i₁ i₂ k k' ,
+    (* translating the variabe to a Cminor load address *)
+    build_loads k i₁ = build_loads k' i₂ ->
+    k = k' /\ Integers.Int.Z_mod_modulus i₁ = Integers.Int.Z_mod_modulus i₂.
+Proof.
+  unfold build_loads.
+  !intros.
+  inversion heq_Ebinop.
+  split.
+  - eapply build_loads__inj;eauto.
+  - auto. 
+Qed.
+
+Lemma build_loads_inj_2 : forall i₁ i₂ k k' ,
+    (* translating the variabe to a Cminor load address *)
+    build_loads k i₁ = build_loads k' i₂ ->
+    k = k' /\ Int.repr i₁ = Int.repr i₂.
+Proof.
+  unfold build_loads.
+  !intros.
+  remember (Int.repr i₁) as rpr1.
+  remember (Int.repr i₂) as rpr2.
+  inversion heq_Ebinop.
+  split.
+  - eapply build_loads__inj;eauto.
+  - auto.
+Qed.
+
+Lemma build_loads_inj_inv:
+  forall (i₁ i₂ : Z) (k k' : nat),
+    k = k'  ->
+    Int.repr i₁ = Int.repr i₂ -> 
+    build_loads k i₁ = build_loads k' i₂.
+Proof.
+  unfold build_loads.
+  !intros.
+  subst.
+  rewrite heq_repr.
+  reflexivity.
+Qed.
+
+
+
+Lemma build_loads_inj_neq1 : forall i₁ i₂ k k' e₁ e₂,
+    k <> k' ->
+    build_loads k i₁ = e₁ ->
+    build_loads k' i₂ = e₂ ->
+    e₁ <> e₂.
+Proof.
+  !intros.
+  intro abs.
+  subst.
+  apply build_loads_inj in abs.
+  destruct abs;contradiction.
+Qed.
+
+Lemma build_loads_inj_neq2 : forall i₁ i₂ k k' e₁ e₂,
+    Integers.Int.Z_mod_modulus i₁ <> Integers.Int.Z_mod_modulus i₂ ->
+    build_loads k i₁ = e₁ ->
+    build_loads k' i₂ = e₂ ->
+    e₁ <> e₂.
+Proof.
+  !intros.
+  intro abs.
+  subst.
+  apply build_loads_inj in abs.
+  destruct abs;contradiction.
+Qed.
+

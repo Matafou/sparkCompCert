@@ -6,6 +6,7 @@ Require Ctypes AST.
 Require Import BinPosDef.
 Require Import Maps.
 Require Import spark.symboltable.
+Require Import compcert_utils.
 Require Import spark.eval.
 Require Import LibHypsNaming.
 Require Import Errors. (* Errors.OK may be written OK *)
@@ -224,27 +225,6 @@ Function make_load (addr : Cminor.expr) (ty_res : Ctypes.type) :=
   | Ctypes.By_copy => Error (msg "spark2compcert.make_load copy")
   | Ctypes.By_nothing => Error (msg "spark2compcert.make_load nothing")
   end.
-
-
-
-(** [build_loads_ m] returns the expression denoting the mth
-    indirection of the variable of offset Zero (i.e. the pointer to
-    enclosing procedure). This is the way we access to enclosing
-    procedure frame. The type of all Load is ( void * ). *)
-Function build_loads_ base (m:nat) {struct m} : Cminor.expr :=
-  match m with
-    | O => base
-    | S m' => let subloads := build_loads_ base m' in
-              Eload AST.Mint32 subloads
-  end.
-
-(** [build_loads m n] is the expression denoting the address
-    of the variable at offset [n] in the enclosing frame [m] levels
-    above the current frame. This is done by following pointers from
-    frames to frames. (Load^m 0)+n. *)
-Definition build_loads (m:nat) (n:Z) :=
-  let indirections := build_loads_ (Econst (Oaddrstack Integers.Int.zero)) m in
-  Ebinop Oadd indirections (Econst (Ointconst (Integers.Int.repr n))).
 
 
 Definition error_msg_with_loc stbl astnum (nme:nat) :=
@@ -1149,10 +1129,6 @@ Ltac rename_hyp1 h th :=
 
 
 
-    | build_loads ?n ?z = _ => fresh "heq_build_loads_" n "_" z
-    | build_loads _ _ = _ => fresh "heq_build_loads"
-    | build_loads_ ?n ?z = _ => fresh "heq_build_loads_" n "_" z
-    | build_loads_ _ _ = _ => fresh "heq_build_loads"
     | make_load _ _ = Error _ => fresh "heq_make_load_RE"
     | make_load _ _ = _ => fresh "heq_make_load"
     | reduce_type _ _ _ = Error _ => fresh "heq_reduce_type_RE"
