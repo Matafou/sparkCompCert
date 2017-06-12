@@ -467,35 +467,18 @@ Qed.
 (* Definition build_compilenv:= Eval lazy beta iota delta [build_compilenv bind bind2] in build_compilenv. *)
 (* using the explicit version because of a bug in Function. *)
 
-Function build_compilenv
-         (stbl : Symbol_Table_Module.symboltable) (enclosingCE : compilenv)
-         (_ : Symbol_Table_Module.level) (lparams : list paramSpec) 
-         (decl : decl) :=
-let stoszchainparam :=
-    @pair (list (prod idnum OffsetEntry.T)) Z (@nil (prod idnum OffsetEntry.T))
-          (Zpos (xO (xO xH))) in
-match
-  build_frame_lparams stbl stoszchainparam lparams
-  return (res (prod (list (prod nat CompilEnv.store)) Z))
-with
-| OK x =>
-  match
-    build_frame_decl stbl x decl
-    return (res (prod (list (prod nat CompilEnv.store)) Z))
-  with
-  | OK p =>
-    match p return (res (prod (list (prod nat CompilEnv.store)) Z)) with
-    | pair x0 y =>
-      let scope_lvl := @Datatypes.length CompilEnv.frame enclosingCE in
+Function build_compilenv (stbl : Symbol_Table_Module.symboltable) (enclosingCE : compilenv) (H : Symbol_Table_Module.level)
+         (lparams : list paramSpec) (decl : decl) {struct stbl} : res (prod (list (prod nat CompilEnv.store)) Z) :=
+let stoszchainparam : prod (list (prod idnum OffsetEntry.T)) Z :=
+  @pair (list (prod idnum OffsetEntry.T)) Z (@nil (prod idnum OffsetEntry.T)) (Zpos (xO (xO xH))) in
+@bind (prod CompilEnv.store Z) (prod (list (prod nat CompilEnv.store)) Z) (build_frame_lparams stbl stoszchainparam lparams)
+  (fun stoszparam : prod CompilEnv.store Z =>
+   @bind2 CompilEnv.store Z (prod (list (prod nat CompilEnv.store)) Z) (build_frame_decl stbl stoszparam decl)
+     (fun (stolocals : CompilEnv.store) (szlocals : Z) =>
+      let scope_lvl : nat := @Datatypes.length CompilEnv.frame enclosingCE in
       @OK (prod (list (prod nat CompilEnv.store)) Z)
-          (@pair (list (prod nat CompilEnv.store)) Z
-                 (@cons (prod nat CompilEnv.store)
-                        (@pair nat CompilEnv.store scope_lvl x0) enclosingCE) y)
-    end
-  | Error msg => @Error (prod (list (prod nat CompilEnv.store)) Z) msg
-  end
-| Error msg => @Error (prod (list (prod nat CompilEnv.store)) Z) msg
-end.
+        (@pair (list (prod nat CompilEnv.store)) Z
+           (@cons (prod nat CompilEnv.store) (@pair nat CompilEnv.store scope_lvl stolocals) enclosingCE) szlocals))).
 
 
 Lemma build_compilenv_ok : build_compilenv = spark2Cminor.build_compilenv.
@@ -534,18 +517,24 @@ Proof.
 Qed.
 
 
-(* Definition add_to_frame:= Eval lazy beta iota delta [add_to_frame bind] in add_to_frame. *)
+(*Definition add_to_frame:= Eval lazy beta iota delta [add_to_frame bind] in add_to_frame. *)
 
 Function add_to_frame (stbl : Symbol_Table_Module.symboltable) (cenv_sz : localframe * Z) (nme : idnum) (subtyp_mrk : type) :=
-  let (cenv, sz) := cenv_sz in
-  match compute_size stbl subtyp_mrk with
-  | OK x =>
-    let new_size := sz + x in
-    if new_size >=? Integers.Int.modulus
-    then Error (msg "add_to_frame: memory would overflow")
-    else let new_cenv := (nme, sz) :: cenv in OK (new_cenv, new_size)
-  | Error msg => Error msg
-  end.
+match cenv_sz return (res (prod CompilEnv.store Z)) with
+| pair cenv sz =>
+    match compute_size stbl subtyp_mrk return (res (prod (list (prod idnum Z)) Z)) with
+    | OK x =>
+        let new_size : Z := Z.add sz x in
+        match Z.geb new_size Integers.Int.modulus return (res (prod (list (prod idnum Z)) Z)) with
+        | true =>
+            @Error (prod (list (prod idnum Z)) Z) (msg "add_to_frame: memory would overflow")
+        | false =>
+            let new_cenv : list (prod idnum Z) := @cons (prod idnum Z) (@pair idnum Z nme sz) cenv in
+            @OK (prod (list (prod idnum Z)) Z) (@pair (list (prod idnum Z)) Z new_cenv new_size)
+        end
+    | Error msg => @Error (prod (list (prod idnum Z)) Z) msg
+    end
+end.
 
 Lemma add_to_frame_ok : spark2Cminor.add_to_frame = add_to_frame.
 Proof.
