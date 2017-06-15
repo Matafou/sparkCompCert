@@ -3488,7 +3488,7 @@ Proof.
         assumption. }
       !destruct h_ex.
       rename x0 into sto'.
-      specialize H with (1:=heq_frameG0).
+      specialize H with (1:=hneq) (2:=heq_frameG0).
       eapply h_stk_mtch_CE_s_CE;eauto. 
     + specialize h_stk_mtch_CE_s_CE' with (1:=heq_CEframeG_nme_CE).
       destruct h_stk_mtch_CE_s_CE';eauto.
@@ -3921,10 +3921,21 @@ Proof.
   - (* x0 belongs to top frame f *)
     rename fr_x0 into sto_CE.
     rename s' into CE.
+    subst.
     !inversion heq_Some. clear heq_Some.
+    assert (f = (lvl_x0, sto_CE)).
+    { !functional inversion heq_CEframeG_x0;subst.
+      - reflexivity.
+      - pose proof CompilEnv.fetch_ok as h.
+        specialize h with (1:=heq_CEfetch_x0_f).
+        rewrite h in heq_reside.
+        discriminate. }
+    subst.
+
+
     !inversion h_storeUpd;subst. clear h_storeUpd.
-    !invclear h_strg_mtch_s.
-    !assert (∃ δ, fetch x0 (lvl,sto) = Some δ).
+    !invclear h_strg_mtch_s;up_type.
+    !assert (∃ δ, fetch x0 (lvl,sto) = Some v_x0 ∧ ).
     { admit. }
     decomp h_ex.
     up_type.
