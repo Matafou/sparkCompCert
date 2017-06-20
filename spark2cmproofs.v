@@ -3894,10 +3894,42 @@ Proof.
 Qed.
 
 
+Function my_updateG (s : ST.state) (x : idnum) (v : V) {struct s} : option ST.state :=
+  match s with
+  | [ ] => None
+  | f :: s' =>
+      match ST.update f x v with
+      | Some f' => Some (f' :: s')
+      | None => match my_updateG s' x v with
+                | Some s'' => Some (f :: s'')
+                | None => None
+                end
+      end
+  end
+.
+
+Lemma my_updateG_ok: forall f x v, ST.updateG f x v = my_updateG f x v.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma foo: forall CE, CE <> nil -> CompilEnv.exact_levelG CE ->  CompilEnv.level_of_top CE = Some (Datatypes.length CE - 1)%nat.
+Proof.
+  !intros.
+  destruct CE.
+  - elim hneq;auto.
+  - inversion h_exct_lvlG_CE;subst.
+    unfold CompilEnv.level_of_top.
+    simpl.
+    auto with arith.
+Qed.
+
+
 Lemma assignment_preserve_strong_match_env:
   forall stbl s CE spb ofs locenv g m x x0 nme_t nme_chk nme_t_addr e_v e_t_v s' m',
-    transl_name stbl CE (Identifier x x0) =: nme_t ->
     strong_match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
+    chained_stack_structure m (Datatypes.length s) (Values.Vptr spb ofs) ->
+    transl_name stbl CE (Identifier x x0) =: nme_t ->
     forall h_overflow:(forall n, e_v = Int n -> overflowCheck n (OK (Int n))),
       invariant_compile CE stbl ->
       transl_name stbl CE (Identifier x x0) =: nme_t ->
@@ -3908,12 +3940,93 @@ Lemma assignment_preserve_strong_match_env:
       Mem.storev nme_chk m nme_t_addr e_t_v = Some m' ->
       strong_match_env stbl s' CE (Values.Vptr spb ofs) locenv g m'.
 Proof.
-  !!intros until 1.
+  !!intros until 3.
+  assert (ofs = Int.zero).
+  { specialize chained_stack_struct_inv_sp_zero with (1:=h_chain_m).
+    !intro.
+    decomp h_ex.
+    !inversion heq_vptr_spb_ofs.
+    reflexivity. }
+  subst.
   !functional inversion heq_transl_name;subst.
   clear heq_transl_name.
   !functional inversion heq_transl_variable.
   clear heq_transl_variable.
-  revert stbl s spb ofs locenv g m  nme_chk nme_t_addr e_v e_t_v s' m' δ_x0 lvl_x0 fr_x0 m'0 heq_CEfetchG_x0_CE heq_CEframeG_x0_CE heq_lvloftop_CE_m'0 heq_build_loads.
+  revert x x0 nme_t nme_chk nme_t_addr e_v e_t_v s' m' δ_x0 lvl_x0 fr_x0 m'0 h_chain_m heq_CEfetchG_x0_CE heq_CEframeG_x0_CE heq_lvloftop_CE_m'0 heq_build_loads.
+
+  !induction h_strg_mtch_s_CE_m;!intros.
+  - !inversion h_storeUpd;subst.
+    cbv in heq_updateG_x0.
+    discriminate.
+  - !inversion h_storeUpd;subst.
+    rewrite my_updateG_ok in heq_updateG_x0.
+    !functional inversion heq_updateG_x0;subst.
+    rewrite <- my_updateG_ok in *.
+    + (* The updated variable is in the top store *)
+      rewrite my_update_ok in heq_update_x0.
+      functional inversion heq_update_x0.
+      rewrite <- my_update_ok in heq_update_x0.
+      subst.
+      econstructor.
+      * admit.
+      * admit.
+      * admit.
+    + (* The updated variable is deeper un CE *)
+      cbn in h_chain_m.
+      !inversion h_chain_m;subst.
+      rewrite h_loadv_v'_v in h_loadv.
+      !invclear h_loadv.
+      cbv in heq_lvloftop_m'0.
+      !invclear heq_lvloftop_m'0.
+      !!pose proof me_stack_match_CE h_match_env.
+      red in h_stk_mtch_CE.
+      specialize h_stk_mtch_CE with x0 lvl_x0.
+      destruct h_stk_mtch_CE as [h1 h2].
+      econstructor 2;eauto.
+      * eapply IHh_strg_mtch_s_CE_m with (δ_x0:=δ_x0) (lvl_x0:=lvl_x0) (fr_x0:=fr_x0);eauto.
+       all:swap 3 1.
+        -- apply foo.
+           ++ intro abs.
+              subst CE.
+              specialize h2 with (1:=heq_CEframeG_x0).
+              decomp h2.
+              simpl in heq_frameG.
+              
+              !functional inversion heq_CEfetchG_x0;subst.
+              ** apply update_ok_none in heq_update_x0.
+                 !!pose proof me_stack_match_CE h_match_env.
+                 red in h_stk_mtch_CE.
+                 specialize h_stk_mtch_CE with x0 lvl_x0.
+                 destruct h_stk_mtch_CE as [h1 h2].
+                 !assert (frameG x0 ((m'0, sto) :: s) = Some (lvl_x0, sto)).
+                 { simpl.
+                   
+                   apply CompilEnv.fetchG_ok in heq_CEfetchG_x0.
+                   apply fetch_ok_none in heq_update_x0.
+                   change CompilEnv.scope_level with scope_level in *.
+                   rewrite heq_update_x0.
+                   specialize h2 with (1:=heq_CEframeG_x0).
+                   decomp h2.
+                   simpl in heq_frameG.
+
+                   !!pose proof CompilEnv.fetchG_ok _ _ _ heq_CEfetchG_x0.
+                   simpl in heq_resideG.
+                   
+                   rewrite heq_resideG.
+                   
+                 }
+                 specialize h1 with sto.
+        
+       
+(* xxxxxxxxxxxxx *)
+
+
+  revert stbl s spb locenv g m  nme_chk nme_t_addr e_v e_t_v s' m' δ_x0 lvl_x0 fr_x0 m'0 h_chain_m heq_CEfetchG_x0_CE heq_CEframeG_x0_CE heq_lvloftop_CE_m'0 heq_build_loads.
+  induction 
+
+
+
+
   !!functional induction CompilEnv.fetchG x0 CE;!intros.
   all: swap 3 1.
   all: swap 3 2.
@@ -3931,9 +4044,64 @@ Proof.
         rewrite h in heq_reside.
         discriminate. }
     subst.
-
+    !inversion h_strg_mtch_s;subst.
 
     !inversion h_storeUpd;subst. clear h_storeUpd.
+    !functional inversion heq_updateG_x0;subst.
+    all:swap 1 2.
+    (* x0 cannot be unfound in sto, since it is in sto_CE. *)
+    { exfalso. (* TODO: simplify this *)
+      apply update_ok_none in heq_update_x0.
+      !!pose proof me_stack_match_CE h_match_env.
+      red in h_stk_mtch_CE.
+      specialize h_stk_mtch_CE with x0 lvl_x0.
+      destruct h_stk_mtch_CE as [h1 h2].
+      specialize h2 with (1:=heq_CEframeG_x0).
+      decomp h2.
+      !functional inversion heq_frameG;subst.
+      - apply fetch_ok_none in heq_update_x0.
+        rewrite heq_update_x0 in heq_reside.
+        discriminate.
+      - !!assert (lvl_x0 > Datatypes.length s0)%nat.
+        { admit. }
+        !!pose proof me_exact_levelG h_match_env.
+        !inversion h_exct_lvl;subst.
+        specialize exact_lvl_level_of_top with (1:=h_exct_lvl_s0) (2:=heq_frameG0);!intros.
+        decomp h_ex.
+        destruct s0.
+        + cbn in *.
+          inversion heq_frameG0.
+        + simpl in h_le, h_gt_lvl_x0.
+          destruct f.
+          cbn in heq_level_of_top.
+          inversion heq_level_of_top.
+          subst s.
+          omega. }
+    rewrite my_update_ok in heq_update_x0.
+    functional inversion heq_update_x0.
+    rewrite <- my_update_ok in *.
+    subst.
+    econstructor 2 with (v:=v) ;eauto.
+    all:swap 1 2.
+    + c
+
+    !!pose proof me_stack_match_CE h_match_env.
+      red in h_stk_mtch_CE.
+      specialize h_stk_mtch_CE with x0 lvl_x0.
+      destruct h_stk_mtch_CE as [h1 h2].
+    
+
+    + rewrite my_update_ok in heq_update_x0.
+      !functional inversion heq_update_x0;subst.
+      rewrite <- my_update_ok in heq_update_x0.
+      cbn in heq_updates_x0.
+      eapply C2 with (v:=(Values.Vptr spb ofs)) (locenv:=locenv).
+      * admit. (* invisible *)
+    + exfalso.
+      apply update_ok_none in heq_update_x0.
+      setoid_rewrite heq_fetch_x0 in heq_update_x0.
+      discriminate.
+
     !invclear h_strg_mtch_s;up_type.
     !assert (∃ δ, fetch x0 (lvl,sto) = Some v_x0 ∧ ).
     { admit. }
