@@ -1175,20 +1175,25 @@ Inductive strong_stack_match stbl: STACK.state → compilenv → Values.val → 
     stack_match stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m ->
     strong_stack_match stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m.
 
+Definition all_addr_no_overflow CE := forall id δ,
+    CompilEnv.fetchG id CE = Some δ -> 0 <= δ < Integers.Int.modulus.
+
 Lemma nodup_stack_match_strong:
   forall st s CE sp locenv g m,
     chained_stack_structure m (Datatypes.length CE) sp ->
+    all_addr_no_overflow CE ->
     STACK.NoDup_G s -> CompilEnv.NoDup_G CE ->
     STACK.exact_levelG s -> CompilEnv.exact_levelG CE ->
     Datatypes.length s = Datatypes.length CE ->
     stack_match st s CE sp locenv g m -> 
     strong_stack_match st s CE sp locenv g m.
 Proof.
-  induction s;!intros.
+  !!induction s;!intros.
   - simpl in heq_length.
     destruct CE;try discriminate.
     now constructor.
-  - rename H5 into h_stack_match.
+  - rename H0 into h_no_overf.
+    rename H6 into h_stack_mtch.
     destruct CE;try discriminate.
     up_type.
     destruct a, f.
@@ -1203,9 +1208,15 @@ Proof.
     !inversion h_chain_m;subst.
     econstructor 2;eauto.
     eapply IHs with (sp:=(Values.Vptr b' Int.zero)) (locenv:=locenv).
-    all:swap 1 6.
+    all:swap 1 7.
     { simpl in heq_length.
       now inversion heq_length. }
+    { red.
+      !intros.
+      red in h_no_overf.
+      eapply h_no_overf;eauto.
+      admit.
+    } 
     { eapply STACK.stack_CE_NoDup_G_cons;eauto. }
     { eapply CompilEnv.stack_CE_NoDup_G_cons;eauto. }
     { eapply STACK.exact_levelG_sublist;eauto. }
@@ -1224,9 +1235,9 @@ Proof.
       unfold build_loads in h_CM_eval_expr_nme_t_nme_t_v.
       exists nme_t_v.
       split.
-      * red in h_stack_match.
-        specialize h_stack_match with (nme := (Identifier astnum id)).
-        edestruct h_stack_match.
+      * red in h_stack_mtch.
+        specialize h_stack_mtch with (nme := (Identifier astnum id)).
+        edestruct h_stack_mtch.
 
 
         Lemma transl_variable_nodup_resideG : forall st CE id a x,
@@ -1262,12 +1273,15 @@ Proof.
         Qed.
 
         Lemma transl_name_nodup_cons : forall st CE nme lvl n fr,
+            all_addr_no_overflow CE ->
             transl_name st CE nme = Errors.OK (build_loads lvl n) ->
+            0 <= n ∧ n < Int.modulus ->
             CompilEnv.NoDup_G (fr :: CE) ->
             CompilEnv.exact_levelG (fr :: CE) ->
             transl_name st (fr::CE) nme = Errors.OK (build_loads (S lvl) n).
         Proof.
           !intros.
+          rename H into h_no_overf.
           red in nodup_G_CE.
           !functional inversion heq_transl_name;subst.
           specialize transl_variable_nodup_resideG with (1:=heq_transl_variable);!intro.
@@ -1302,35 +1316,31 @@ Proof.
           change (match Int.repr n with
                    | {| Int.intval := intval |} => intval
                    end) with (Int.repr n).(Int.intval) in H1.
-
           apply f_equal.
-          apply CompilEnv.exact_lvl_lvl_of_top in heq_lvloftop_CE_top;auto.
-          
-          apply build_loads__inj in H0;auto.
-          subst.
-xxxxx
-          rewrite heq_lvloftop_CE_top
-
-          assert (S m' - m = S (m' - m))%nat.
-          { assert (m <= m')%nat.
+          Transparent Int.repr.
+          apply build_loads_inj_inv;auto.
+          - apply build_loads__inj in H0;auto.
+            subst.
+            apply CompilEnv.exact_lvl_lvl_of_top in heq_lvloftop_CE_top;auto.
+            rewrite <- heq_lvloftop_CE_top.
+            unfold Int.repr.
+            !assert (s <= top)%nat.
             { specialize CompilEnv.exact_levelG_frameG_lt_lgth with (1:=h_exct_lvlG_CE)(2:=heq_CEframeG_id_CE);!intro.
               omega. }
-            omega. }
-          rewrite H.
-          rewrite heq_CEfetchG_id_CE in heq_CEfetchG_id_CE0.
-          inversion heq_CEfetchG_id_CE0;subst.
-          apply f_equal.
-          apply build_loads_inj_inv;auto.
-          
-          unfold Int.repr.
-          destruct n0,n.
-          cbv in heq.
-          ;simpl in heq;auto.
-          
-          now subst.
-          
-          
-        Qed.
+            omega.
+          - rewrite Int.eqm_small_eq with v n;auto.
+            + Transparent Int.repr Int.intval.
+              simpl in H1. 
+              red.
+              apply Int.eqmod_trans with (v mod Int.modulus); try now apply Int.eqmod_mod;auto.
+              apply Int.eqmod_trans with (n mod Int.modulus); try (apply Int.eqmod_sym;now apply Int.eqmod_mod;auto).
+              setoid_rewrite Int.Z_mod_modulus_eq in H1.
+              rewrite H1.
+              apply Int.eqmod_refl.
+            + !!assert (all_addr_no_overflow CE) by admit.
+              red in H.
+              eapply H;eauto.
+xxxx        Admitted.
         
       !inversion h_CM_eval_expr_nme_t_nme_t_v;subst.
 
@@ -1522,8 +1532,6 @@ Definition increasing_order_fr (f:CompilEnv.frame) :=
 
 Definition all_frm_increasing CE := Forall increasing_order_fr CE.
 
-Definition all_addr_no_overflow CE := forall id δ,
-    CompilEnv.fetchG id CE = Some δ -> 0 <= δ < Integers.Int.modulus.
 
 Definition upper_bound fr sz := forall nme nme_ofs,
     CompilEnv.fetches nme fr = Some nme_ofs -> Zlt nme_ofs sz.
