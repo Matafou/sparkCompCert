@@ -14,7 +14,7 @@
 
 (* Comment this and the Z-dependent lines below if you don't want
    ZArith to be loaded *)
-Require Import ZArith.
+Require Import ZArith FunInd.
 
 (** ** The default fallback renaming strategy 
   This is used if the user-defined renaing scheme fails to give a name

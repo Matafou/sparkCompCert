@@ -1,4 +1,4 @@
-Require Import ZArith function_utils LibHypsNaming  Errors
+Require Import FunInd ZArith function_utils LibHypsNaming  Errors
         spark2Cminor Cminor symboltable eval semantics_properties
         Sorted Relations compcert.lib.Integers compcert_utils more_stdlib.
 Require Import SetoidList.
@@ -94,7 +94,7 @@ Proof. reflexivity. Qed.
 Lemma min_signed_ok: min_signed = Integers.Int.min_signed.
 Proof. reflexivity. Qed.
 
-(* TODO: replace this y the real typing function *)
+(* TODO: replace this by the real typing function *)
 Definition type_of_name (stbl:symboltable) (nme:name): res type :=
   match nme with
   | Identifier astnum id =>
@@ -932,10 +932,15 @@ Proof.
     eauto.
 Qed.
 
-(* THIS IS NOT TRUE: some variable may not be initialized at some point. *)
+(* THIS IS NOT ALWAYS TRUE: some variable may not be initialized at some point. *)
 Definition stack_complete stbl s CE := forall a nme addr_nme,
     transl_variable stbl CE a nme = Errors.OK addr_nme
     -> exists v, evalName stbl s (Identifier a nme) (OK v).
+
+(* All variables in CE have a type in stbl. This is ensured by typing. *)
+Definition subset_CE_stbl stbl CE := forall nme addr_nme,
+    transl_name stbl CE nme = Errors.OK addr_nme
+    -> exists typ_nme, type_of_name stbl nme = Errors.OK typ_nme.
 
 Definition stack_no_null_offset stbl CE := forall a nme δ_lvl δ_id,
     transl_variable stbl CE a nme = Errors.OK (build_loads δ_lvl δ_id) ->
@@ -949,26 +954,478 @@ Definition stack_match_CE (s : STACK.state) (CE : compilenv) :=
                  ∧ forall CE_sto, CompilEnv.frameG nme CE = Some (lvl,CE_sto)
                                   -> exists sto, STACK.frameG nme s = Some (lvl,sto).
 
+
+(* stack_match_CE must be true on all sub stacks *)
+Inductive strong_stack_match_CE: STACK.state → compilenv → Prop :=
+| Strg_smCE_nil: stack_match_CE [] [] -> strong_stack_match_CE [] []
+| Strg_smCE_cons: forall lvl sto s stoCE CE,
+    strong_stack_match_CE s CE ->
+    stack_match_CE ((lvl,sto)::s) ((lvl,stoCE)::CE) ->
+    strong_stack_match_CE ((lvl,sto)::s) ((lvl,stoCE)::CE).
+
+
+Lemma nodup_stack_match_CE_strong:
+  forall s CE,
+    STACK.NoDup_G s ->
+    CompilEnv.NoDup_G CE ->
+    Datatypes.length s = Datatypes.length CE ->
+    STACK.exact_levelG s -> CompilEnv.exact_levelG CE ->
+    stack_match_CE s CE -> strong_stack_match_CE s CE.
+Proof.
+  induction s;destruct CE;!intros; try (cbn in heq_length; try discriminate).
+  - now constructor.
+  - !!destruct a,f.
+    !inversion h_exct_lvl.
+    !inversion h_exct_lvlG.
+    !invclear heq_length.
+    rewrite heq_length.
+    constructor;auto.
+    + apply IHs;auto.
+      * eapply STACK.stack_CE_NoDup_G_cons with (1:=h_exct_lvl);eauto.
+      * eapply CompilEnv.stack_CE_NoDup_G_cons with (1:=h_exct_lvlG);eauto.
+      * red;!intros.
+        red in H4.
+        specialize (H4 nme lvl).
+        destruct H4 as [h1 h2].
+        split;!intros.
+        -- specialize (h1 sto).
+           !assert (STACK.frameG nme ((Datatypes.length s, s1) :: s) = Some (lvl, sto)).
+           { !assert (STACK.resideG nme s = true).
+             { eapply STACK.frameG_resideG_1;eauto. }
+             specialize STACK.nodup_G_cons with (1:=h_exct_lvl) (2:=nodup_G_s) (3:=heq_resideG);intro h.
+             cbn.
+             cbn in h.
+             rewrite h.
+             assumption. }
+           specialize h1 with (1:=heq_frameG0).
+           decomp h1.
+           cbn in heq_CEframeG_nme.
+           !!destruct (CompilEnv.resides nme s3) eqn:?.
+           ++ exfalso.
+              inversion heq_CEframeG_nme;subst.
+              rewrite <- heq_length in *.
+              specialize STACK.exact_levelG_frameG_lt_lgth
+                with (1:=h_exct_lvl_s) (2:=heq_frameG).
+              intros.
+              omega.
+           ++ eauto.
+        -- specialize (h2 CE_sto).
+           !assert (CompilEnv.frameG nme ((Datatypes.length CE, s3) :: CE)
+                    = Some (lvl, CE_sto)).
+           { !assert (CompilEnv.resideG nme CE = true).
+             { eapply CompilEnv.frameG_resideG_1;eauto. }
+             specialize CompilEnv.nodup_G_cons with (1:=h_exct_lvlG)  (2:=nodup_G_CE) (3:=heq_resideG);intro h.
+             cbn.
+             cbn in h.
+             rewrite h.
+             assumption. }
+           specialize h2 with (1:=heq_CEframeG_nme).
+           decomp h2.
+           cbn in heq_frameG.
+           !!destruct (STACK.resides nme s1) eqn:?.
+           ++ exfalso.
+              !invclear heq_frameG;subst;up_type.
+              rewrite heq_length in *.
+              specialize CompilEnv.exact_levelG_frameG_lt_lgth
+                with (1:=h_exct_lvlG_CE) (2:=heq_CEframeG_nme_CE).
+              intros.
+              omega.
+           ++ eauto.
+    + rewrite heq_length in H4.
+      assumption.
+Qed.
+  
+
 (* A name present in CE is translated to some expression that evaluates
    correctly to an address. *)
-Definition stack_match_addresses st sp CE locenv g m :=
+Definition stack_match_addresses st CE sp locenv g m :=
   forall nme addr_nme ,
     transl_name st CE nme = Errors.OK addr_nme ->
     exists addr, Cminor.eval_expr g sp locenv m addr_nme addr.
 
+Inductive strong_stack_match_addresses stbl:compilenv → Values.val → env → genv → mem → Prop :=
+| Strg_sma_nil: forall v locenv g m,
+    stack_match_addresses stbl [] v locenv g m ->
+    strong_stack_match_addresses stbl [] v locenv g m
+| Strg_sma_cons: forall lvl stoCE CE v v' locenv locenv' g m,
+    strong_stack_match_addresses stbl CE v locenv g m ->
+    Mem.loadv AST.Mint32 m v' = Some v ->
+    stack_match_addresses stbl ((lvl,stoCE)::CE) v' locenv' g m ->
+    strong_stack_match_addresses stbl ((lvl,stoCE)::CE) v' locenv' g m.
+
+
+Lemma nodup_stack_match_address_strong:
+  forall st CE sp locenv g m,
+    chained_stack_structure m (Datatypes.length CE) sp ->
+    CompilEnv.NoDup_G CE ->
+    CompilEnv.exact_levelG CE ->
+    stack_match_addresses st CE sp locenv g m -> 
+    strong_stack_match_addresses st CE sp locenv g m.
+Proof.
+  induction CE;!intros.
+  - now constructor.
+  - rename H2 into h_stack_match_addr.
+    destruct a.
+    !inversion h_chain_m;subst;up_type.
+    econstructor 2;eauto.
+    + apply IHCE with (1:=h_chain_m0) (locenv:=locenv);eauto.
+      * eapply CompilEnv.stack_CE_NoDup_G_cons;eauto.
+      * eapply CompilEnv.exact_levelG_sublist;eauto.
+      * red in h_stack_match_addr |- *.
+        !intros.
+        !functional inversion heq_transl_name;subst.
+        !functional inversion heq_transl_variable;subst.
+
+        !assert (transl_name st ((s, s0) :: CE) (Identifier astnum id) = Errors.OK (build_loads (S(m' - m0)) n)).
+        { cbn.
+          unfold transl_variable;simpl.
+          !assert (CompilEnv.fetch id (s, s0) = None).
+          { destruct (CompilEnv.fetch id (s, s0)) eqn:heq;auto.
+            exfalso.
+            unfold CompilEnv.NoDup_G in nodup_G_CE.
+            !assert (CompilEnv.frameG id ((s, s0) :: CE) = Some (s, s0)).
+            { cbn.
+              erewrite CompilEnv.fetches_ok;eauto. }
+            specialize nodup_G_CE with (s':=(s, s0)::nil) (s'':=CE) (1:=heq_CEframeG_id).
+            apply CompilEnv.fetchG_ok in heq_CEfetchG_id_CE.
+            rewrite nodup_G_CE in heq_CEfetchG_id_CE.
+            - inversion heq_CEfetchG_id_CE.
+            - constructor;simpl;try auto with arith.
+              eapply CompilEnv.cut_until_exct_lvl;eauto. }
+          setoid_rewrite heq_CEfetch_id.
+          rewrite heq_CEfetchG_id_CE.
+          rewrite CompilEnv.fetch_ok_none;auto.
+          rewrite heq_CEframeG_id_CE.
+          !inversion h_exct_lvlG;subst.
+          !destruct CE;try discriminate.
+          !inversion h_exct_lvlG_CE.
+          set (lCE:= Datatypes.length CE) in *|-*.
+          simpl Datatypes.length.
+          !inversion heq_lvloftop_CE_m'.
+          assert (Datatypes.length CE >= m0)%nat.
+          { eapply CompilEnv.exact_levelG_frameG_le_top;eauto. }
+          replace (S (Datatypes.length CE) - m0)%nat
+            with (S ((Datatypes.length CE) - m0))%nat by omega.
+          unfold build_loads at 1 2.
+          reflexivity.
+        }
+        specialize h_stack_match_addr with (1:=heq_transl_name0).
+        decomp h_stack_match_addr.
+        exists addr.
+        simpl in h_chain_m.
+        specialize chained_stack_structure_aux with (1:=h_chain_m) (g:=g)(e:=locenv);
+          intro h.
+        decomp h.
+        rewrite h_loadv0 in h_loadv.
+        !invclear h_loadv.
+        !inversion h_CM_eval_expr_addr;subst.
+        change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Int.zero)) (m' - m0)))
+          with (build_loads_ (Econst (Oaddrstack Int.zero)) (S (m' - m0)))
+          in h_CM_eval_expr_v1.
+        !assert (chained_stack_structure m (S (m' - m0)) (Values.Vptr b Int.zero)).
+        { apply chained_stack_structure_le with (n:=(S (Datatypes.length CE)));auto.
+          apply CompilEnv.exact_levelG_sublist in h_exct_lvlG.
+          specialize CompilEnv.exact_lvl_lvl_of_top with (1:=h_exct_lvlG);intro h.
+          specialize (h _ heq_lvloftop_CE_m').
+          rewrite <- h.
+          omega. }
+        specialize chained_stack_structure_decomp_S_2 with (1:=h_chain_m2);intro h.
+        specialize h with (1:=h_CM_eval_expr_v1).
+        decomp h.
+        !inversion h_CM_eval_expr_sp';subst.
+        !inversion h_CM_eval_expr_vaddr;subst.
+        simpl in h_eval_constant.
+        rewrite Int.add_zero_l in h_eval_constant.
+        inversion h_eval_constant;subst.
+        rewrite h_loadv_vaddr_sp' in h_loadv0.
+        !invclear h_loadv0;subst.
+        unfold build_loads.
+        econstructor;eauto.
+        inversion h_CM_eval_expr_v2;subst.
+        constructor;auto.
+Qed.
+
+
 (* Observationnal equivalence of the spark dynamic stack and the compile environment. *)
 Definition stack_match st s CE sp locenv g m :=
-  forall nme v addr_nme load_addr_nme typ_nme cm_typ_nme,
-    evalName st s nme (OK v) ->
-    type_of_name st nme = Errors.OK typ_nme ->
+  forall nme v addr_nme load_addr_nme vaddr typ_nme cm_typ_nme,
     transl_name st CE nme = Errors.OK addr_nme ->
-    transl_type st typ_nme = Errors.OK cm_typ_nme ->
-    make_load addr_nme cm_typ_nme = Errors.OK load_addr_nme ->
-    exists v_t,
-      (transl_value v v_t /\
-       Cminor.eval_expr g sp locenv m load_addr_nme v_t).
+    (* addr_nme evaluated to some address, usually ensured by stack_match_addresses *)
+    Cminor.eval_expr g sp locenv m addr_nme vaddr -> 
+    (evalName st s nme (OK v) ->
+     (* remark: transl_type should always return someting once the
+          compiler is complete *)
+     transl_type st typ_nme = Errors.OK cm_typ_nme ->
+     (* this is usually ensured by subset_CE_stbl *)
+     type_of_name st nme = Errors.OK typ_nme ->
+     make_load addr_nme cm_typ_nme = Errors.OK load_addr_nme ->
+       (* The address contains something compatible with the size *)
+     exists v_t,
+       (transl_value v v_t /\
+        Cminor.eval_expr g sp locenv m load_addr_nme v_t)).
 
-  
+(* stack_match must be true on all sub stacks *)
+Inductive strong_stack_match stbl: STACK.state → compilenv → Values.val → env → genv → mem → Prop :=
+| Strg_sm_nil: forall v locenv g m,
+    stack_match stbl [] [] v locenv g m ->
+    strong_stack_match stbl [] [] v locenv g m
+| Strg_sm_cons: forall lvl sto s stoCE CE v v' locenv locenv' g m,
+    strong_stack_match stbl s CE v locenv g m ->
+    Mem.loadv AST.Mint32 m v' = Some v ->
+    stack_match stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m ->
+    strong_stack_match stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m.
+
+Lemma nodup_stack_match_strong:
+  forall st s CE sp locenv g m,
+    chained_stack_structure m (Datatypes.length CE) sp ->
+    STACK.NoDup_G s -> CompilEnv.NoDup_G CE ->
+    STACK.exact_levelG s -> CompilEnv.exact_levelG CE ->
+    Datatypes.length s = Datatypes.length CE ->
+    stack_match st s CE sp locenv g m -> 
+    strong_stack_match st s CE sp locenv g m.
+Proof.
+  induction s;!intros.
+  - simpl in heq_length.
+    destruct CE;try discriminate.
+    now constructor.
+  - rename H5 into h_stack_match.
+    destruct CE;try discriminate.
+    up_type.
+    destruct a, f.
+    assert (s0 = s2).
+    { transitivity (Datatypes.length s).
+      2:transitivity (Datatypes.length CE).
+      - now inversion h_exct_lvl.
+      - simpl in heq_length.
+        now inversion heq_length.
+      - now inversion h_exct_lvlG_CE. }
+    subst.
+    !inversion h_chain_m;subst.
+    econstructor 2;eauto.
+    eapply IHs with (sp:=(Values.Vptr b' Int.zero)) (locenv:=locenv).
+    all:swap 1 6.
+    { simpl in heq_length.
+      now inversion heq_length. }
+    { eapply STACK.stack_CE_NoDup_G_cons;eauto. }
+    { eapply CompilEnv.stack_CE_NoDup_G_cons;eauto. }
+    { eapply STACK.exact_levelG_sublist;eauto. }
+    { eapply CompilEnv.exact_levelG_sublist;eauto. }
+    + assumption.
+    + clear IHs. up_type.
+      simpl in h_chain_m.
+      simpl in heq_length.
+      apply eq_add_S in heq_length.
+
+      red;!intros.
+      !functional inversion heq_transl_name;subst.
+      !functional inversion heq_transl_variable;subst.
+      functional inversion  heq_make_load.
+      subst.
+      unfold build_loads in h_CM_eval_expr_nme_t_nme_t_v.
+      exists nme_t_v.
+      split.
+      * red in h_stack_match.
+        specialize h_stack_match with (nme := (Identifier astnum id)).
+        edestruct h_stack_match.
+
+
+        Lemma transl_variable_nodup_resideG : forall st CE id a x,
+            transl_variable st CE a id = Errors.OK x ->
+            CompilEnv.resideG id CE = true.
+        Proof.
+          intros st CE id a x H. 
+          functional inversion H.
+          apply CompilEnv.frameG_resideG_1.
+          eauto.
+        Qed.
+
+        Lemma fetch_ok_some: ∀ id sto,
+            CompilEnv.reside id sto = true -> 
+            exists v, CompilEnv.fetch id sto = Some v.
+        Proof.
+          intros id sto H. 
+          destruct (CompilEnv.fetch id sto) eqn:heq.
+          - eauto.
+          - apply CompilEnv.reside_false_fetch_none in heq.
+            now rewrite H in heq.
+        Qed.
+
+        Lemma fetchG_ok_some: ∀ id sto,
+            CompilEnv.resideG id sto = true -> 
+            exists v, CompilEnv.fetchG id sto = Some v.
+        Proof.
+          intros id sto H. 
+          destruct (CompilEnv.fetchG id sto) eqn:heq.
+          - eauto.
+          - apply CompilEnv.fetchG_ok_none_iff in heq.
+            now rewrite H in heq.
+        Qed.
+
+        Lemma transl_name_nodup_cons : forall st CE nme lvl n fr,
+            transl_name st CE nme = Errors.OK (build_loads lvl n) ->
+            CompilEnv.NoDup_G (fr :: CE) ->
+            CompilEnv.exact_levelG (fr :: CE) ->
+            transl_name st (fr::CE) nme = Errors.OK (build_loads (S lvl) n).
+        Proof.
+          !intros.
+          red in nodup_G_CE.
+          !functional inversion heq_transl_name;subst.
+          specialize transl_variable_nodup_resideG with (1:=heq_transl_variable);!intro.
+          simpl.
+          unfold transl_variable.
+          simpl.
+          specialize CompilEnv.frameG_resideG_2 with (1:= heq_resideG);!intro.
+          decomp h_ex.
+          rewrite heq_CEframeG_id_CE.
+          !assert (CompilEnv.fetch id fr = None).
+          { apply CompilEnv.reside_false_fetch_none.
+            apply CompilEnv.nodup_G_cons with (l:=CE);auto. }
+          rewrite heq_CEfetch_id_fr.
+          specialize fetchG_ok_some with (1:=heq_resideG);!intros.
+          decomp h_ex.
+          rewrite heq_CEfetchG_id_CE.
+          specialize CompilEnv.fetch_ok_none with (1:=heq_CEfetch_id_fr);!intro.
+          rewrite heq_reside.
+          destruct x, fr;simpl.
+          !inversion h_exct_lvlG;subst.
+(*           !functional inversion heq_transl_variable. *)
+          unfold transl_variable in heq_transl_variable.
+          rewrite heq_CEfetchG_id_CE in heq_transl_variable.
+          rewrite heq_CEframeG_id_CE in heq_transl_variable.
+          specialize CompilEnv.exact_lvl_level_of_top with (1:=h_exct_lvlG_CE) (2:=heq_CEframeG_id_CE);!intro.
+          decomp h_ex.          
+          rewrite heq_lvloftop_CE_top in heq_transl_variable.
+          inversion heq_transl_variable.
+          change (match Int.repr v with
+                   | {| Int.intval := intval |} => intval
+                   end) with (Int.repr v).(Int.intval) in H1.
+          change (match Int.repr n with
+                   | {| Int.intval := intval |} => intval
+                   end) with (Int.repr n).(Int.intval) in H1.
+
+          apply f_equal.
+          apply CompilEnv.exact_lvl_lvl_of_top in heq_lvloftop_CE_top;auto.
+          
+          apply build_loads__inj in H0;auto.
+          subst.
+xxxxx
+          rewrite heq_lvloftop_CE_top
+
+          assert (S m' - m = S (m' - m))%nat.
+          { assert (m <= m')%nat.
+            { specialize CompilEnv.exact_levelG_frameG_lt_lgth with (1:=h_exct_lvlG_CE)(2:=heq_CEframeG_id_CE);!intro.
+              omega. }
+            omega. }
+          rewrite H.
+          rewrite heq_CEfetchG_id_CE in heq_CEfetchG_id_CE0.
+          inversion heq_CEfetchG_id_CE0;subst.
+          apply f_equal.
+          apply build_loads_inj_inv;auto.
+          
+          unfold Int.repr.
+          destruct n0,n.
+          cbv in heq.
+          ;simpl in heq;auto.
+          
+          now subst.
+          
+          
+        Qed.
+        
+      !inversion h_CM_eval_expr_nme_t_nme_t_v;subst.
+
+      
+      !assert (chained_stack_structure m (S(m' - m0)) (Values.Vptr b Int.zero)).
+      { eapply chained_stack_structure_le;eauto.
+        !inversion h_exct_lvlG_CE;subst.
+        specialize CompilEnv.exact_lvl_lvl_of_top with (1:=h_exct_lvlG_CE0) (2:=heq_lvloftop_CE_m');intro h.
+        rewrite <- h.
+        omega. }
+      specialize chained_stack_structure_decomp_S_2' with (g:=g)(e:=locenv)(sp':=(Values.Vptr b' Int.zero)) (1:=h_chain_m1);
+        intro h_decomp.
+
+      !assert (eval_expr g (Values.Vptr b Int.zero) locenv m (Eload AST.Mint32 (Econst (Oaddrstack Int.zero)))
+                        (Values.Vptr b' Int.zero)).
+      { econstructor;eauto.
+        constructor.
+        simpl.
+        now rewrite Int.add_zero_l. }
+        specialize h_decomp with (1:=h_CM_eval_expr).
+      
+      specialize h_decomp with (1:=h_CM_eval_expr_v1).
+
+
+      decomp h_ex.
+      rewrite h_loadv in h_loadv0.
+      inversion h_loadv0.
+      subst b'0.
+      clear h_loadv0.
+      clear h_chain_m1.
+      red;!intros.
+      red in h_stack_match.
+      specialize (h_stack_match nme).
+      (* finding the expression (transl_name nme) with one more level *)
+      !functional inversion heq_transl_name.
+      !functional inversion heq_transl_variable.
+      !functional inversion heq_make_load.
+      subst;up_type.
+      simpl in h_chain_m.
+      inversion h_CM_eval_expr_load_addr_nme_load_addr_nme_v;subst.
+
+
+      specialize chained_stack_structure_decomp_S_2 with (1:=h_chain_m);!intro.
+
+      
+
+      match goal with
+      | H:CompilEnv.exact_levelG ((?s2, ?s3) :: ?CE),
+          H2:CompilEnv.NoDup_G ((?s2, ?s3) :: ?CE),
+             H3: transl_name ?st ?CE ?nme = Errors.OK ?X
+        |- _ =>
+        !assert ((transl_name st ((s2, s3) :: CE) nme = Errors.OK X));
+          [ specialize CompilEnv.nodup_G_cons with (1:=H) (2:=H2);
+            let x := fresh "h_reside" in intro x
+          |]
+      end.
+      up_type.
+      !destruct nme;try (cbn in heq_transl_name;discriminate).
+      simpl in heq_transl_name.
+      cbn.
+      !assert (CompilEnv.resideG i CE = true).
+      { functional inversion heq_transl_name.
+        eapply CompilEnv.fetchG_ok;eauto. }
+      specialize h_reside with (1:=heq_resideG).
+      unfold transl_variable.
+      Opaque CompilEnv.fetch.
+      cbn.
+      Transparent CompilEnv.fetch.
+      apply CompilEnv.reside_false_fetch_none in h_reside.
+      rewrite h_reside.
+      
+      specialize resideG_true_fetchG_Some with (1:=heq_resideG);!intro.
+      decomp h_ex.
+      rewrite heq_CEfetchG_i_CE.
+      apply CompilEnv.reside_false_fetch_none in h_reside.
+      unfold CompilEnv.reside in h_reside.
+      simpl CompilEnv.store_of in h_reside.
+      rewrite h_reside.
+      specialize fetchG_Some_frameG_Some with (1:=heq_CEfetchG_i_CE);!intro.
+      decomp h_ex.
+      rewrite heq_CEframeG_i_CE.
+      functional inversion heq_transl_name.
+      assert (s2=m').
+      { transitivity (Datatypes.length CE).
+        - now inversion h_exct_lvlG_CE.
+        - 
+      }
+      subst.
+      xxxxx
+      unfold transl_name in heq_transl_name.
+      functional inversion transl_name.
+Qed.
+
+
+
 
 (* We have translated all procedures of stbl, and they have all an address
    pointing to there translation *)
@@ -1114,7 +1571,6 @@ Record safe_cm_env st (CE:compilenv) (sp:Values.val) locenv g m: Prop :=
 
 
 
-
 (* See CminorgenProof.v@205. *)
 (** The Memory bisimilarity/invariant property states that
 
@@ -1138,7 +1594,7 @@ Record match_env st s CE sp locenv g m: Prop :=
       me_noDup_s: STACK.NoDup s;
       me_noDup_G_s: STACK.NoDup_G s;
       me_exact_levelG: STACK.exact_levelG s;
-      me_stack_complete: stack_complete st s CE;
+      (* me_stack_complete: stack_complete st s CE; useless now that stack_match_CE is in both directions *)
       me_safe_cm_env: safe_cm_env st CE sp locenv g m;
       me_overflow: safe_stack s; (* Put this somewhere else, concerns only s *)
     }.
@@ -3488,7 +3944,7 @@ Proof.
         assumption. }
       !destruct h_ex.
       rename x0 into sto'.
-      specialize H with (1:=hneq) (2:=heq_frameG0).
+      specialize H with (1:=heq_frameG0).
       eapply h_stk_mtch_CE_s_CE;eauto. 
     + specialize h_stk_mtch_CE_s_CE' with (1:=heq_CEframeG_nme_CE).
       destruct h_stk_mtch_CE_s_CE';eauto.
@@ -3924,7 +4380,7 @@ Proof.
     auto with arith.
 Qed.
 
-
+(*
 Lemma assignment_preserve_strong_match_env:
   forall stbl s CE spb ofs locenv g m x x0 nme_t nme_chk nme_t_addr e_v e_t_v s' m',
     strong_match_env stbl s CE (Values.Vptr spb ofs) locenv g m ->
@@ -3953,22 +4409,29 @@ Proof.
   !functional inversion heq_transl_variable.
   clear heq_transl_variable.
   revert x x0 nme_t nme_chk nme_t_addr e_v e_t_v s' m' δ_x0 lvl_x0 fr_x0 m'0 h_chain_m heq_CEfetchG_x0_CE heq_CEframeG_x0_CE heq_lvloftop_CE_m'0 heq_build_loads.
-
   !induction h_strg_mtch_s_CE_m;!intros.
   - !inversion h_storeUpd;subst.
     cbv in heq_updateG_x0.
     discriminate.
-  - !inversion h_storeUpd;subst.
+  - up_type.
+    !inversion h_storeUpd;subst.
     rewrite my_updateG_ok in heq_updateG_x0.
     !functional inversion heq_updateG_x0;subst.
-    rewrite <- my_updateG_ok in *.
+    all:rewrite <- my_updateG_ok in *.
     + (* The updated variable is in the top store *)
       rewrite my_update_ok in heq_update_x0.
       functional inversion heq_update_x0.
       rewrite <- my_update_ok in heq_update_x0.
       subst.
       econstructor.
-      * admit.
+      * specialize IHh_strg_mtch_s_CE_m with (s':=s).
+        eapply IHh_strg_mtch_s_CE_m;eauto.
+        -- !inversion h_chain_m;subst.
+           rewrite h_loadv_v'_v in h_loadv.
+           inversion h_loadv.
+           subst.
+           assumption.
+        --
       * admit.
       * admit.
     + (* The updated variable is deeper un CE *)
@@ -3986,7 +4449,7 @@ Proof.
       * eapply IHh_strg_mtch_s_CE_m with (δ_x0:=δ_x0) (lvl_x0:=lvl_x0) (fr_x0:=fr_x0);eauto.
        all:swap 3 1.
         -- apply foo.
-           ++ intro abs.
+           ++ intro abs.*
               subst CE.
               specialize h2 with (1:=heq_CEframeG_x0).
               decomp h2.
@@ -4196,7 +4659,7 @@ Proof.
     !inversion h_storeUpd;subst.
     functional inversion heq_updateG_x0.
 Admitted.
-
+*)
 
 Lemma assignment_preserve_match_env:
   forall stbl s CE spb ofs locenv g m x x0 nme_t nme_chk nme_t_addr e_v e_t_v s' m',
@@ -4214,7 +4677,10 @@ Proof.
   !intros.
   generalize heq_transl_name; unfold transl_name;!intro.
   split;eauto.
-  - admit.
+  - eapply assignment_preserve_Nodup_s;eauto.
+    apply h_match_env.
+  - eapply _s;eauto.
+    apply h_match_env.
   - admit.
   - unfold transl_name in heq_transl_name.
     !!pose proof (me_stack_complete h_match_env).
