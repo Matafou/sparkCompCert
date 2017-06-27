@@ -1322,11 +1322,36 @@ Proof.
            ++ red in h_no_overf.
               red;!intros.
               eapply (h_no_overf id0);eauto.
+              specialize CompilEnv.nodup_G_cons
+                with (nme:=id0)(1:=h_exct_lvlG_CE) (2:=nodup_G_CE_CE);intro h.
+              specialize CompilEnv.fetchG_ok with (1:= heq_CEfetchG_id0_CE);!intro.
+              specialize h with (1:=heq_resideG).
+              cbn.
+              apply CompilEnv.fetches_ok_none_2 in h.
+              cbn in h.
+              rewrite h.
+              assumption.
+           ++ eapply h_no_overf with id;eauto.
+              Lemma fetchG_noDup_cons_same : forall CE id s2 s3 n,
+                  CompilEnv.exact_levelG ((s2, s3) :: CE) ->
+                  CompilEnv.NoDup_G ((s2, s3) :: CE) -> 
+                  CompilEnv.fetchG id CE = Some n -> 
+                  CompilEnv.fetchG id ((s2, s3) :: CE) = Some n.
+              Proof.
+                intros CE id s2 s3 n h_exct_lvl H H0. 
+                Opaque CompilEnv.fetch.
+                cbn.
+                enough (CompilEnv.fetch id (s2, s3) = None) as heq_CEfetches_id_s3.
+                { rewrite heq_CEfetches_id_s3.
+                  assumption. }
+                specialize CompilEnv.nodup_G_cons with (1:=h_exct_lvl)(2:=H);intro h.
+                apply CompilEnv.reside_false_fetch_none.
+                apply h.
+                eapply CompilEnv.fetchG_ok;now eauto.
+              Qed.
+              eapply fetchG_noDup_cons_same;eauto.
+        -- cbn.
               
-        
-
-
-        
       !inversion h_CM_eval_expr_nme_t_nme_t_v;subst.
 
       
@@ -1378,7 +1403,7 @@ Proof.
              H3: transl_name ?st ?CE ?nme = Errors.OK ?X
         |- _ =>
         !assert ((transl_name st ((s2, s3) :: CE) nme = Errors.OK X));
-          [ specialize CompilEnv.nodup_G_cons with (1:=H) (2:=H2);
+          [ specialize CompilEnv.nodup_G_cons with (1:=H) (2:=H2);÷
             let x := fresh "h_reside" in intro x
           |]
       end.
