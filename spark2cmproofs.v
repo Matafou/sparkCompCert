@@ -1145,6 +1145,17 @@ Proof.
         constructor;auto.
 Qed.
 
+Lemma transl_variable_nodup_resideG : forall st CE id a x,
+    transl_variable st CE a id = Errors.OK x ->
+    CompilEnv.resideG id CE = true.
+Proof.
+  intros st CE id a x H. 
+  functional inversion H.
+  apply CompilEnv.frameG_resideG_1.
+  eauto.
+Qed.
+
+
 
 (* Observationnal equivalence of the spark dynamic stack and the compile environment. *)
 Definition stack_match st s CE sp locenv g m :=
@@ -1177,6 +1188,75 @@ Inductive strong_stack_match stbl: STACK.state → compilenv → Values.val → 
 
 Definition all_addr_no_overflow CE := forall id δ,
     CompilEnv.fetchG id CE = Some δ -> 0 <= δ < Integers.Int.modulus.
+
+Lemma transl_name_nodup_cons : forall st CE nme lvl n fr,
+    all_addr_no_overflow CE ->
+    transl_name st CE nme = Errors.OK (build_loads lvl n) ->
+    0 <= n ∧ n < Int.modulus ->
+    CompilEnv.NoDup_G (fr :: CE) ->
+    CompilEnv.exact_levelG (fr :: CE) ->
+    transl_name st (fr::CE) nme = Errors.OK (build_loads (S lvl) n).
+Proof.
+  !intros.
+  rename H into h_no_overf.
+  red in nodup_G_CE.
+  !functional inversion heq_transl_name;subst.
+  specialize transl_variable_nodup_resideG with (1:=heq_transl_variable);!intro.
+  simpl.
+  unfold transl_variable.
+  simpl.
+  specialize CompilEnv.frameG_resideG_2 with (1:= heq_resideG);!intro.
+  decomp h_ex.
+  rewrite heq_CEframeG_id_CE.
+  !assert (CompilEnv.fetch id fr = None).
+  { apply CompilEnv.reside_false_fetch_none.
+    apply CompilEnv.nodup_G_cons with (l:=CE);auto. }
+  rewrite heq_CEfetch_id_fr.
+  specialize CompilEnv.fetchG_ok_some with (1:=heq_resideG);!intros.
+  decomp h_ex.
+  rewrite heq_CEfetchG_id_CE.
+  specialize CompilEnv.fetch_ok_none with (1:=heq_CEfetch_id_fr);!intro.
+  rewrite heq_reside.
+  destruct x, fr;simpl.
+  !inversion h_exct_lvlG;subst.
+  (*           !functional inversion heq_transl_variable. *)
+  unfold transl_variable in heq_transl_variable.
+  rewrite heq_CEfetchG_id_CE in heq_transl_variable.
+  rewrite heq_CEframeG_id_CE in heq_transl_variable.
+  specialize CompilEnv.exact_lvl_level_of_top with (1:=h_exct_lvlG_CE) (2:=heq_CEframeG_id_CE);!intro.
+  decomp h_ex.          
+  rewrite heq_lvloftop_CE_top in heq_transl_variable.
+  inversion heq_transl_variable.
+  change (match Int.repr v with
+          | {| Int.intval := intval |} => intval
+          end) with (Int.repr v).(Int.intval) in H1.
+  change (match Int.repr n with
+          | {| Int.intval := intval |} => intval
+          end) with (Int.repr n).(Int.intval) in H1.
+  apply f_equal.
+  Transparent Int.repr.
+  apply build_loads_inj_inv;auto.
+  - apply build_loads__inj in H0;auto.
+    subst.
+    apply CompilEnv.exact_lvl_lvl_of_top in heq_lvloftop_CE_top;auto.
+    rewrite <- heq_lvloftop_CE_top.
+    unfold Int.repr.
+    !assert (s <= top)%nat.
+    { specialize CompilEnv.exact_levelG_frameG_lt_lgth with (1:=h_exct_lvlG_CE)(2:=heq_CEframeG_id_CE);!intro.
+      omega. }
+    omega.
+  - rewrite Int.eqm_small_eq with v n;eauto.
+    Transparent Int.repr Int.intval.
+    simpl in H1. 
+    Opaque Int.repr Int.intval.
+    red.
+    apply Int.eqmod_trans with (v mod Int.modulus); try now apply Int.eqmod_mod;auto.
+    apply Int.eqmod_trans with (n mod Int.modulus); try (apply Int.eqmod_sym;now apply Int.eqmod_mod;auto).
+    setoid_rewrite Int.Z_mod_modulus_eq in H1.
+    rewrite H1.
+    apply Int.eqmod_refl.
+Qed.
+
 
 Lemma nodup_stack_match_strong:
   forall st s CE sp locenv g m,
@@ -1238,109 +1318,14 @@ Proof.
       * red in h_stack_mtch.
         specialize h_stack_mtch with (nme := (Identifier astnum id)).
         edestruct h_stack_mtch.
+        -- eapply transl_name_nodup_cons;eauto.
+           ++ red in h_no_overf.
+              red;!intros.
+              eapply (h_no_overf id0);eauto.
+              
+        
 
 
-        Lemma transl_variable_nodup_resideG : forall st CE id a x,
-            transl_variable st CE a id = Errors.OK x ->
-            CompilEnv.resideG id CE = true.
-        Proof.
-          intros st CE id a x H. 
-          functional inversion H.
-          apply CompilEnv.frameG_resideG_1.
-          eauto.
-        Qed.
-
-        Lemma fetch_ok_some: ∀ id sto,
-            CompilEnv.reside id sto = true -> 
-            exists v, CompilEnv.fetch id sto = Some v.
-        Proof.
-          intros id sto H. 
-          destruct (CompilEnv.fetch id sto) eqn:heq.
-          - eauto.
-          - apply CompilEnv.reside_false_fetch_none in heq.
-            now rewrite H in heq.
-        Qed.
-
-        Lemma fetchG_ok_some: ∀ id sto,
-            CompilEnv.resideG id sto = true -> 
-            exists v, CompilEnv.fetchG id sto = Some v.
-        Proof.
-          intros id sto H. 
-          destruct (CompilEnv.fetchG id sto) eqn:heq.
-          - eauto.
-          - apply CompilEnv.fetchG_ok_none_iff in heq.
-            now rewrite H in heq.
-        Qed.
-
-        Lemma transl_name_nodup_cons : forall st CE nme lvl n fr,
-            all_addr_no_overflow CE ->
-            transl_name st CE nme = Errors.OK (build_loads lvl n) ->
-            0 <= n ∧ n < Int.modulus ->
-            CompilEnv.NoDup_G (fr :: CE) ->
-            CompilEnv.exact_levelG (fr :: CE) ->
-            transl_name st (fr::CE) nme = Errors.OK (build_loads (S lvl) n).
-        Proof.
-          !intros.
-          rename H into h_no_overf.
-          red in nodup_G_CE.
-          !functional inversion heq_transl_name;subst.
-          specialize transl_variable_nodup_resideG with (1:=heq_transl_variable);!intro.
-          simpl.
-          unfold transl_variable.
-          simpl.
-          specialize CompilEnv.frameG_resideG_2 with (1:= heq_resideG);!intro.
-          decomp h_ex.
-          rewrite heq_CEframeG_id_CE.
-          !assert (CompilEnv.fetch id fr = None).
-          { apply CompilEnv.reside_false_fetch_none.
-            apply CompilEnv.nodup_G_cons with (l:=CE);auto. }
-          rewrite heq_CEfetch_id_fr.
-          specialize fetchG_ok_some with (1:=heq_resideG);!intros.
-          decomp h_ex.
-          rewrite heq_CEfetchG_id_CE.
-          specialize CompilEnv.fetch_ok_none with (1:=heq_CEfetch_id_fr);!intro.
-          rewrite heq_reside.
-          destruct x, fr;simpl.
-          !inversion h_exct_lvlG;subst.
-(*           !functional inversion heq_transl_variable. *)
-          unfold transl_variable in heq_transl_variable.
-          rewrite heq_CEfetchG_id_CE in heq_transl_variable.
-          rewrite heq_CEframeG_id_CE in heq_transl_variable.
-          specialize CompilEnv.exact_lvl_level_of_top with (1:=h_exct_lvlG_CE) (2:=heq_CEframeG_id_CE);!intro.
-          decomp h_ex.          
-          rewrite heq_lvloftop_CE_top in heq_transl_variable.
-          inversion heq_transl_variable.
-          change (match Int.repr v with
-                   | {| Int.intval := intval |} => intval
-                   end) with (Int.repr v).(Int.intval) in H1.
-          change (match Int.repr n with
-                   | {| Int.intval := intval |} => intval
-                   end) with (Int.repr n).(Int.intval) in H1.
-          apply f_equal.
-          Transparent Int.repr.
-          apply build_loads_inj_inv;auto.
-          - apply build_loads__inj in H0;auto.
-            subst.
-            apply CompilEnv.exact_lvl_lvl_of_top in heq_lvloftop_CE_top;auto.
-            rewrite <- heq_lvloftop_CE_top.
-            unfold Int.repr.
-            !assert (s <= top)%nat.
-            { specialize CompilEnv.exact_levelG_frameG_lt_lgth with (1:=h_exct_lvlG_CE)(2:=heq_CEframeG_id_CE);!intro.
-              omega. }
-            omega.
-          - rewrite Int.eqm_small_eq with v n;auto.
-            + Transparent Int.repr Int.intval.
-              simpl in H1. 
-              red.
-              apply Int.eqmod_trans with (v mod Int.modulus); try now apply Int.eqmod_mod;auto.
-              apply Int.eqmod_trans with (n mod Int.modulus); try (apply Int.eqmod_sym;now apply Int.eqmod_mod;auto).
-              setoid_rewrite Int.Z_mod_modulus_eq in H1.
-              rewrite H1.
-              apply Int.eqmod_refl.
-            + !!assert (all_addr_no_overflow CE) by admit.
-              red in H.
-              eapply H;eauto.
-xxxx        Admitted.
         
       !inversion h_CM_eval_expr_nme_t_nme_t_v;subst.
 
