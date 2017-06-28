@@ -946,6 +946,8 @@ Definition stack_no_null_offset stbl CE := forall a nme δ_lvl δ_id,
     transl_variable stbl CE a nme = Errors.OK (build_loads δ_lvl δ_id) ->
     4 <= Int.unsigned (Int.repr δ_id).
 
+Definition stack_match_lgth (s : STACK.state) (CE : compilenv) :=
+  Datatypes.length s = Datatypes.length CE.
 (* The spark dynamic and the compiler static stack have the same structure. *)
 Definition stack_match_CE (s : STACK.state) (CE : compilenv) :=
   forall nme lvl,(forall sto, STACK.frameG nme s = Some (lvl,sto) ->
@@ -1562,6 +1564,7 @@ Record match_env st s CE sp locenv g m: Prop :=
   mk_match_env {
       me_stack_match: stack_match st s CE sp locenv g m;
       me_stack_match_CE: stack_match_CE s CE;
+      me_stack_match_lgth: stack_match_lgth s CE;
       me_noDup_s: STACK.NoDup s;
       me_noDup_G_s: STACK.NoDup_G s;
       me_exact_levelG: STACK.exact_levelG s;
@@ -1573,6 +1576,7 @@ Record match_env st s CE sp locenv g m: Prop :=
 Arguments me_stack_match : default implicits.
 Arguments me_stack_match_addresses : default implicits.
 Arguments me_stack_match_CE : default implicits.
+Arguments me_stack_match_lgth : default implicits.
 Arguments me_noDup_s : default implicits.
 Arguments me_noDup_G_s : default implicits.
 Arguments me_exact_levelG : default implicits.
@@ -1607,7 +1611,7 @@ Arguments ce_nodup_G_CE: default implicits.
 Hint Resolve ci_exact_lvls ci_increasing_ids ci_no_overflow ci_stbl_var_types_ok ce_nodup_G_CE ce_nodup_G_CE.
 Hint Resolve me_stack_match_addresses me_stack_match_functions me_stack_separate me_stack_localstack_aligned
      me_stack_no_null_offset me_stack_freeable me_chain_struct.
-Hint Resolve me_stack_match me_stack_match_CE (* me_stack_complete *) me_overflow me_safe_cm_env.
+Hint Resolve me_stack_match me_stack_match_CE me_stack_match_lgth (* me_stack_complete *) me_overflow me_safe_cm_env.
 
 (*
 Inductive strong_match_env stbl: STACK.state → compilenv → Values.val → env → genv → mem → Prop :=
@@ -1648,6 +1652,9 @@ Ltac rename_hyp3 h th :=
   | stack_match_CE ?s ?CE => fresh "h_stk_mtch_CE_" s "_" CE
   | stack_match_CE ?s _ => fresh "h_stk_mtch_CE_" s
   | stack_match_CE _ _ => fresh "h_stk_mtch_CE"
+  | stack_match_lgth ?s ?CE => fresh "h_stk_mtch_lgth_" s "_" CE
+  | stack_match_lgth ?s _ => fresh "h_stk_mtch_lgth_" s
+  | stack_match_lgth _ _ => fresh "h_stk_mtch_lgth"
   | stack_match_functions _ _ _ _ _ _ => fresh "h_stk_mtch_fun"
   | stack_complete _ ?s ?CE => fresh "h_stk_cmpl_" s "_" CE
   | stack_complete _ ?s _ => fresh "h_stk_cmpl_" s
@@ -1932,6 +1939,11 @@ Proof.
   - cbn in *.
     discriminate.
 Qed.
+
+Lemma stack_match_lgth_empty: stack_match_lgth [] [].
+Proof.
+  now red.
+Qed.
  
 Lemma stack_complete_empty: forall st,stack_complete st [ ] [ ].
 Proof.
@@ -1988,13 +2000,14 @@ Lemma match_env_empty: forall st sp b sp' locenv locenv' g m,
 Proof.
   !intros.
   split (* apply h_match_env. *).
-  6: split.
+  7: split.
   + apply stack_match_empty.
   + red;!intros.
     split;!intros.
     * functional inversion heq_frameG.
     * cbn in heq_CEframeG_nme.
       discriminate.
+  + now red.
   + apply stack_NoDup_empty.
   + apply stack_NoDup_G_empty.
   + constructor.
@@ -2167,7 +2180,7 @@ Lemma match_env_inv_locenv : forall st s CE sp locenv g m,
     forall locenv', match_env st s CE sp locenv' g m.
 Proof.
   !intros.
-  split;[ | | | | | split | ];try now apply h_match_env.  
+  split;[ | | | | | | split | ];try now apply h_match_env.  
   - eapply stack_match_inv_locenv;eauto.
   - eapply stack_match_addr_inv_locenv; eauto.
   - pose proof me_stack_match_functions (me_safe_cm_env h_match_env) as h_mtch_fun.
@@ -2303,185 +2316,94 @@ Proof.
 Qed.
 
 
+Lemma cut_until_total: forall s lvl, exists s1 s2, STACK.cut_until s lvl s1 s2.
+Proof.
+  !intros. 
+  !induction s.
+  - exists (@nil STACK.frame).
+    exists (@nil STACK.frame).
+    constructor.
+  - destruct (Nat.lt_decidable (STACK.level_of a) lvl).
+    + exists (@nil STACK.frame).
+      exists (a :: s).
+      constructor 2;auto.
+    + decomp h_ex.
+      exists (a::s1).
+      exists s2.
+      constructor 3;auto.
+Qed.
 
 
-Lemma strong_match_env_lgth: forall st sp locenv g m s CE,
-    strong_match_env st s CE sp locenv g m ->
-    invariant_compile CE st ->
+
+Lemma exact_lvl_cut_until_lgth_left: forall CE s,
+    stack_match_lgth s CE ->
+    STACK.exact_levelG s ->
+    CompilEnv.exact_levelG CE ->
     forall CE1 CE2 lvl,
       CompilEnv.cut_until CE lvl CE1 CE2 ->
       exists s1 s2, STACK.cut_until s lvl s1 s2
                     /\ List.length s1 = List.length CE1.
 Proof.
-  !!intros until 1.
-  !induction h_strg_mtch_s_CE_m;!intros.
-  - exists (@nil STACK.frame).
-    exists (@nil STACK.frame).
-    split.
-    * constructor.
-    * inversion h_CEcut.
-      reflexivity.
-  - !assert (invariant_compile CE st).
-    { eapply invariant_compile_subcons;eauto. }
-    !inversion h_CEcut;subst.
-    + !assert (CompilEnv.cut_until CE lvl0 [ ] CE).
-      { eapply cut_until_exact_lvl;eauto. }
-      cbn in *.
-      specialize IHh_strg_mtch_s_CE_m with (1:= h_inv_comp_CE_st) (2:=h_CEcut_CE_lvl0).
-      decomp IHh_strg_mtch_s_CE_m.
-      simpl in *.
-      exists s1.
-      exists ((lvl, sto) :: s).
-      split;auto.
-      * assert (s1 =[]).
-        { now apply length_zero_iff_nil. }
-        subst.
-        constructor 2.
-        simpl;auto.
-    + rename s' into CE1.
-      specialize IHh_strg_mtch_s_CE_m with (1:=h_inv_comp_CE_st) (2:=h_CEcut_CE_lvl0).
-      decomp IHh_strg_mtch_s_CE_m.
-      simpl in *.
-      exists ((lvl, sto) :: s1).
-      exists s2.
-      split.
-      * constructor 3.
-        -- simpl.
-           assumption.
-        -- assumption.
-      * simpl.
-        auto.
-Qed.
-
-Lemma strong_match_env_match_env : forall st s CE sp locenv g  m,
-    strong_match_env st s CE sp locenv g m ->
-    match_env st s CE sp locenv g m.
-Proof.
   !intros.
-  destruct h_strg_mtch_s_CE_m;auto.
+  !!pose proof cut_until_total s lvl.
+  decomp h_ex.
+  exists s1,s2.
+  split;auto.
+  !destruct (Nat.le_decidable lvl (Datatypes.length s)).
+  - specialize STACK.cut_until_exact_levelG with (1:=h_exct_lvl_s) (2:=h_le_lvl)(3:=h_stkcut_s_lvl);!intro.
+    !assert (lvl ≤ Datatypes.length CE).
+    { red in h_stk_mtch_lgth_s_CE.
+      now rewrite <- h_stk_mtch_lgth_s_CE. }
+    specialize CompilEnv.cut_until_exact_levelG with (1:=h_exct_lvlG_CE) (2:=h_le_lvl0) (3:=h_CEcut_CE_lvl);!intro.
+    specialize CompilEnv.cut_until_spec1 with (1:=h_CEcut_CE_lvl);!intro.
+    specialize STACK.cut_until_spec1 with (1:=h_stkcut_s_lvl);!intro.
+    subst.
+    red in h_stk_mtch_lgth_s_CE.
+    setoid_rewrite app_length in h_stk_mtch_lgth_s_CE.
+    omega.
+  - !!assert ((lvl > Datatypes.length s)%nat) by omega.
+    
+    specialize STACK.cut_until_exact_levelG_2 with (1:=h_exct_lvl_s) (2:=h_gt_lvl)(3:=h_stkcut_s_lvl);!intro.
+    !assert (lvl > Datatypes.length CE)%nat.
+    { red in h_stk_mtch_lgth_s_CE.
+      now rewrite <- h_stk_mtch_lgth_s_CE. }
+    specialize CompilEnv.cut_until_exact_levelG_2 with (1:=h_exct_lvlG_CE) (2:=h_gt_lvl0) (3:=h_CEcut_CE_lvl);!intro.
+    specialize CompilEnv.cut_until_spec1 with (1:=h_CEcut_CE_lvl);!intro.
+    specialize STACK.cut_until_spec1 with (1:=h_stkcut_s_lvl);!intro.
+    subst.
+    red in h_stk_mtch_lgth_s_CE.
+    setoid_rewrite app_length in h_stk_mtch_lgth_s_CE.
+    setoid_rewrite app_length in heq_length.
+    setoid_rewrite app_length in heq_length0.
+    omega.
 Qed.
 
-Lemma strong_match_env_match_env_sublist_aux1 : forall st s CE sp locenv g  m,
-    strong_match_env st s CE sp locenv g m ->
-    invariant_compile CE st ->
-    forall CE' CE'' s' s'' sp'' lvl,
-      (lvl < Datatypes.length CE)%nat ->
-      CompilEnv.cut_until CE lvl CE' CE'' -> 
-      STACK.cut_until s lvl s' s'' ->
-      repeat_Mem_loadv AST.Mint32 m (Datatypes.length CE - lvl)%nat sp sp'' ->
-      forall locenv,
-        match_env st s'' CE'' sp'' locenv g m.
+Lemma match_env_lgth: forall CE s,
+    stack_match_lgth s CE ->
+    STACK.exact_levelG s ->
+    CompilEnv.exact_levelG CE ->
+    forall CE1 CE2 lvl,
+      CompilEnv.cut_until CE lvl CE1 CE2 ->
+      exists s1 s2, STACK.cut_until s lvl s1 s2
+                    /\ List.length s1 = List.length CE1.
 Proof.
-  !!intros until 1.
-  !!induction h_strg_mtch_s_CE_m;!intros.  
-  - rename v into sp.
-    !invclear h_CEcut;subst.
-    !invclear h_stkcut.
-    cbn in *.
-    inversion h_repeat_loadv;subst.
-    destruct (match_env_sp_zero _ _ _ _ _ _ _ h_match_env).
-      eapply match_env_empty;eauto.
-  - !assert (invariant_compile CE st).
-    { eapply invariant_compile_subcons;eauto. }
-    specialize (IHh_strg_mtch_s_CE_m h_inv_comp_CE_st).
-    cbn [Datatypes.length] in *.
-    !inversion h_CEcut.
-    + assert (s'=[]).
-      { !assert(CompilEnv.cut_until CE lvl0 (@nil CompilEnv.frame) CE).
-        { eapply cut_until_exact_lvl;eauto. }
-        inversion h_stkcut;subst;simpl in *.
-        * reflexivity.
-        * contradiction. }
-      repeat progress (simpl in *;subst).      
-      !inversion h_stkcut.
-      repeat progress (simpl in *;subst).
-      clear h_lt0.
-      apply match_env_inv_locenv with locenv'.
-      assert (CompilEnv.exact_levelG ((lvl, stoCE) :: CE)).
-      { apply h_inv_comp_st. }
-      !inversion H.
-      exfalso;omega.
-    + cbn -[minus] in *.
-      clear h_CEcut.
-      up_type.
-      rename s'0 into CE'.
-      !!assert (lvl0 <= lvl)%nat by omega; clear H1.
-      !!pose proof (strong_match_env_lgth _ _ _ _ _ _ _ h_strg_mtch_s_CE_m h_inv_comp_CE_st _ _ _ h_CEcut_CE_lvl0).
-      decomp h_ex.
-      up_type.
-      (* linking s' and s1 and s'' and s2 *)
-      !inversion h_stkcut;subst;cbn -[minus] in *; try (exfalso;omega).
-      !destruct (STACK.cut_until_uniqueness _ _ _ _ _ _ h_stkcut_s_lvl0 h_stkcut_s_lvl1).
-      subst s''.
-      subst s'0.
-      (* done linking *)
-      !destruct (dec_lt lvl0 (Datatypes.length CE)).
-      * eapply (IHh_strg_mtch_s_CE_m _ _ s1 s2 _ lvl0 h_lt_lvl1);try eauto.
-        rewrite Nat.sub_succ_l in h_repeat_loadv;try omega.
-        !inversion h_repeat_loadv.
-        rewrite h_loadv_v'_v in h_loadv_v'_sp';inversion h_loadv_v'_sp'.
-        assumption.
-      * !!assert (lvl0 = Datatypes.length CE)%nat by omega.
-        subst.
-        clear H H1 h_lt_lvl0.
-        !assert (CE' = [] ∧ CE''=CE).
-        { !inversion h_CEcut_CE_lvl0;auto.
-          !!pose proof (ci_exact_lvls _ _ h_inv_comp_CE_st).
-          !inversion h_exct_lvlG.
-          cbn in H.
-          exfalso;omega. }
-        decomp h_and.
-        subst.
-        !assert (s1 = [] ∧ s2=s).
-        { cbn in heq_length.
-          apply length_zero_iff_nil in heq_length.
-          subst.
-          split;auto.
-          inversion h_stkcut_s_lvl0;auto. }
-        decomp h_and.
-        subst.
-        subst.
-        !!assert (S (Datatypes.length CE) - Datatypes.length CE = 1)%nat by omega.
-        rewrite heq_sub in h_repeat_loadv.
-        !inversion h_repeat_loadv.
-        !inversion h_repeat_loadv_O_sp'.
-        rewrite h_loadv_v'_v in h_loadv_v'_sp'.
-        !inversion h_loadv_v'_sp'.
-        apply strong_match_env_match_env.
-        eapply strong_match_env_inv_locenv.
-        eassumption.
+  eapply exact_lvl_cut_until_lgth_left;eauto.
 Qed.
+
 
 Lemma match_env_length_CE_s : ∀ st s CE sp locenv g m,
-    strong_match_env st s CE sp locenv g m ->
-    Datatypes.length CE= Datatypes.length s.
+    match_env st s CE sp locenv g m ->
+    Datatypes.length CE = Datatypes.length s.
 Proof.
   !intros.
-  induction h_strg_mtch_s_CE_m.
-  - auto.
-  - cbn;auto.
+  !!pose proof h_match_env.(me_stack_match_lgth).
+  now red in h_stk_mtch_lgth_s_CE.
 Qed.
 
-Lemma strong_match_env_cut_CE_cut_s:
-  ∀ (st : symboltable) (s : STACK.state) (CE : compilenv) (sp : Values.val) (locenv : env) (g : genv) 
-               (m : mem),
-    strong_match_env st s CE sp locenv g m
-    → invariant_compile CE st
-    → ∀ (CE' CE'' : CompilEnv.state)  (lvl : CompilEnv.scope_level), 
-        CompilEnv.cut_until CE lvl CE' CE'' -> 
-        exists (s': STACK.state) (s'': STACK.state), STACK.cut_until s lvl s' s''.
-Proof.
-  !intros.
-  pose proof strong_match_env_lgth st sp locenv g m s CE h_strg_mtch_s_CE_m h_inv_comp_CE_st _ _ _ h_CEcut_CE_lvl.
-  decomp H.
-  exists s1.
-  exists s2.
-  assumption.
-Qed.
-
+(*
 (* Yet another hypothesis deducibility *)
 Lemma strong_match_repeat_loadv : forall st s CE sp locenv g  m,
-    strong_match_env st s CE sp locenv g m ->
+    match_env st s CE sp locenv g m ->
     invariant_compile CE st ->
     forall CE' CE'' lvl,
       CompilEnv.cut_until CE lvl CE' CE'' -> 
@@ -2581,7 +2503,7 @@ Proof.
     eapply strong_match_env_inv_locenv.
     eassumption.
 Qed.
-
+*)
 
 (* Yet another hypothesis deducibility *)
 (*Lemma strong_match_env_match_env_sublist: 
@@ -2621,10 +2543,6 @@ Proof.
 Qed.
 *)
 (* Is this true? *)
-Axiom det_eval_expr: forall g stkptr locenv m e v v',
-    Cminor.eval_expr g stkptr locenv m e v
-    -> Cminor.eval_expr g stkptr locenv m e v'
-    -> v = v'.
 
 
 (** Property of the translation: Since chain variables have always zero
@@ -2701,10 +2619,13 @@ Proof.
   - unfold value_at_addr in heq_value_at_addr.
     destruct (transl_type stbl astnum_type) eqn:heq_transl_type;simpl in *.
     + !destruct h_match_env.
+      edestruct h_safe_cm_CE_m.(me_stack_match_addresses) with (nme:=Identifier astnum id);eauto. 
       eapply h_stk_mtch_s_m;eauto.
-      simpl.
-      rewrite heq_fetch_exp_type.
-      reflexivity.
+      * simpl.
+        assumption.
+      * simpl.
+        rewrite heq_fetch_exp_type.
+        reflexivity.
     + discriminate.
   - decomp (IHr _ heq_tr_expr_e _ _ _ _ _ _ h_eval_expr_e_e_v h_match_env).
     decomp (IHr0 _ heq_tr_expr_e0 _ _ _ _ _ _ h_eval_expr_e0_e0_v h_match_env).
@@ -2712,9 +2633,12 @@ Proof.
       apply do_run_time_check_on_binop_ok in h_do_rtc_binop.
       rewrite binopexp_ok in h_do_rtc_binop.
       !functional inversion h_do_rtc_binop;subst;eq_same_clear
-       ;try contradiction;eauto. 
-      admit. (* todo mod' *)
-    }
+       ;try contradiction;eauto.
+      unfold Math.mod' in  heq_mod'.
+      destruct e_v;try discriminate.
+      destruct e0_v;try discriminate.
+      inversion heq_mod'.
+      right;eauto. }
     decomp hex;subst.
     + destruct b; eexists;(split;[econstructor;eauto|]).
       * eapply eval_Ebinop;try econstructor;eauto.
@@ -2758,7 +2682,7 @@ Proof.
       simpl.
       unfold Values.Val.of_bool.
       reflexivity.
-Admitted.
+Qed.
 
 
 Scheme Equality for binary_operator.
