@@ -124,14 +124,14 @@ Ltac rename_hyp1 h th :=
   | Values.Val.bool_of_val ?v ?b => fresh "heq_bofv_" v
   | Values.Val.bool_of_val ?v ?b => fresh "heq_bofv_" b
   | Values.Val.bool_of_val ?v ?b => fresh "heq_bofv"
-  | STACK.NoDup ?s => fresh "nodup_s_" s
-  | STACK.NoDup _ => fresh "nodup_s"
-  | STACK.NoDup_G ?s => fresh "nodup_G_s_" s
-  | STACK.NoDup_G _ => fresh "nodup_G_s"
-  | CompilEnv.NoDup ?s => fresh "nodup_CE_" s
-  | CompilEnv.NoDup _ => fresh "nodup_CE"
-  | CompilEnv.NoDup_G ?s => fresh "nodup_G_CE_" s
-  | CompilEnv.NoDup_G _ => fresh "nodup_G_CE"
+  | STACK.NoDup ?s => fresh "h_nodup_s_" s
+  | STACK.NoDup _ => fresh "h_nodup_s"
+  | STACK.NoDup_G ?s => fresh "h_nodup_G_s_" s
+  | STACK.NoDup_G _ => fresh "h_nodup_G_s"
+  | CompilEnv.NoDup ?s => fresh "h_nodup_CE_" s
+  | CompilEnv.NoDup _ => fresh "h_nodup_CE"
+  | CompilEnv.NoDup_G ?s => fresh "h_nodup_G_CE_" s
+  | CompilEnv.NoDup_G _ => fresh "h_nodup_G_CE"
   | CompilEnv.exact_levelG ?CE => fresh "h_exct_lvlG_" CE
   | CompilEnv.exact_levelG ?CE => fresh "h_exct_lvlG"
   | exp => fresh "e"
@@ -994,7 +994,7 @@ Proof.
            !assert (STACK.frameG nme ((Datatypes.length s, s1) :: s) = Some (lvl, sto)).
            { !assert (STACK.resideG nme s = true).
              { eapply STACK.frameG_resideG_1;eauto. }
-             specialize STACK.nodup_G_cons with (1:=h_exct_lvl) (2:=nodup_G_s) (3:=heq_resideG);intro h.
+             specialize STACK.nodup_G_cons with (1:=h_exct_lvl) (2:=h_nodup_G_s) (3:=heq_resideG);intro h.
              cbn.
              cbn in h.
              rewrite h.
@@ -1016,7 +1016,7 @@ Proof.
                     = Some (lvl, CE_sto)).
            { !assert (CompilEnv.resideG nme CE = true).
              { eapply CompilEnv.frameG_resideG_1;eauto. }
-             specialize CompilEnv.nodup_G_cons with (1:=h_exct_lvlG)  (2:=nodup_G_CE) (3:=heq_resideG);intro h.
+             specialize CompilEnv.nodup_G_cons with (1:=h_exct_lvlG)  (2:=h_nodup_G_CE) (3:=heq_resideG);intro h.
              cbn.
              cbn in h.
              rewrite h.
@@ -1084,13 +1084,13 @@ Proof.
           !assert (CompilEnv.fetch id (s, s0) = None).
           { destruct (CompilEnv.fetch id (s, s0)) eqn:heq;auto.
             exfalso.
-            unfold CompilEnv.NoDup_G in nodup_G_CE.
+            unfold CompilEnv.NoDup_G in h_nodup_G_CE.
             !assert (CompilEnv.frameG id ((s, s0) :: CE) = Some (s, s0)).
             { cbn.
               erewrite CompilEnv.fetches_ok;eauto. }
-            specialize nodup_G_CE with (s':=(s, s0)::nil) (s'':=CE) (1:=heq_CEframeG_id).
+            specialize h_nodup_G_CE with (s':=(s, s0)::nil) (s'':=CE) (1:=heq_CEframeG_id).
             apply CompilEnv.fetchG_ok in heq_CEfetchG_id_CE.
-            rewrite nodup_G_CE in heq_CEfetchG_id_CE.
+            rewrite h_nodup_G_CE in heq_CEfetchG_id_CE.
             - inversion heq_CEfetchG_id_CE.
             - constructor;simpl;try auto with arith.
               eapply CompilEnv.cut_until_exct_lvl;eauto. }
@@ -1218,7 +1218,7 @@ Lemma transl_name_nodup_cons : forall st CE nme lvl n fr,
 Proof.
   !intros.
   rename H into h_no_overf.
-  red in nodup_G_CE.
+  red in h_nodup_G_CE.
   !functional inversion heq_transl_name;subst.
   specialize transl_variable_nodup_resideG with (1:=heq_transl_variable);!intro.
   simpl.
@@ -3843,6 +3843,256 @@ Proof.
     + eapply IHo;eauto.
 Qed.
 
+Lemma updateG_ok_frameG_others : forall stk id v stk' sto_id  lvl_id,
+    updateG stk id v = Some stk' ->
+    frameG id stk = Some (lvl_id,sto_id) ->
+    forall id' lvl sto_id' sto'_id',
+      frameG id' stk = Some (lvl,sto_id') -> 
+      frameG id' stk' = Some (lvl,sto'_id') ->
+      lvl <> lvl_id ->
+      sto_id' = sto'_id'.
+Proof.
+  intros until v.
+  !functional induction (updateG stk id v);simpl;!intros;try discriminate;rename x into id.
+  - !invclear heq_Some;simpl.
+    !assert (reside id f = true).
+    { eapply update_ok_same_reside_orig; eauto. }
+    rewrite heq_reside in heq_Some0.
+    !invclear heq_Some0.
+    !assert (reside id' (lvl_id, sto_id) = false).
+    { cbn in *.
+      destruct (resides id' sto_id);auto.
+      exfalso.
+      inversion heq_Some1.
+      now apply hneq. }
+    rewrite heq_reside0 in heq_Some1.
+    unfold update in heq_update_f_x.
+    cbn in heq_update_f_x.
+
+    functional inversion heq_frameG;subst.
+    + exfalso.
+      apply hneq.
+      destruct (updates sto_id id v);try discriminate.
+      now inversion heq_update_f_x.
+    + rewrite X in heq_Some1.
+      now inversion heq_Some1.
+  - up_type.
+    !assert (reside id f = false).
+    { apply reside_false_fetch_none.
+      rewrite <- update_ok_none;eauto. }
+    rewrite heq_reside in heq_Some0.
+    !invclear heq_Some.
+    destruct (reside id' f) eqn:heq.
+    + !invclear heq_Some1.
+      cbn in heq_frameG.
+      cbn in heq.
+      rewrite heq in heq_frameG.
+      now inversion  heq_frameG.
+    + eapply IHo ;eauto.
+      cbn in heq_frameG.
+      now rewrite heq in heq_frameG.
+Qed.
+
+Lemma exact_lvl_frameG_same_lvl : forall stk,
+    STACK.exact_levelG stk ->
+    forall id id' lvl sto_id sto_id',
+      frameG id stk = Some (lvl,sto_id) ->
+      frameG id' stk = Some (lvl,sto_id') ->
+      sto_id = sto_id'.
+Proof.
+  !!intros until 1.
+  induction h_exct_lvl_stk;!intros.
+  - functional inversion heq_frameG.
+  - functional inversion heq_frameG;functional inversion heq_frameG0;subst;auto.
+    + exfalso.
+      apply exact_levelG_frameG_lt_lgth in X.
+      * omega.
+      * assumption.
+    + exfalso.
+      apply  exact_levelG_frameG_lt_lgth in X.
+      * omega.
+      * assumption.
+    + eapply IHh_exct_lvl_stk;eauto.
+Qed.
+
+Lemma updateG_spec_1 : forall stk id v stk',
+    updateG stk id v = Some stk' ->
+    exists stk1 sto sto' stk2 ,
+      stk = stk1 ++ (sto::stk2)
+      ∧ stk' = stk1 ++ (sto'::stk2)
+      ∧ update sto id v = Some sto'
+      ∧ (forall sto1, List.In sto1 stk1 -> reside id sto1 = false)
+      ∧ frameG id stk = Some sto.
+Proof.
+  intros stk id v. 
+  !functional induction (updateG stk id v);!intros.
+  - !invclear heq_Some.
+    exists [], f, f' , s';repeat split;auto.
+    + intros sto1 hIn. 
+      inversion hIn.
+    + cbn.
+      erewrite update_ok_same_reside_orig;eauto.
+  - !invclear heq_Some.
+    specialize IHo with (1:=heq_updateG_s'_x).
+    decomp IHo;subst.
+    rename H2 into hforall.
+    !!exists (f::stk1), sto, sto', stk2;repeat split;auto.
+    + intros sto1 hIn. 
+      cbn in hIn.
+      destruct hIn.
+      * subst.
+        apply update_ok_none in heq_update_f_x.
+        now apply fetch_ok_none.
+      * now apply hforall.
+    + cbn.
+      !assert (reside x f = false).
+      { destruct (reside x f) eqn:heq;auto.
+        apply fetch_ok_some in heq.
+        decomp heq.
+        rewrite update_ok_none in heq_update_f_x.
+        rewrite heq_update_f_x in heq_fetch_x_f.
+        discriminate. }
+      now rewrite heq_reside.
+  - discriminate.
+  - discriminate.
+Qed.
+
+
+Lemma exact_levelG_sublist2:
+  ∀ (CE1 CE2 : list frame), exact_levelG (CE1 ++ CE2) → exact_levelG CE2.
+Proof.
+  induction CE1.
+  - now intro.
+  - intros CE2 H.
+    specialize exact_levelG_sublist with (1:=H).
+    intro.
+    apply IHCE1.
+    assumption.
+Qed.
+
+Lemma exact_levelG_frameG_unique_lvl: forall stk1 stk2 lvl sto_id1 id sto_id2,
+      exact_levelG (stk1 ++ (lvl, sto_id1) :: stk2) ->
+      frameG id (stk1 ++ (lvl, sto_id1) :: stk2) = Some (lvl, sto_id2) ->
+      sto_id1 = sto_id2.
+Proof.
+  induction stk1;!intros.
+  - cbn in *.
+    destruct (resides id sto_id1) eqn:heq.
+    + now inversion heq_frameG.
+    + exfalso.
+      !assert (exact_levelG stk2).
+      { now eapply exact_levelG_sublist;eauto. }
+      specialize exact_lvl_level_of_top with (1:=h_exct_lvl_stk2)(2:=heq_frameG);!intro.
+      decomp h_ex.
+      specialize exact_lvl_lvl_of_top with (1:=h_exct_lvl_stk2)(2:=heq_level_of_top);!intro.
+      
+      inversion h_exct_lvl;subst.
+      omega.
+  - eapply IHstk1.
+    + cbn in h_exct_lvl.
+      now eapply exact_levelG_sublist;eauto. 
+    + functional inversion heq_frameG;subst.
+      * exfalso.
+
+        assert (exact_levelG ((lvl, sto_id1) :: stk2)).
+        { eapply exact_levelG_sublist2;eauto. }
+        eapply exact_lvl_lvl_of_top in H.
+        all:swap 1 2.
+        cbn.
+        reflexivity.
+        eapply exact_lvl_lvl_of_top in h_exct_lvl.
+        all:swap 1 2.
+        cbn.
+        reflexivity.
+        simpl Datatypes.length in *.
+        rewrite app_length in h_exct_lvl.
+        simpl Datatypes.length in *.
+        fold frame in *. (* omega fails to unify some terms otherwise *)
+        omega.
+      * eauto.
+Qed.
+(*
+Lemma updateG_ok_frameG_same_lvl : forall stk id v stk' sto_id  lvl,
+    updateG stk id v = Some stk' ->
+    STACK.exact_levelG stk ->
+    frameG id stk = Some (lvl,sto_id) ->
+    forall id' sto'_id',
+      frameG id' stk = Some (lvl,sto_id) -> 
+      frameG id' stk' = Some (lvl,sto'_id') ->
+      Some (lvl,sto'_id') = update (lvl, sto_id) id' v.
+Proof.
+  !intros.
+  !!specialize updateG_spec_1 with (1:=heq_updateG_stk_id).
+  intro h_ex;decomp h_ex;subst;up_type.
+  rename H2 into h_forall.
+  rewrite heq_frameG in heq_frameG2.
+  !invclear heq_frameG2.
+  unfold update in heq_update_sto_id.
+  cbn in heq_update_sto_id.
+  !!destruct (updates sto_id id v) eqn:heq; try discriminate.
+  !invclear heq_update_sto_id.
+  assert (s =sto'_id').
+  { eapply exact_levelG_frameG_unique_lvl;eauto.
+    admit. }
+  subst.
+  unfold update.
+  cbn.
+
+
+  assert (sto'_id' = sto_id).
+  { admit. }
+  subst.
+  unfold update.
+  cbn.
+
+
+
+  intros until v.
+  !functional induction (updateG stk id v);simpl;!intros;try discriminate;rename x into id;subst;up_type.
+  - unfold update;cbn.
+    !invclear heq_Some;simpl.
+    !assert (reside id f = true).
+    { eapply update_ok_same_reside_orig; eauto. }
+    rewrite heq_reside in heq_Some0.
+    !invclear heq_Some0.
+    unfold update in heq_update_f_x.
+    cbn in heq_update_f_x.
+    !assert (updates sto_id id v).
+
+    !assert (reside id' (lvl_id, sto_id) = false).
+    { cbn in *.
+      destruct (resides id' sto_id);auto.
+      exfalso.
+      inversion heq_Some1.
+      now apply hneq. }
+    rewrite heq_reside0 in heq_Some1.
+    unfold update in heq_update_f_x.
+    cbn in heq_update_f_x.
+
+    functional inversion heq_frameG;subst.
+    + exfalso.
+      apply hneq.
+      destruct (updates sto_id id v);try discriminate.
+      now inversion heq_update_f_x.
+    + rewrite X in heq_Some1.
+      now inversion heq_Some1.
+  - up_type.
+    !assert (reside id f = false).
+    { apply reside_false_fetch_none.
+      rewrite <- update_ok_none;eauto. }
+    rewrite heq_reside in heq_Some0.
+    !invclear heq_Some.
+    destruct (reside id' f) eqn:heq.
+    + !invclear heq_Some1.
+      cbn in heq_frameG.
+      cbn in heq.
+      rewrite heq in heq_frameG.
+      now inversion  heq_frameG.
+    + eapply IHo ;eauto.
+      cbn in heq_frameG.
+      now rewrite heq in heq_frameG.
+Qed.
+*)
 Lemma updateG_ok_others_frameG_orig: forall stk id v stk',
       updateG stk id v = Some stk' ->
       forall id' lvl sto,
@@ -4186,27 +4436,82 @@ Proof.
 *)
 
 
+Lemma assignment_preserve_Nodup_s:
+  forall s x v s',
+    ST.updateG s x v = Some s' ->
+    NoDup s -> 
+    NoDup s'.
+Proof.
+  intros s x v. 
+  functional induction (ST.updateG s x v).
+  - !intros.
+    !invclear heq_Some.
+    unfold NoDup in *;!intros.
+    specialize h_nodup_s with (2:=heq_cuts_to).
+    functional inversion heq_frameG;subst.
+    + 
+    assert (frameG nme (f :: s') = Some (lvl, sto)).
+    { cbn in heq_frameG |- *.
+      !!destruct (reside nme f') eqn:?.
+      - specialize update_ok_same_reside_orig with (1:=e0);!intro.
+        rewrite heq_reside0.
+    }
+    eapply h_nodup_s;eauto.
+    
+Qed.
 
 Lemma assignment_preserve_Nodup_s:
-  forall stbl s CE x x0 nme_t e_v s',
-    invariant_compile CE stbl ->
-    NoDup s -> 
-    transl_name stbl CE (Identifier x x0) =: nme_t ->
+  forall stbl s x x0 e_v s',
     storeUpdate stbl s (Identifier x x0) e_v (OK s') ->
+    NoDup s -> 
     NoDup s'.
 Proof.
   !!intros.
+  !inversion h_storeUpd.
+  clear h_storeUpd.
+  specialize updateG_spec_1 with (1:=heq_updateG_s_x0).
+(* xxxx *)
+  intro h.
+  decomp h.
+  subst.
+
   red.
-  red in nodup_s_s.
+  !intros;up_type.
+
+
+
+xxxx
+  revert x s' heq_updateG_s_x0.
+  !functional induction (ST.updateG s x0 e_v);simpl;!intros;up_type;decomp h_ex;subst.
+  - (* the variable x0 is in f. *)
+    !invclear heq_Some.
+    red.
+    !intros.
+    functional inversion heq_frameG;subst.
+    + admit.
+    + 
+
+    unfold NoDup in *;!intros;up_type.
+    eapply h_nodup_s.
+    
+    functional inversion heq_frameG;subst.
+    specialize h_nodup_s with (2:=heq_cuts_to).
+    apply h_nodup_s with (lvl:=lvl).
+  
+  red.
+  red in h_nodup_s_s.
   !intros.
   !assert (exists sto_nme, frameG nme s = Some (lvl,sto_nme)).
-  { clear nodup_s_s.
+  { clear h_nodup_s_s.
     !inversion h_storeUpd;subst; clear h_storeUpd;up_type.
     destruct (Nat.eq_dec nme x0).
     - subst.
       eapply updateG_ok_same_frameG_orig;eauto.
     - eapply updateG_ok_others_frameG_orig;eauto. }
   decomp h_ex.
+  up_type.
+  eapply h_nodup_s_s;eauto.
+  
 (*
   specialize (fun sto' sto'' => nodup_s_s _ _ _ sto' sto'' heq1).
   !assert (sto = sto'++sto'').
@@ -4594,6 +4899,9 @@ Proof.
   !intros.
   generalize heq_transl_name; unfold transl_name;!intro.
   split;eauto.
+  - admit.
+  - eapply assignment_preserve_Nodup_s;eauto.
+    apply h_match_env.
   - eapply assignment_preserve_Nodup_s;eauto.
     apply h_match_env.
   - eapply _s;eauto.
