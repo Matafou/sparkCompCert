@@ -4215,31 +4215,38 @@ Lemma assignment_preserve_exact_levelG:
 Proof.
 Admitted.
 
+
 Lemma assignment_preserve_Nodup_s:
   forall s x v s',
+    exact_levelG s →
+    NoDup_G s →
     ST.updateG s x v = Some s' ->
     NoDup s -> 
     NoDup s'.
 Proof.
-  intros s x v. 
-  functional induction (ST.updateG s x v).
+  intros s x v s' h.   
+  (* specialize STACK.updateG_spec_1 with (1:=h). *)
+  revert s' h.
+  functional induction (ST.updateG s x v);try now(intros;discriminate).
   - !intros.
     !invclear heq_Some.
-    specialize updateG_spec_1 with (1:=e0).
-    assert (ST.reside x f' = true).
-    { admit. }
-    unfold NoDup in *;!intros.
-    specialize h_nodup_s with (2:=heq_cuts_to).
-    functional inversion heq_frameG;subst.
-    + 
-    assert (frameG nme (f :: s') = Some (lvl, sto)).
-    { cbn in heq_frameG |- *.
-      !!destruct (reside nme f') eqn:?.
-      - specialize update_ok_same_reside_orig with (1:=e0);!intro.
-        rewrite heq_reside0.
-    }
-    eapply h_nodup_s;eauto.
-    
+    eapply nodup_cons.
+    + eapply stack_CE_NoDup_cons; eauto.
+    +
+      eapply update_nodup ; eauto.
+
+  - !intros.
+    !invclear heq_Some.
+    specialize (IHo s'').
+    assert (NoDup s') as h_nodup_s'.
+    { eapply stack_CE_NoDup_cons; eauto. }
+    assert (NoDup_G s') as h_nodupG_s'.
+    { eapply stack_CE_NoDup_G_cons; eauto. }
+    assert (exact_levelG s') as h_exctlvlG_s'.
+    { eapply exact_levelG_sublist; eauto. }
+    specialize IHo with (1:=h_exctlvlG_s')(2:=h_nodupG_s') (3:=e1) (4:=h_nodup_s').
+    eapply nodup_cons with (1:=IHo).
+    apply stack_NoDup_prefix  with (CE1:=[f])(CE2:=s');eauto.
 Qed.
 
 Lemma assignment_preserve_Nodup_s:
