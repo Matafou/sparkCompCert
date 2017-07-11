@@ -983,8 +983,8 @@ Proof.
     rewrite heq_length.
     constructor;auto.
     + apply IHs;auto.
-      * eapply STACK.stack_CE_NoDup_G_cons with (1:=h_exct_lvl);eauto.
-      * eapply CompilEnv.stack_CE_NoDup_G_cons with (1:=h_exct_lvlG);eauto.
+      * eapply STACK.stack_NoDup_G_cons;eauto.
+      * eapply CompilEnv.stack_NoDup_G_cons ;eauto.
       * red;!intros.
         red in H4.
         specialize (H4 nme lvl).
@@ -994,7 +994,7 @@ Proof.
            !assert (STACK.frameG nme ((Datatypes.length s, s1) :: s) = Some (lvl, sto)).
            { !assert (STACK.resideG nme s = true).
              { eapply STACK.frameG_resideG_1;eauto. }
-             specialize STACK.nodup_G_cons with (1:=h_exct_lvl) (2:=h_nodup_G_s) (3:=heq_resideG);intro h.
+             specialize STACK.nodup_G_cons with (1:=h_nodup_G_s) (2:=heq_resideG);intro h.
              cbn.
              cbn in h.
              rewrite h.
@@ -1016,7 +1016,7 @@ Proof.
                     = Some (lvl, CE_sto)).
            { !assert (CompilEnv.resideG nme CE = true).
              { eapply CompilEnv.frameG_resideG_1;eauto. }
-             specialize CompilEnv.nodup_G_cons with (1:=h_exct_lvlG)  (2:=h_nodup_G_CE) (3:=heq_resideG);intro h.
+             specialize CompilEnv.nodup_G_cons with (1:=h_nodup_G_CE) (2:=heq_resideG);intro h.
              cbn.
              cbn in h.
              rewrite h.
@@ -1071,7 +1071,7 @@ Proof.
     !inversion h_chain_m;subst;up_type.
     econstructor 2;eauto.
     + apply IHCE with (1:=h_chain_m0) (locenv:=locenv);eauto.
-      * eapply CompilEnv.stack_CE_NoDup_G_cons;eauto.
+      * eapply CompilEnv.stack_NoDup_G_cons;eauto.
       * eapply CompilEnv.exact_levelG_sublist;eauto.
       * red in h_stack_match_addr |- *.
         !intros.
@@ -1082,18 +1082,7 @@ Proof.
         { cbn.
           unfold transl_variable;simpl.
           !assert (CompilEnv.fetch id (s, s0) = None).
-          { destruct (CompilEnv.fetch id (s, s0)) eqn:heq;auto.
-            exfalso.
-            unfold CompilEnv.NoDup_G in h_nodup_G_CE.
-            !assert (CompilEnv.frameG id ((s, s0) :: CE) = Some (s, s0)).
-            { cbn.
-              erewrite CompilEnv.fetches_ok;eauto. }
-            specialize h_nodup_G_CE with (s':=(s, s0)::nil) (s'':=CE) (1:=heq_CEframeG_id).
-            apply CompilEnv.fetchG_ok in heq_CEfetchG_id_CE.
-            rewrite h_nodup_G_CE in heq_CEfetchG_id_CE.
-            - inversion heq_CEfetchG_id_CE.
-            - constructor;simpl;try auto with arith.
-              eapply CompilEnv.cut_until_exct_lvl;eauto. }
+          { eapply CompilEnv.nodupG_fetch_cons;eauto. }
           setoid_rewrite heq_CEfetch_id.
           rewrite heq_CEfetchG_id_CE.
           rewrite CompilEnv.fetch_ok_none;auto.
@@ -1192,15 +1181,14 @@ Definition all_addr_no_overflow CE := forall id δ,
     CompilEnv.fetchG id CE = Some δ -> 0 <= δ < Integers.Int.modulus.
 
 Proposition all_addr_nooverf_cons : forall x CE,
-    CompilEnv.exact_levelG (x :: CE) ->
     CompilEnv.NoDup_G (x :: CE) ->
     all_addr_no_overflow (x:: CE) -> all_addr_no_overflow CE.
 Proof.
   red.
-  intros x CE h_exactlvl h_nodupG h_alladdr_nooverf id δ heq_fetchG. 
+  intros x CE h_nodupG h_alladdr_nooverf id δ heq_fetchG. 
   apply h_alladdr_nooverf with id.
   cbn.
-  specialize CompilEnv.nodup_G_cons with (1:=h_exactlvl)(2:=h_nodupG);intro h.
+  specialize CompilEnv.nodup_G_cons with(1:=h_nodupG);intro h.
   !assert (CompilEnv.fetch id x = None).
   { apply CompilEnv.reside_false_fetch_none.
     apply h.
@@ -1333,8 +1321,8 @@ Proof.
       red in h_no_overf.
       eapply h_no_overf with (id:=id);eauto.
       eapply CompilEnv.nodupG_fetchG_cons;eauto. } 
-    { eapply STACK.stack_CE_NoDup_G_cons;eauto. }
-    { eapply CompilEnv.stack_CE_NoDup_G_cons;eauto. }
+    { eapply STACK.stack_NoDup_G_cons;eauto. }
+    { eapply CompilEnv.stack_NoDup_G_cons;eauto. }
     { eapply STACK.exact_levelG_sublist;eauto. }
     { eapply CompilEnv.exact_levelG_sublist;eauto. }
     + assumption.
@@ -1778,36 +1766,6 @@ Proof.
   - assumption.
 Qed.
 
-Lemma stack_push_all_new_subcons:
-  forall a CE,
-    CompilEnv.NoDup_G (a :: CE) ->
-    CompilEnv.exact_levelG (a :: CE) ->
-    stack_push_all_new a CE.
-Proof.
-  !intros.
-  red;!intros.
-  red in h_CEnodupG.
-  specialize (h_CEnodupG id (CompilEnv.level_of a) (CompilEnv.store_of a) [a] CE).
-  !assert (CompilEnv.frameG id (a :: CE) = Some (CompilEnv.level_of a, CompilEnv.store_of a)).
-  { cbn.
-    rewrite heq_reside.
-    destruct a;auto. }
-  specialize (h_CEnodupG heq_CEframeG_id).
-  !assert (CompilEnv.cut_until (a :: CE) (CompilEnv.level_of a) [a] CE).
-  { econstructor 3.
-    - omega.
-    - !!destruct CE eqn:?.
-      + constructor.
-      + !!inversion h_exct_lvlG;subst.
-        cbn.
-        constructor 2.
-        inversion h_exct_lvlG0.
-        cbn.
-        omega. }
-  specialize (h_CEnodupG h_CEcut).
-  assumption.
-Qed.
-
 
 
 Lemma stack_CE_NoDup_G_stack_push_all_new: forall x CE,
@@ -1817,14 +1775,7 @@ Lemma stack_CE_NoDup_G_stack_push_all_new: forall x CE,
 Proof.
   !intros.
   red;!intros.
-  red in h_CEnodupG.
-  cbn in h_CEnodupG.
-  destruct x.
-  eapply h_CEnodupG with (nme:= id).
-  - rewrite heq_reside.
-    reflexivity.
-  - constructor 3;auto with arith.
-    eapply CompilEnv.cut_until_exct_lvl;eauto.
+  eapply CompilEnv.nodup_G_cons_2;eauto.
 Qed.
 
 
@@ -1839,8 +1790,8 @@ Proof.
   - eapply all_frm_increasing_sublist;eauto.
   - eapply all_addr_no_overflow_sublist;eauto.
     apply stack_CE_NoDup_G_stack_push_all_new;auto.
-  - eapply CompilEnv.stack_CE_NoDup_cons;eauto.
-  - eapply CompilEnv.stack_CE_NoDup_G_cons;eauto.
+  - eapply CompilEnv.stack_NoDup_cons;eauto.
+  - eapply CompilEnv.stack_NoDup_G_cons;eauto.
 Qed.
 
 
@@ -1983,14 +1934,7 @@ Qed.
 (* TODO: move this in spark. *)
 Lemma stack_NoDup_empty: STACK.NoDup [ ].
 Proof.
-  red;simpl;!intros.
-  discriminate.
-Qed.
-
-Lemma stack_NoDup_G_empty: STACK.NoDup_G [ ].
-Proof.
-  red;simpl;!intros.
-  discriminate.
+  red;simpl;now !intros.
 Qed.
 
 Lemma match_env_empty: forall st sp b sp' locenv locenv' g m,
@@ -2009,7 +1953,7 @@ Proof.
       discriminate.
   + now red.
   + apply stack_NoDup_empty.
-  + apply stack_NoDup_G_empty.
+  + constructor.
   + constructor.
 (*  + red;!intros.
     !functional inversion heq_transl_variable.
@@ -4216,41 +4160,68 @@ Proof.
 Admitted.
 
 
-Lemma assignment_preserve_Nodup_s:
+
+Lemma updateG_preserve_Nodup_s:
   forall s x v s',
-    exact_levelG s →
     NoDup_G s →
     ST.updateG s x v = Some s' ->
     NoDup s -> 
     NoDup s'.
 Proof.
   intros s x v s' h.   
-  (* specialize STACK.updateG_spec_1 with (1:=h). *)
   revert s' h.
   functional induction (ST.updateG s x v);try now(intros;discriminate).
   - !intros.
     !invclear heq_Some.
-    eapply nodup_cons.
-    + eapply stack_CE_NoDup_cons; eauto.
-    +
-      eapply update_nodup ; eauto.
-
+    eapply update_nodup;eauto.
   - !intros.
     !invclear heq_Some.
     specialize (IHo s'').
     assert (NoDup s') as h_nodup_s'.
-    { eapply stack_CE_NoDup_cons; eauto. }
+    { eapply stack_NoDup_cons; eauto. }
     assert (NoDup_G s') as h_nodupG_s'.
-    { eapply stack_CE_NoDup_G_cons; eauto. }
-    assert (exact_levelG s') as h_exctlvlG_s'.
-    { eapply exact_levelG_sublist; eauto. }
-    specialize IHo with (1:=h_exctlvlG_s')(2:=h_nodupG_s') (3:=e1) (4:=h_nodup_s').
+    { eapply stack_NoDup_G_cons; eauto. }
+    specialize IHo with(1:=h_nodupG_s') (2:=e1) (3:=h_nodup_s').
     eapply nodup_cons with (1:=IHo).
     apply stack_NoDup_prefix  with (CE1:=[f])(CE2:=s');eauto.
 Qed.
 
-Lemma assignment_preserve_Nodup_s:
+
+Lemma updateG_preserve_Nodup_G_s:
+  forall s x v s',
+    NoDup_G s →
+    ST.updateG s x v = Some s' ->
+    NoDup_G s'.
+Proof.
+  intros s x v s' H H0. 
+  specialize updateG_spec_1 with (1:=H0) as h.
+  decomp h;subst.
+
+xxx
+
+
+  intros s x v s' h.   
+  revert s' h.
+  functional induction (ST.updateG s x v);try now(intros;discriminate).
+  - !intros.
+    !invclear heq_Some.
+    eapply update_nodup;eauto.
+  - !intros.
+    !invclear heq_Some.
+    specialize (IHo s'').
+    assert (NoDup s') as h_nodup_s'.
+    { eapply stack_NoDup_cons; eauto. }
+    assert (NoDup_G s') as h_nodupG_s'.
+    { eapply stack_NoDup_G_cons; eauto. }
+    specialize IHo with(1:=h_nodupG_s') (2:=e1) (3:=h_nodup_s').
+    eapply nodup_cons with (1:=IHo).
+    apply stack_NoDup_prefix  with (CE1:=[f])(CE2:=s');eauto.
+Qed.
+
+
+Lemma storeUpdate_preserve_Nodup_s:
   forall stbl s x x0 e_v s',
+    NoDup_G s →
     storeUpdate stbl s (Identifier x x0) e_v (OK s') ->
     NoDup s -> 
     NoDup s'.
@@ -4263,121 +4234,7 @@ Proof.
   intro h.
   decomp h.
   subst.
-
-  red.
-  !intros;up_type.
-
-
-
-xxxx
-  revert x s' heq_updateG_s_x0.
-  !functional induction (ST.updateG s x0 e_v);simpl;!intros;up_type;decomp h_ex;subst.
-  - (* the variable x0 is in f. *)
-    !invclear heq_Some.
-    red.
-    !intros.
-    functional inversion heq_frameG;subst.
-    + admit.
-    + 
-
-    unfold NoDup in *;!intros;up_type.
-    eapply h_nodup_s.
-    
-    functional inversion heq_frameG;subst.
-    specialize h_nodup_s with (2:=heq_cuts_to).
-    apply h_nodup_s with (lvl:=lvl).
-  
-  red.
-  red in h_nodup_s_s.
-  !intros.
-  !assert (exists sto_nme, frameG nme s = Some (lvl,sto_nme)).
-  { clear h_nodup_s_s.
-    !inversion h_storeUpd;subst; clear h_storeUpd;up_type.
-    destruct (Nat.eq_dec nme x0).
-    - subst.
-      eapply updateG_ok_same_frameG_orig;eauto.
-    - eapply updateG_ok_others_frameG_orig;eauto. }
-  decomp h_ex.
-  up_type.
-  eapply h_nodup_s_s;eauto.
-  
-(*
-  specialize (fun sto' sto'' => nodup_s_s _ _ _ sto' sto'' heq1).
-  !assert (sto = sto'++sto'').
-  { eapply STACK.cuts_to_decomp;eauto. }
-  !assert (exists v sto''', sto'' = (nme,v)::sto''').
-  { eapply cuts_to_snd_reside;eauto.
-    eapply frameG_resides;eauto. }
-  decomp h_ex.
-  subst.
-  
-
-  
-
-  !inversion h_storeUpd;subst; clear h_storeUpd;up_type.
-
-
-  assert (sto = sto'++sto'').
-  { eapply aux;eauto. }
-  subst.
-  specialize (nodup_s_s _ _ _ sto' sto'' heq1).
-  apply nodup_s_s.
-
-  assert (update (lvl,sto) x0 e_v = Some (lvl, sto'++sto'')).
-  { admit. }
-  
-
-  assert (sto_nme = update s).
-(*   ST.updateG s x0 e_v = Some s' *)
-  !assert (exists sto_nme', cuts_to nme sto_nme = (sto_nme', sto'')).
-  { clear nodup_s_s.
-    !inversion h_storeUpd;subst; clear h_storeUpd;up_type.
-    functional inversion heq_updateG_s_x0;subst.
-    destruct (Nat.eq_dec nme x0).
-    - subst.
-
-
-
-      eapply updateG_ok_same_frameG_orig;eauto.
-    - eapply updateG_ok_others_frameG_orig;eauto.
-
-    admit. }
-  decomp h_ex.
-  eapply nodup_s_s ;eauto.
-Qed.
-
-**)
-Admitted.
-
-Function my_update (f: frame) (x: idnum) (v: V): option frame := 
-  match updates (store_of f) x v with 
-  | Some s => Some (level_of f, s)
-  | None => None 
-  end.
-
-Lemma my_update_ok: forall (f: frame) (x: idnum) (v: V), ST.update f x v = my_update f x v.
-Proof.
-  reflexivity.
-Qed.
-
-
-Function my_updateG (s : ST.state) (x : idnum) (v : V) {struct s} : option ST.state :=
-  match s with
-  | [ ] => None
-  | f :: s' =>
-      match ST.update f x v with
-      | Some f' => Some (f' :: s')
-      | None => match my_updateG s' x v with
-                | Some s'' => Some (f :: s'')
-                | None => None
-                end
-      end
-  end
-.
-
-Lemma my_updateG_ok: forall f x v, ST.updateG f x v = my_updateG f x v.
-Proof.
-  reflexivity.
+  eapply updateG_preserve_Nodup_s;eauto.
 Qed.
 
 Lemma foo: forall CE, CE <> nil -> CompilEnv.exact_levelG CE ->  CompilEnv.level_of_top CE = Some (Datatypes.length CE - 1)%nat.
@@ -4689,8 +4546,13 @@ Proof.
   generalize heq_transl_name; unfold transl_name;!intro.
   split;eauto.
   - admit.
-  - eapply assignment_preserve_Nodup_s;eauto.
-    apply h_match_env.
+  - eapply storeUpdate_preserve_Nodup_s;eauto.
+    + apply h_match_env.
+    + apply h_match_env.
+  - eapply storeUpdate_preserve_Nodup_G_s;eauto.
+    + apply h_match_env.
+    + apply h_match_env.
+  - 
   - eapply assignment_preserve_Nodup_s;eauto.
     apply h_match_env.
   - eapply _s;eauto.
