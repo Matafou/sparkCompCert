@@ -6,11 +6,11 @@ Require Ctypes AST.
 Require Import BinPosDef.
 Require Import Maps.
 Require Import spark.symboltable.
-Require Import compcert_utils.
+Require Import sparkfrontend.compcert_utils.
 Require Import spark.eval.
-Require Import LibHypsNaming.
+Require Import sparkfrontend.LibHypsNaming.
 Require Import Errors. (* Errors.OK may be written OK *)
-Require Import store_util.
+Require Import spark.store_util.
 
 Notation " [ ] " := nil : list_scope.
 Notation " [ x ] " := (cons x nil) : list_scope.
@@ -621,12 +621,12 @@ Definition transl_stmt_aux :=
            procedure. Note also that if lvl is 0, then addr_enclosing_frame
            is void (global procedures have void chaining param). This is ensured
            by the call to the main procedure below. *)
-        let addr_enclosing_frame := build_loads_ (Econst (Oaddrstack Integers.Int.zero)) (current_lvl - lvl) in
+        let addr_enclosing_frame := build_loads_ (Econst (Oaddrstack Integers.Ptrofs.zero)) (current_lvl - lvl) in
         (* Add it as one more argument to the procedure called. *)
         do tle' <- OK (addr_enclosing_frame :: tle) ;
         (* Call the procedure; procedure name does not change (except it is a positive) ? *)
         (* Question: what should be the name of a procedure in Cminor? *)
-        OK (Scall None procsig (Econst (Oaddrsymbol (transl_procid pnum) (Integers.Int.repr 0%Z))) tle')
+        OK (Scall None procsig (Econst (Oaddrsymbol (transl_procid pnum) (Integers.Ptrofs.repr 0%Z))) tle')
 
     (* No loops yet. Cminor loops (and in Cshminor already) are
        infinite loops, and a failing test (the test is a statement,
@@ -865,7 +865,7 @@ Fixpoint transl_procedure (stbl:symboltable) (enclosingCE:compilenv)
 
           (* Adding prelude: copying chaining parameter into frame *)
           let chain_param :=
-              Sstore AST.Mint32 ((Econst (Oaddrstack (Integers.Int.zero))))
+              Sstore AST.Mint32 ((Econst (Oaddrstack (Integers.Ptrofs.zero))))
                      (Evar chaining_param) in
 
           (* Adding postlude: copying back out params *)

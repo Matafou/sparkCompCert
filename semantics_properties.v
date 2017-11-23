@@ -1,7 +1,8 @@
-Require Import LibHypsNaming.
+Require Import sparkfrontend.LibHypsNaming.
 Require Import Errors.
 Require Import eval.
-Require Import more_stdlib function_utils spark2Cminor.
+From sparkfrontend Require more_stdlib function_utils spark2Cminor.
+Import more_stdlib function_utils spark2Cminor.
 Require Import Morphisms Relations.
 Import STACK.
 Require Import store_util.

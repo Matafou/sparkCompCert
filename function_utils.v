@@ -1,9 +1,10 @@
 
-Require Import eval LibHypsNaming Memory.
-Require Import Errors.
+Require Import spark.eval.
+Require Import sparkfrontend.LibHypsNaming.
+Require Import Memory Errors.
 Require Import Cminor.
-Require Import spark2Cminor.
-Require Import compcert_utils.
+Require Import sparkfrontend.spark2Cminor.
+Require Import sparkfrontend.compcert_utils.
 
 
 Open Scope Z_scope.
@@ -357,11 +358,11 @@ Function transl_stmt (stbl : Symbol_Table_Module.symboltable) (CE : compilenv)
           | OK (x0, y) =>
               let current_lvl := Datatypes.length CE in
               let addr_enclosing_frame :=
-                build_loads_ (Econst (Oaddrstack Integers.Int.zero)) (current_lvl - y)
+                build_loads_ (Econst (Oaddrstack Integers.Ptrofs.zero)) (current_lvl - y)
                 in
               OK
                 (Scall None x0
-                   (Econst (Oaddrsymbol (transl_procid pnum) (Integers.Int.repr 0)))
+                   (Econst (Oaddrsymbol (transl_procid pnum) (Integers.Ptrofs.repr 0)))
                    (addr_enclosing_frame :: x))
           | Error msg => Error msg
           end
@@ -456,7 +457,7 @@ match addr with
 | Values.Vfloat _ => None
 | Values.Vsingle _ => None
 | Values.Vptr b ofs =>
-    Memory.Mem.store chunk m b (Integers.Int.unsigned ofs) v
+    Memory.Mem.store chunk m b (Integers.Ptrofs.unsigned ofs) v
 end.
 
 Lemma cm_storev_ok : forall x y, cm_storev x y = Memory.Mem.storev x y.
@@ -464,21 +465,39 @@ Proof.
   reflexivity.
 Qed.
 
+
 (* Definition build_compilenv:= Eval lazy beta iota delta [build_compilenv bind bind2] in build_compilenv. *)
 (* using the explicit version because of a bug in Function. *)
 
-Function build_compilenv (stbl : Symbol_Table_Module.symboltable) (enclosingCE : compilenv) (H : Symbol_Table_Module.level)
-         (lparams : list paramSpec) (decl : decl) {struct stbl} : res (prod (list (prod nat CompilEnv.store)) Z) :=
-let stoszchainparam : prod (list (prod idnum OffsetEntry.T)) Z :=
-  @pair (list (prod idnum OffsetEntry.T)) Z (@nil (prod idnum OffsetEntry.T)) (Zpos (xO (xO xH))) in
-@bind (prod CompilEnv.store Z) (prod (list (prod nat CompilEnv.store)) Z) (build_frame_lparams stbl stoszchainparam lparams)
-  (fun stoszparam : prod CompilEnv.store Z =>
-   @bind2 CompilEnv.store Z (prod (list (prod nat CompilEnv.store)) Z) (build_frame_decl stbl stoszparam decl)
-     (fun (stolocals : CompilEnv.store) (szlocals : Z) =>
-      let scope_lvl : nat := @Datatypes.length CompilEnv.frame enclosingCE in
-      @OK (prod (list (prod nat CompilEnv.store)) Z)
-        (@pair (list (prod nat CompilEnv.store)) Z
-           (@cons (prod nat CompilEnv.store) (@pair nat CompilEnv.store scope_lvl stolocals) enclosingCE) szlocals))).
+
+Function build_compilenv(stbl : Symbol_Table_Module.symboltable) (enclosingCE : compilenv)
+         (_ : Symbol_Table_Module.level) (lparams : list paramSpec) 
+         (decl : decl) :=
+  let stoszchainparam : prod (list (prod idnum OffsetEntry.T)) Z :=
+      @pair (list (prod idnum OffsetEntry.T)) Z (@nil (prod idnum OffsetEntry.T))
+            (Zpos (xO (xO xH))) in
+  match
+    build_frame_lparams stbl stoszchainparam lparams
+    return (res (prod (list (prod nat CompilEnv.store)) Z))
+  with
+  | OK x =>
+    match
+      build_frame_decl stbl x decl
+      return (res (prod (list (prod nat CompilEnv.store)) Z))
+    with
+    | OK p =>
+      match p return (res (prod (list (prod nat CompilEnv.store)) Z)) with
+      | pair x0 y =>
+        let scope_lvl : nat := @Datatypes.length CompilEnv.frame enclosingCE in
+        @OK (prod (list (prod nat CompilEnv.store)) Z)
+            (@pair (list (prod nat CompilEnv.store)) Z
+                   (@cons (prod nat CompilEnv.store)
+                          (@pair nat CompilEnv.store scope_lvl x0) enclosingCE) y)
+      end
+    | Error msg => @Error (prod (list (prod nat CompilEnv.store)) Z) msg
+    end
+  | Error msg => @Error (prod (list (prod nat CompilEnv.store)) Z) msg
+  end.
 
 
 Lemma build_compilenv_ok : build_compilenv = spark2Cminor.build_compilenv.
@@ -629,7 +648,7 @@ Function transl_procedure  (stbl : Symbol_Table_Module.symboltable) (enclosingCE
                        match store_params stbl x lparams with
                        | OK x3 =>
                            let chain_param :=
-                             Sstore AST.Mint32 (Econst (Oaddrstack Integers.Int.zero))
+                             Sstore AST.Mint32 (Econst (Oaddrstack Integers.Ptrofs.zero))
                                (Evar chaining_param) in
                            match copy_out_params stbl x lparams with
                            | OK x4 =>
@@ -824,18 +843,16 @@ Proof.
   reflexivity.
 Qed.
 
+
 Function eval_constant (ge : genv) (sp : Values.val) (cst : constant) :=
-  match cst with
-  | Ointconst n => Some (Values.Vint n)
-  | Ofloatconst n => Some (Values.Vfloat n)
-  | Osingleconst n => Some (Values.Vsingle n)
-  | Olongconst n => Some (Values.Vlong n)
-  | Oaddrsymbol s ofs => Some match Globalenvs.Genv.find_symbol ge s with
-                              | Some b => Values.Vptr b ofs
-                              | None => Values.Vundef
-                              end
-  | Oaddrstack ofs => Some (Values.Val.add sp (Values.Vint ofs))
-  end.
+match cst with
+| Ointconst n => Some (Values.Vint n)
+| Ofloatconst n => Some (Values.Vfloat n)
+| Osingleconst n => Some (Values.Vsingle n)
+| Olongconst n => Some (Values.Vlong n)
+| Oaddrsymbol s ofs => Some (Globalenvs.Genv.symbol_address ge s ofs)
+| Oaddrstack ofs => Some (Values.Val.offset_ptr sp ofs)
+end.
 
 Lemma eval_constant_ok : forall ge sp cst, eval_constant ge sp cst = Cminor.eval_constant ge sp cst.
 Proof.
@@ -843,30 +860,37 @@ Proof.
 Qed.
 
 Function add v1 v2 :=
-  match v1 with
-  | Values.Vundef => Values.Vundef
-  | Values.Vint n1 =>
+match v1 with
+| Values.Vundef => Values.Vundef
+| Values.Vint n1 =>
     match v2 with
     | Values.Vundef => Values.Vundef
     | Values.Vint n2 => Values.Vint (Integers.Int.add n1 n2)
     | Values.Vlong _ => Values.Vundef
     | Values.Vfloat _ => Values.Vundef
     | Values.Vsingle _ => Values.Vundef
-    | Values.Vptr b2 ofs2 => Values.Vptr b2 (Integers.Int.add ofs2 n1)
+    | Values.Vptr b2 ofs2 =>
+        if Archi.ptr64
+        then Values.Vundef
+        else Values.Vptr b2 (Integers.Ptrofs.add ofs2 (Integers.Ptrofs.of_int n1))
     end
-  | Values.Vlong _ => Values.Vundef
-  | Values.Vfloat _ => Values.Vundef
-  | Values.Vsingle _ => Values.Vundef
-  | Values.Vptr b1 ofs1 =>
+| Values.Vlong _ => Values.Vundef
+| Values.Vfloat _ => Values.Vundef
+| Values.Vsingle _ => Values.Vundef
+| Values.Vptr b1 ofs1 =>
     match v2 with
     | Values.Vundef => Values.Vundef
-    | Values.Vint n2 => Values.Vptr b1 (Integers.Int.add ofs1 n2)
+    | Values.Vint n2 =>
+        if Archi.ptr64
+        then Values.Vundef
+        else Values.Vptr b1 (Integers.Ptrofs.add ofs1 (Integers.Ptrofs.of_int n2))
     | Values.Vlong _ => Values.Vundef
     | Values.Vfloat _ => Values.Vundef
     | Values.Vsingle _ => Values.Vundef
     | Values.Vptr _ _ => Values.Vundef
     end
-  end.
+end.
+
 Lemma add_ok : forall x y, add x y = Values.Val.add x y.
 Proof.
   reflexivity.

@@ -1,10 +1,12 @@
-Require Import FunInd ZArith function_utils LibHypsNaming  Errors
-        spark2Cminor Cminor symboltable eval semantics_properties
-        Sorted Relations compcert.lib.Integers compcert_utils more_stdlib.
-Require Import SetoidList.
-Require Ctypes.
-Import Symbol_Table_Module Memory.
-Require Import chained_structure.
+Require Import FunInd ZArith Sorted Relations SetoidList.
+Require Import compcert.common.Errors compcert.backend.Cminor
+        compcert.lib.Integers compcert.common.Memory compcert.cfrontend.Ctypes.
+Require Import spark.symboltable spark.eval.
+Require Import sparkfrontend.function_utils sparkfrontend.LibHypsNaming
+        sparkfrontend.spark2Cminor sparkfrontend.semantics_properties
+        sparkfrontend.compcert_utils sparkfrontend.more_stdlib
+        sparkfrontend.chained_structure.
+Import Symbol_Table_Module.
 Open Scope error_monad_scope.
 Open Scope Z_scope.
 
@@ -944,7 +946,8 @@ Definition subset_CE_stbl stbl CE := forall nme addr_nme,
 
 Definition stack_no_null_offset stbl CE := forall a nme δ_lvl δ_id,
     transl_variable stbl CE a nme = Errors.OK (build_loads δ_lvl δ_id) ->
-    4 <= Int.unsigned (Int.repr δ_id).
+    4 <= δ_id.
+    (* 4 <= Ptrofs.unsigned (Ptrofs.repr δ_id) *)
 
 Definition stack_match_lgth (s : STACK.state) (CE : compilenv) :=
   Datatypes.length s = Datatypes.length CE.
@@ -1110,10 +1113,10 @@ Proof.
         rewrite h_loadv0 in h_loadv.
         !invclear h_loadv.
         !inversion h_CM_eval_expr_addr;subst.
-        change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Int.zero)) (m' - m0)))
-          with (build_loads_ (Econst (Oaddrstack Int.zero)) (S (m' - m0)))
+        change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (m' - m0)))
+          with (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (S (m' - m0)))
           in h_CM_eval_expr_v1.
-        !assert (chained_stack_structure m (S (m' - m0)) (Values.Vptr b Int.zero)).
+        !assert (chained_stack_structure m (S (m' - m0)) (Values.Vptr b Ptrofs.zero)).
         { apply chained_stack_structure_le with (n:=(S (Datatypes.length CE)));auto.
           apply CompilEnv.exact_levelG_sublist in h_exct_lvlG.
           specialize CompilEnv.exact_lvl_lvl_of_top with (1:=h_exct_lvlG);intro h.
@@ -1126,7 +1129,7 @@ Proof.
         !inversion h_CM_eval_expr_sp';subst.
         !inversion h_CM_eval_expr_vaddr;subst.
         simpl in h_eval_constant.
-        rewrite Int.add_zero_l in h_eval_constant.
+        rewrite Ptrofs.add_zero_l in h_eval_constant.
         inversion h_eval_constant;subst.
         rewrite h_loadv_vaddr_sp' in h_loadv0.
         !invclear h_loadv0;subst.
@@ -1178,7 +1181,7 @@ Inductive strong_stack_match stbl: STACK.state → compilenv → Values.val → 
     strong_stack_match stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m.
 
 Definition all_addr_no_overflow CE := forall id δ,
-    CompilEnv.fetchG id CE = Some δ -> 0 <= δ < Integers.Int.modulus.
+    CompilEnv.fetchG id CE = Some δ -> 0 <= δ < Ptrofs.modulus.
 
 Proposition all_addr_nooverf_cons : forall x CE,
     CompilEnv.NoDup_G (x :: CE) ->
@@ -1199,7 +1202,7 @@ Qed.
 Lemma transl_name_nodup_cons : forall st CE nme lvl n fr,
     all_addr_no_overflow CE ->
     transl_name st CE nme = Errors.OK (build_loads lvl n) ->
-    0 <= n ∧ n < Int.modulus ->
+    0 <= n ∧ n < Ptrofs.modulus ->
     CompilEnv.NoDup_G (fr :: CE) ->
     CompilEnv.exact_levelG (fr :: CE) ->
     transl_name st (fr::CE) nme = Errors.OK (build_loads (S lvl) n).
@@ -1312,7 +1315,7 @@ Proof.
     subst.
     !inversion h_chain_m;subst.
     econstructor 2;eauto.
-    eapply IHs with (sp:=(Values.Vptr b' Int.zero)) (locenv:=locenv).
+    eapply IHs with (sp:=(Values.Vptr b' Ptrofs.zero)) (locenv:=locenv).
     all:swap 1 7.
     { simpl in heq_length.
       now inversion heq_length. }
@@ -1333,7 +1336,7 @@ Proof.
       red;!intros.
       !functional inversion heq_transl_name;subst.
       !functional inversion heq_transl_variable;subst.
-      !assert (chained_stack_structure m (S (m' - m0)) (Values.Vptr b Int.zero)).
+      !assert (chained_stack_structure m (S (m' - m0)) (Values.Vptr b Ptrofs.zero)).
       { eapply chained_stack_structure_le;eauto.
         specialize CompilEnv.exact_lvl_lvl_of_top with (2:=heq_lvloftop_CE_m');intro h.
         rewrite <- h.
@@ -1375,9 +1378,9 @@ Proof.
         econstructor;eauto.
         -- specialize chained_stack_structure_decomp_S_2 with (1:=h_chain_m1) (2:=h_CM_eval_expr_v1) ;intro h.
            decomp h.
-           assert (sp'=(Values.Vptr b' Int.zero)).
+           assert (sp'=(Values.Vptr b' Ptrofs.zero)).
               { !inversion h_CM_eval_expr_sp';subst.
-                assert (vaddr0=(Values.Vptr b Int.zero)).
+                assert (vaddr0=(Values.Vptr b Ptrofs.zero)).
                 { eapply det_cm_eval_addrstack_zero_chain;eauto. }
                 subst.
                 rewrite h_loadv_vaddr0_sp' in h_loadv.
@@ -1399,7 +1402,7 @@ Definition stack_match_functions st stckptr CE locenv g m :=
       CompilEnv.cut_until CE pb_lvl CE' CE''
       ∧ transl_procedure st CE'' pb_lvl pb = Errors.OK ((pnum,@AST.Gfun _ _ fction) :: lglobdef) (*  *)
       ∧ Cminor.eval_expr g stckptr locenv m
-                         (Econst (Oaddrsymbol (transl_procid p) (Int.repr 0))) paddr
+                         (Econst (Oaddrsymbol (transl_procid p) (Ptrofs.repr 0))) paddr
       ∧ Globalenvs.Genv.find_funct g paddr = Some fction.
 
 
@@ -1420,8 +1423,8 @@ Definition stack_separate st CE sp locenv g m :=
     Ctypes.access_mode cm_typ_nme' = Ctypes.By_value chnk₂ ->
     nme <> nme' ->
     (k₂ <> k₁
-     \/ Int.unsigned δ₂ + Memdata.size_chunk chnk₂ <= Int.unsigned δ₁
-     \/ Int.unsigned δ₁ + Memdata.size_chunk chnk₁ <= Int.unsigned δ₂).
+     \/ Ptrofs.unsigned δ₂ + Memdata.size_chunk chnk₂ <= Ptrofs.unsigned δ₁
+     \/ Ptrofs.unsigned δ₁ + Memdata.size_chunk chnk₁ <= Ptrofs.unsigned δ₂).
 
 Definition stack_freeable st CE sp g locenv m :=
   forall a chk id id_t b ofs,
@@ -1431,7 +1434,7 @@ Definition stack_freeable st CE sp g locenv m :=
     Cminor.eval_expr g sp locenv m id_t (Values.Vptr b ofs) ->
     (* Size of variable in Cminor memorry *)
     compute_chnk st (Identifier a id) = Errors.OK chk ->
-    Mem.valid_access m chk b (Int.unsigned ofs) Freeable.
+    Mem.valid_access m chk b (Ptrofs.unsigned ofs) Freeable.
 
 
 (* TODO: swap arguments *)
@@ -1632,6 +1635,12 @@ Ltac rename_hyp3 h th :=
   | upper_bound ?fr _ => fresh "h_upb_" fr
   | upper_bound _ _ => fresh "h_upb"
   | match_env _ _ _ _ _ _ _ => fresh "h_match_env"
+  (* | all_addr_no_overflow ?CE => fresh "h_alladdr_nooverf_" CE *)
+  (* | all_addr_no_overflow _ => fresh "h_alladdr_nooverf" *)
+  | all_frm_increasing ?x => fresh "h_allincr_" x
+  | all_frm_increasing _ => fresh "h_allincr"
+  | all_addr_no_overflow ?x => fresh "h_bound_addr_" x
+  | all_addr_no_overflow _ => fresh "h_bound_addr"
   | stack_match _ ?s _ _ _ _ ?m => fresh "h_stk_mtch_" s "_" m
   | stack_match _ _ _ _ _ _ _ => fresh "h_stk_mtch"
   | stack_match_addresses _ _ ?CE _ _ ?m => fresh "h_stk_mtch_addr_" CE "_" m
@@ -1666,8 +1675,10 @@ Ltac rename_hyp3 h th :=
   | invariant_compile ?CE _ => fresh "h_inv_comp_" CE
   | invariant_compile _ ?stbl => fresh "h_inv_comp_" stbl
   | invariant_compile _ _ => fresh "h_inv_comp"
-  | increasing_order ?l => fresh "h_incr_gt_" l
-  | increasing_order _ => fresh "h_incr_ord"
+  | increasing_order_fr ?x => fresh "h_incr_order_fr_" x
+  | increasing_order_fr _ => fresh "h_incr_order_fr"
+  | increasing_order ?x => fresh "h_incr_order_" x
+  | increasing_order _ => fresh "h_incr_order"
   | _ => rename_hyp2' h th
   end.
 
@@ -1746,20 +1757,29 @@ Qed.
 Definition stack_push_all_new sto CE:= (forall id, CompilEnv.reside id sto = true -> CompilEnv.resideG id CE = false).
 
 
+Ltac rename_stack_push_all_new h th :=
+  match th with
+  | stack_push_all_new ?sto ?CE => fresh "h_stckpushallnew_" sto "_" CE
+  | stack_push_all_new ?sto _ => fresh "h_stckpushallnew_" sto
+  | stack_push_all_new _ _ => fresh "h_stckpushallnew"
+  | _ => rename_hyp_strong h th
+  end.
+Ltac rename_sparkprf ::= rename_stack_push_all_new.
+
 Lemma all_addr_no_overflow_sublist: forall x CE,
     stack_push_all_new x CE
     -> all_addr_no_overflow (x::CE)
     -> all_addr_no_overflow CE.
 Proof.
-  !!intros ? ? h halladdr.
-  red in halladdr.
+  !intros.
+  red in h_bound_addr.
   red.
   !intros.
-  apply halladdr with id.
+  apply h_bound_addr with id.
   cbn.
   !!destruct (CompilEnv.fetch id x) eqn:?.
   - apply CompilEnv.fetch_ok in heq_CEfetch_id_x.
-    apply h in heq_CEfetch_id_x.
+    apply h_stckpushallnew_x_CE in heq_CEfetch_id_x.
     apply CompilEnv.fetchG_ok in heq_CEfetchG_id_CE.
     rewrite heq_CEfetch_id_x in heq_CEfetchG_id_CE.
     discriminate.
@@ -1911,7 +1931,7 @@ Proof.
 Qed.
  
 (* frame pointer is always with offset zero. We will show later that it is also true for the enclosing frames. *)
-Lemma match_env_sp_zero:forall st CE x sp locenv g m, match_env st CE x sp locenv g m -> exists b, sp = Values.Vptr b Int.zero.
+Lemma match_env_sp_zero:forall st CE x sp locenv g m, match_env st CE x sp locenv g m -> exists b, sp = Values.Vptr b Ptrofs.zero.
 Proof.
   !intros. 
   !!pose proof (me_stack_localstack_aligned (me_safe_cm_env h_match_env)).
@@ -1924,10 +1944,10 @@ Proof.
   !inversion h_CM_eval_expr.
   cbn in h_eval_constant.
   !inversion h_eval_constant.
-  unfold Values.Val.add in h_val_add_sp.
+  unfold Values.Val.offset_ptr in h_val_offs_sp_zero.
   destruct sp;try discriminate.
   cbn.
-  rewrite Int.add_zero.
+  rewrite Ptrofs.add_zero.
   reflexivity.
 Qed.
 
@@ -1939,7 +1959,7 @@ Qed.
 
 Lemma match_env_empty: forall st sp b sp' locenv locenv' g m,
     stack_match_functions st sp' [ ] locenv' g m ->
-    sp = (Values.Vptr b Int.zero) ->
+    sp = (Values.Vptr b Ptrofs.zero) ->
     match_env st [ ] [ ] sp locenv g m.
 Proof.
   !intros.
@@ -1979,7 +1999,7 @@ Proof.
     eexists.
     econstructor.
     cbn.
-    rewrite Int.add_zero.
+    rewrite Ptrofs.add_zero.
     reflexivity.
   + red;!intros.
     !functional inversion heq_transl_variable.
@@ -2493,10 +2513,11 @@ Qed.
    offset, the offset of a variable in CE is the same as its offset in
    CMinor memory. *)
 Lemma eval_build_loads_offset: forall lvl g stkptr locenv m δ_lvl δ_id b ofs,
+    δ_id mod Ptrofs.modulus = δ_id ->
     stack_localstack_aligned lvl locenv g m stkptr ->
     (δ_lvl <= lvl)%nat
     -> Cminor.eval_expr g stkptr locenv m (build_loads δ_lvl δ_id) (Values.Vptr b ofs) ->
-    ofs = Int.repr δ_id.
+    ofs = Ptrofs.repr δ_id.
 Proof.
   !intros.
   unfold build_loads in *.
@@ -2506,14 +2527,19 @@ Proof.
   red in h_aligned_g_m.
   specialize h_aligned_g_m with (1:=h_le_δ_lvl_lvl).
   !!edestruct h_aligned_g_m;eauto.
-  assert (v1 = Values.Vptr x Int.zero).
+  assert (v1 = Values.Vptr x Ptrofs.zero).
   { eapply det_eval_expr;eauto. }
   subst.
   cbn  in *.
-  destruct v2;cbn in *;try discriminate.
+  destruct v2;destruct Archi.ptr64;cbn in *;try discriminate.
   inversion h_eval_binop_Oadd_v1_v2.
   inversion h_eval_constant.
-  apply Int.add_zero_l.
+  subst.
+  rewrite Ptrofs.add_zero_l.
+  unfold Ptrofs.of_int.
+  apply f_equal.
+  rewrite Int.unsigned_repr_eq.
+  auto.              
 Qed.
 
 
@@ -2522,22 +2548,35 @@ Qed.
 Lemma eval_build_loads_offset_non_null_var:
   forall stbl CE g stkptr locenv m nme a bld_lds b ofs,
     CompilEnv.exact_levelG CE ->
+    all_addr_no_overflow CE ->
     stack_no_null_offset stbl CE ->
     stack_localstack_aligned (Datatypes.length CE) locenv g m stkptr ->
     transl_variable stbl CE a nme = Errors.OK bld_lds ->
     Cminor.eval_expr g stkptr locenv m bld_lds (Values.Vptr b ofs) ->
-    4 <= Int.unsigned ofs.
+    4 <= Ptrofs.unsigned ofs.
 Proof.
   !intros.
-  functional inversion heq_transl_variable;subst.
-  assert (ofs=(Int.repr n)). {
-    eapply (eval_build_loads_offset (Datatypes.length CE) g stkptr locenv m (m' - m0) _ b ofs h_aligned_g_m);auto with arith.
+  !functional inversion heq_transl_variable;subst.
+  !assert (ofs=(Ptrofs.repr δ_nme)). {
+    !assert (δ_nme mod Ptrofs.modulus = δ_nme).
+    { red in h_bound_addr_CE.
+      specialize h_bound_addr_CE with (1:=heq_CEfetchG_nme_CE).
+      apply Z.mod_small.
+      assumption. }
+    eapply (eval_build_loads_offset (Datatypes.length CE) g stkptr locenv m (m' - lvl_nme) _ b ofs  heq_modulo h_aligned_g_m);auto with arith.
     - erewrite exact_lvlG_lgth with (lvl:=m').
       + omega.
       + assumption.
       + assumption. }
   subst.
-  eapply h_nonul_ofs;eauto.
+  red in h_nonul_ofs.
+  specialize h_nonul_ofs with (1:=heq_transl_variable).
+  red in h_bound_addr_CE.
+  specialize h_bound_addr_CE with (1:=heq_CEfetchG_nme_CE).
+  rewrite Ptrofs.unsigned_repr;auto.
+  split;try omega.
+  unfold Ptrofs.max_unsigned.
+  omega.
 Qed.
 
 Lemma transl_expr_ok : forall stbl CE e e',
@@ -2808,17 +2847,9 @@ Qed.
 
 Ltac rename_hyp_incro h th :=
   match th with
-  | increasing_order_fr ?x => fresh "h_incr_order_fr_" x
-  | increasing_order_fr _ => fresh "h_incr_order_fr"
-  | increasing_order ?x => fresh "h_incr_order_" x
-  | increasing_order _ => fresh "h_incr_order"
   | exact_levelG ?x => fresh "h_exact_lvlG_" x
   | exact_levelG _ => fresh "h_exact_lvlG"
-  | all_frm_increasing ?x => fresh "h_allincr_" x
-  | all_frm_increasing _ => fresh "h_allincr"
-  | all_addr_no_overflow ?x => fresh "h_bound_addr_" x
-  | all_addr_no_overflow _ => fresh "h_bound_addr"
-  | _ => rename_hyp_strong h th
+  | _ => rename_stack_push_all_new h th
   end.
 Ltac rename_sparkprf ::= rename_hyp_incro.
 
@@ -3161,10 +3192,10 @@ Ltac simplify_do :=
 Lemma wf_chain_load'2:forall lvl g locenv stkptr chk m m' b ofs e_t_v vaddr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
     -> stack_localstack_aligned lvl locenv g m stkptr
-    -> 4 <= Int.unsigned ofs (*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
+    -> 4 <= Ptrofs.unsigned ofs (*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
     -> forall lvl',
         (lvl' <= lvl)%nat ->
-        let load_id := build_loads_ (Econst (Oaddrstack Int.zero)) lvl' in
+        let load_id := build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl' in
         Cminor.eval_expr g stkptr locenv m' load_id vaddr
         -> Cminor.eval_expr g stkptr locenv m load_id vaddr.
 Proof.
@@ -3177,7 +3208,7 @@ Proof.
   - !inversion h_CM_eval_expr_load_id_v;econstructor;eauto.
   - !invclear h_CM_eval_expr_load_id_v.
     assert (h_CM_eval_expr_on_m:
-              Cminor.eval_expr g stkptr locenv m (build_loads_ (Econst (Oaddrstack Int.zero)) lvl') vaddr).
+              Cminor.eval_expr g stkptr locenv m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl') vaddr).
     { eapply IHlvl'; eauto.
       omega. }
     econstructor.
@@ -3194,7 +3225,7 @@ Proof.
         { omega. }
         specialize (h_aligned_g_m _ h_le_lvl'_lvl0).
         !destruct h_aligned_g_m.
-        !assert ((Values.Vptr b0 i) = (Values.Vptr x Int.zero)).
+        !assert ((Values.Vptr b0 i) = (Values.Vptr x Ptrofs.zero)).
         { eapply det_eval_expr;eauto. }
         !invclear heq_vptr_b0_i.
         discriminate.
@@ -3209,10 +3240,10 @@ Qed.
 Lemma wf_chain_load'3:forall lvl g locenv stkptr chk m m' b ofs e_t_v vaddr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
     -> stack_localstack_aligned lvl locenv g m' stkptr
-    -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
+    -> (4 <= (Ptrofs.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
     -> forall lvl',
         (lvl' <= lvl)%nat ->
-        let load_id := build_loads_ (Econst (Oaddrstack Int.zero)) lvl' in
+        let load_id := build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl' in
         Cminor.eval_expr g stkptr locenv m load_id vaddr
         -> Cminor.eval_expr g stkptr locenv m' load_id vaddr.
 Proof.
@@ -3225,7 +3256,7 @@ Proof.
   - !inversion h_CM_eval_expr_load_id_v;econstructor;eauto.
   - !invclear h_CM_eval_expr_load_id_v.
     assert (h_CM_eval_expr_on_m':
-              Cminor.eval_expr g stkptr locenv m' (build_loads_ (Econst (Oaddrstack Int.zero)) lvl') vaddr).
+              Cminor.eval_expr g stkptr locenv m' (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl') vaddr).
     { eapply IHlvl'; eauto. omega. }
     econstructor.
     + eassumption.
@@ -3238,7 +3269,7 @@ Proof.
       * !assert (lvl' <= lvl)%nat.
         { omega. }
         !destruct (h_aligned_g_m' _ h_le_lvl'_lvl0).
-        !assert ((Values.Vptr b0 i) = (Values.Vptr x Int.zero)).
+        !assert ((Values.Vptr b0 i) = (Values.Vptr x Ptrofs.zero)).
         { eapply det_eval_expr;eauto. }
         !invclear heq_vptr_b0_i.
         vm_compute.
@@ -3254,10 +3285,10 @@ Qed.
 Lemma wf_chain_load'4:forall lvl g locenv stkptr chk m m' b ofs e_t_v vaddr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
     -> stack_localstack_aligned lvl locenv g m stkptr
-    -> 4 <= Int.unsigned ofs (*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
+    -> 4 <= Ptrofs.unsigned ofs (*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
     -> forall lvl',
         (lvl' <= lvl)%nat ->
-        let load_id := build_loads_ (Econst (Oaddrstack Int.zero)) lvl' in
+        let load_id := build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl' in
         Cminor.eval_expr g stkptr locenv m load_id vaddr
         -> Cminor.eval_expr g stkptr locenv m' load_id vaddr.
 Proof.
@@ -3270,7 +3301,7 @@ Proof.
   - !inversion h_CM_eval_expr_load_id_v;econstructor;eauto.
   - !invclear h_CM_eval_expr_load_id_v.
     assert (h_CM_eval_expr_on_m:
-              Cminor.eval_expr g stkptr locenv m' (build_loads_ (Econst (Oaddrstack Int.zero)) lvl') vaddr).
+              Cminor.eval_expr g stkptr locenv m' (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl') vaddr).
     { eapply IHlvl'; eauto.
       omega. }
     econstructor.
@@ -3281,12 +3312,12 @@ Proof.
       !!assert ((lvl' <= lvl)%nat) by omega.
       !!pose proof h_aligned_g_m lvl' h_le_lvl'_lvl0.
       decomp h_ex.
-      !assert ((Values.Vptr b0 i) = (Values.Vptr b_δ Int.zero)).
+      !assert ((Values.Vptr b0 i) = (Values.Vptr b_δ Ptrofs.zero)).
       { eapply det_eval_expr;eauto. }
       !invclear heq_vptr_b0_i.
       right.
       left.
-      rewrite Int.unsigned_zero.
+      rewrite Ptrofs.unsigned_zero.
       cbn.
       omega.
 Qed.
@@ -3295,10 +3326,10 @@ Lemma wf_chain_load'':forall lvl g locenv stkptr chk m m' b ofs e_t_v vaddr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
     -> (stack_localstack_aligned lvl locenv g m stkptr)
     -> (stack_localstack_aligned lvl locenv g m' stkptr)
-    -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
+    -> (4 <= (Ptrofs.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
     -> forall lvl',
         (lvl' <= lvl)%nat ->
-        let load_id := build_loads_ (Econst (Oaddrstack Int.zero)) lvl' in
+        let load_id := build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl' in
         Cminor.eval_expr g stkptr locenv m' load_id vaddr
         <-> Cminor.eval_expr g stkptr locenv m load_id vaddr.
 Proof.
@@ -3316,7 +3347,7 @@ Qed.
 Lemma wf_chain_load':forall lvl g locenv stkptr chk m m' b ofs e_t_v vaddr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
     -> (stack_localstack_aligned lvl locenv g m' stkptr)
-    -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
+    -> (4 <= (Ptrofs.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
     -> forall lvl' δ_lvl,
         (lvl' <= lvl)%nat ->
         let load_id := build_loads lvl' δ_lvl in
@@ -3344,7 +3375,7 @@ Qed.
 Lemma wf_chain_load'_2:forall lvl g locenv stkptr chk m m' b ofs e_t_v vaddr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
     -> (stack_localstack_aligned lvl locenv g m stkptr)
-    -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
+    -> (4 <= (Ptrofs.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
     -> forall lvl' δ_lvl,
         (lvl' <= lvl)%nat ->
         let load_id := build_loads lvl' δ_lvl in
@@ -3373,7 +3404,7 @@ Lemma wf_chain_load_var:
     CompilEnv.exact_levelG CE ->
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
     -> (stack_localstack_aligned (Datatypes.length CE) locenv g m' stkptr)
-    -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
+    -> (4 <= (Ptrofs.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
     -> transl_variable stbl CE astnum id =: load_id
     -> Cminor.eval_expr g stkptr locenv m load_id vaddr
     -> Cminor.eval_expr g stkptr locenv m' load_id vaddr.
@@ -3401,7 +3432,7 @@ Lemma wf_chain_load_var':
     CompilEnv.exact_levelG CE ->
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
     -> (stack_localstack_aligned (Datatypes.length CE) locenv g m stkptr)
-    -> (4 <= (Int.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
+    -> (4 <= (Ptrofs.unsigned ofs))(*forall n, Integers.Int.repr n = ofs -> 4 <= n*)
     -> transl_variable stbl CE astnum id =: load_id
     -> Cminor.eval_expr g stkptr locenv m' load_id vaddr
     -> Cminor.eval_expr g stkptr locenv m load_id vaddr.
@@ -3424,7 +3455,7 @@ Qed.
      of blocks, chaining variables all poitn to zero ofsets. *)
 Lemma wf_chain_load_aligned: forall lvl g locenv chk m m' b ofs e_t_v stkptr,
     Mem.storev chk m (Values.Vptr b ofs) e_t_v = Some m'
-    -> (4 <= (Int.unsigned ofs))
+    -> (4 <= (Ptrofs.unsigned ofs))
     -> stack_localstack_aligned lvl locenv g m stkptr
     -> stack_localstack_aligned lvl locenv g m' stkptr.
 Proof.
@@ -3451,19 +3482,19 @@ Proof.
     !!assert ((δ_lvl <= lvl)%nat) by omega.
     specialize (h_aligned_g_m0 δ_lvl h_le_δ_lvl_lvl0).
     decomp h_aligned_g_m0.
-    !assert ((Values.Vptr b0 i) = (Values.Vptr b_δ0 Int.zero)).
+    !assert ((Values.Vptr b0 i) = (Values.Vptr b_δ0 Ptrofs.zero)).
     { eapply det_eval_expr;eauto. }
     !invclear heq_vptr_b0_i.
     right.
     left.
-    rewrite Int.unsigned_zero.
+    rewrite Ptrofs.unsigned_zero.
     cbn.
     omega.
 Qed.
 
 Lemma wf_chain_load_aligned':forall sp lvl g locenv m,
     stack_localstack_aligned lvl locenv g m sp ->
-    lvl = 0%nat ∨ exists b, sp = (Values.Vptr b Int.zero).
+    lvl = 0%nat ∨ exists b, sp = (Values.Vptr b Ptrofs.zero).
 Proof.
   intros sp CE g locenv m h_aligned_g_m.
   red in h_aligned_g_m.
@@ -3476,8 +3507,8 @@ Proof.
     cbn in *.
     !invclear h_eval_constant.
     !destruct sp; cbn in *; try discriminate.
-    rewrite Int.add_zero in h_val_add_sp.
-    !inversion h_val_add_sp.
+    rewrite Ptrofs.add_zero in h_val_offs_sp_zero.
+    !inversion h_val_offs_sp_zero.
     eauto.
 Qed.
 
@@ -3545,6 +3576,7 @@ Qed.
 Lemma assignment_preserve_stack_match :
   forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
     CompilEnv.exact_levelG CE ->
+    all_addr_no_overflow CE ->
     all_frm_increasing CE ->
     (* translating the variabe to a Cminor load address *)
     transl_variable stbl CE a id = Errors.OK id_t ->
@@ -3574,7 +3606,7 @@ Proof.
   set (loads_id:=(build_loads (lvl_max - lvl_id) δ_id)) in *.
   rewrite cm_storev_ok in *.
   (* done *)
-  assert (h_ofs_nonzero:4 <= Int.unsigned ofs). {
+  assert (h_ofs_nonzero:4 <= Ptrofs.unsigned ofs). {
     eapply eval_build_loads_offset_non_null_var;eauto. }
   unfold stack_match.
   !intros other_nme other_v addr_other load_addr_other type_other cm_typ_other;up_type.
@@ -3960,15 +3992,14 @@ Proof.
     + apply h_inv_comp_CE_stbl.
     + eassumption.
     + assumption.
-    + eapply eval_build_loads_offset_non_null_var with (5:=h_CM_eval_expr_id_t_id_t_v)
+    + eapply eval_build_loads_offset_non_null_var with (6:=h_CM_eval_expr_id_t_id_t_v)
       ;eauto.
     + simpl in heq_transl_name0.
       eauto.
   - apply h_inv_comp_CE_stbl.
   - eassumption.
   - assumption.
-  - eapply eval_build_loads_offset_non_null_var with (5:=h_CM_eval_expr_id_t_id_t_v)
-    ;eauto.
+  - eapply  eval_build_loads_offset_non_null_var with (6:=h_CM_eval_expr_id_t_id_t_v);eauto.
   - eauto.
 Qed.
 
@@ -4052,7 +4083,7 @@ Proof.
   - eapply (me_stack_freeable (me_safe_cm_env h_match_env));eauto.
     eapply wf_chain_load_var';eauto.
     eapply eval_build_loads_offset_non_null_var
-      with (5:=h_CM_eval_expr_nme_t_nme_t_v);eauto.
+      with (6:=h_CM_eval_expr_nme_t_nme_t_v);eauto.
 Qed.
 
 
@@ -4096,6 +4127,7 @@ Admitted.
 Lemma assignment_preserve_chained_stack_structure:
   forall stbl CE g locenv stkptr m a chk id id_t e_t_v idaddr m' n,
     chained_stack_structure m n stkptr ->
+    all_addr_no_overflow CE -> 
     Datatypes.length CE ≤ n -> (* the chaining structure must be at least as deep as CE *)
     (*     stack_localstack_aligned CE locenv g m ->  *)
     stack_no_null_offset stbl CE -> 
@@ -4111,7 +4143,7 @@ Lemma assignment_preserve_chained_stack_structure:
 Proof.
   !intros.
   destruct id_t_v;try discriminate.
-  assert (4 <= (Int.unsigned i)).
+  assert (4 <= (Ptrofs.unsigned i)).
   { eapply eval_build_loads_offset_non_null_var;eauto.
     eapply chain_aligned ;eauto. }
   eapply assignment_preserve_chained_stack_structure_aux; eauto.
@@ -4198,7 +4230,6 @@ Proof.
   !inversion h_storeUpd.
   clear h_storeUpd.
   specialize updateG_spec_1 with (1:=heq_updateG_s_x0).
-(* xxxx *)
   intro h.
   decomp h.
   subst.
@@ -4215,7 +4246,6 @@ Proof.
   !inversion h_storeUpd.
   clear h_storeUpd.
   specialize updateG_spec_1 with (1:=heq_updateG_s_x0).
-(* xxxx *)
   intro h.
   decomp h.
   subst.
@@ -4320,7 +4350,7 @@ Definition visible_cminor_addr st CE g astnum locenv stkptr (m:mem) spb ofs :=
                  (* the block part of the address is exactly spb and the
                     offset ofs is inside [ofs_id, ofs_id+chnk[. *)   
                  /\ ∃ ofs_id , Cminor.eval_expr g stkptr locenv m id_t (Values.Vptr spb ofs_id)
-                               /\ Int.unsigned ofs_id <= ofs < Int.unsigned ofs_id + size_chunk id_chk.
+                               /\ Ptrofs.unsigned ofs_id <= ofs < Ptrofs.unsigned ofs_id + size_chunk id_chk.
 
 (* The negation of previous predicate. *)
 Definition invisible_cminor_addr st CE g astnum locenv stkptr (m:mem) spb ofs :=
@@ -4330,7 +4360,7 @@ Definition invisible_cminor_addr st CE g astnum locenv stkptr (m:mem) spb ofs :=
     -> compute_chnk_id st id =: id_chk
     -> Cminor.eval_expr g stkptr locenv m id_t (Values.Vptr spb_id ofs_id)
     (* The address spb+ofs is not part of the interval [spb_id , spb_id+ofs_id[ *)
-    -> spb_id ≠ spb \/ ofs >= Int.unsigned ofs_id + size_chunk id_chk \/ ofs < Int.unsigned ofs_id.
+    -> spb_id ≠ spb \/ ofs >= Ptrofs.unsigned ofs_id + size_chunk id_chk \/ ofs < Ptrofs.unsigned ofs_id.
 
 
 (* Addresses that should be untouched by a function call: the one
@@ -4387,6 +4417,7 @@ Proof.
   - repeat red in H.
     inversion h.
     constructor;intros .
+    + assumption.
     + eapply unchanged_on_perm;auto.
       specialize (H b b eq_refl ofs ofs eq_refl).
       destruct H.
@@ -4398,6 +4429,7 @@ Proof.
   - repeat red in H.
     inversion h.
     constructor;intros .
+    + assumption.
     + eapply unchanged_on_perm;auto.
       specialize (H b b eq_refl ofs ofs eq_refl).
       destruct H.
@@ -4482,6 +4514,7 @@ Lemma exec_store_params_preserve_forbidden_subproof:
   forall lparams st CE initparams,
     CompilEnv.exact_levelG CE ->    
     stack_no_null_offset st CE ->
+    all_addr_no_overflow CE ->
     store_params st CE lparams = Errors.OK initparams -> 
     forall astnum g proc_t sp e_chain e_chain' m t2 m' lvl,
       Datatypes.length CE = lvl -> 
@@ -4502,7 +4535,7 @@ Proof.
   (* The three following cases are identical, i.e. the parameter mode
        should not be case split but functional induction does and I don't
        want to make the induction by hand. *)
-  - specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs heq_store_params).
+  - specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs h_bound_addr_CE heq_store_params).
     !invclear h_exec_stmt_initparams_Out_normal; eq_same_clear.
     specialize (fun h_chain h_align => IHr astnum _ _ _ _ _ _ _ _ _ heq_length h_chain h_align h_exec_stmt_x0_Out_normal).
     rename m1 into m_mid.
@@ -4521,7 +4554,7 @@ Proof.
     !assert (chained_stack_structure m_mid lvl sp).
     { eapply assignment_preserve_chained_stack_structure;eauto.
       omega. }
-    specialize (IHr h_chain_lvl_sp0).
+    specialize (IHr h_chain_m_mid_lvl_sp).
     split.
     { apply IHr. }
     { eapply unchange_forbidden_trans with (m2:=m_mid); [| eapply IHr].
@@ -4546,6 +4579,7 @@ Proof.
             - cbn. eapply heq_storev_v_m_mid.
             - assumption.
             - eapply eval_build_loads_offset_non_null_var.
+              + eassumption.
               + eassumption.
               + eassumption.
               + exact h_aligned_g_m. (*xxx instantiate correctly. shelve.*)
@@ -4582,6 +4616,7 @@ Proof.
             2:eauto.
             all:eauto.
             eapply eval_build_loads_offset_non_null_var.
+            + eassumption.
             + eassumption.
             + eassumption.
             + exact h_aligned_g_m. (*xxx instantiate correctly. shelve.*)
@@ -4599,7 +4634,7 @@ Proof.
           destruct x1_v; try discriminate.
           eapply Mem.perm_store_2 in abs2;eauto.
           eapply abs;eassumption. }
-  - specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs heq_store_params).
+  - specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs h_bound_addr_CE heq_store_params).
     !invclear h_exec_stmt_initparams_Out_normal; eq_same_clear.
     specialize (fun h_chain h_align => IHr astnum _ _ _ _ _ _ _ _ _ heq_length h_chain h_align h_exec_stmt_x0_Out_normal).
     rename m1 into m_mid.
@@ -4618,7 +4653,7 @@ Proof.
     !assert (chained_stack_structure m_mid lvl sp).
     { eapply assignment_preserve_chained_stack_structure;eauto.
       omega. }
-    specialize (IHr h_chain_lvl_sp0).
+    specialize (IHr h_chain_m_mid_lvl_sp).
     split.
     { apply IHr. }
     { eapply unchange_forbidden_trans with (m2:=m_mid); [| eapply IHr].
@@ -4643,6 +4678,7 @@ Proof.
             - cbn. eapply heq_storev_v_m_mid.
             - assumption.
             - eapply eval_build_loads_offset_non_null_var.
+              + eassumption.
               + eassumption.
               + eassumption.
               + exact h_aligned_g_m. (*xxx instantiate correctly. shelve.*)
@@ -4679,6 +4715,7 @@ Proof.
             2:eauto.
             all:eauto.
             eapply eval_build_loads_offset_non_null_var.
+            + eassumption.
             + eassumption.
             + eassumption.
             + exact h_aligned_g_m. (*xxx instantiate correctly. shelve.*)
@@ -4696,7 +4733,7 @@ Proof.
           destruct x1_v; try discriminate.
           eapply Mem.perm_store_2 in abs2;eauto.
           eapply abs;eassumption. }
-  - specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs heq_store_params).
+  - specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs h_bound_addr_CE heq_store_params).
     !invclear h_exec_stmt_initparams_Out_normal; eq_same_clear.
     specialize (fun h_chain h_align => IHr astnum _ _ _ _ _ _ _ _ _ heq_length h_chain h_align h_exec_stmt_x0_Out_normal).
     rename m1 into m_mid.
@@ -4715,7 +4752,7 @@ Proof.
     !assert (chained_stack_structure m_mid lvl sp).
     { eapply assignment_preserve_chained_stack_structure;eauto.
       omega. }
-    specialize (IHr h_chain_lvl_sp0).
+    specialize (IHr h_chain_m_mid_lvl_sp).
     split.
     { apply IHr. }
     { eapply unchange_forbidden_trans with (m2:=m_mid); [| eapply IHr].
@@ -4740,6 +4777,7 @@ Proof.
             - cbn. eapply heq_storev_v_m_mid.
             - assumption.
             - eapply eval_build_loads_offset_non_null_var.
+              + eassumption.
               + eassumption.
               + eassumption.
               + exact h_aligned_g_m. (*xxx instantiate correctly. shelve.*)
@@ -4776,6 +4814,7 @@ Proof.
             2:eauto.
             all:eauto.
             eapply eval_build_loads_offset_non_null_var.
+            + eassumption.
             + eassumption.
             + eassumption.
             + exact h_aligned_g_m. (*xxx instantiate correctly. shelve.*)
@@ -4802,6 +4841,7 @@ Lemma exec_store_params_unchanged_on_subproof:
   forall lparams st CE initparams,
     CompilEnv.exact_levelG CE ->
     stack_no_null_offset st CE ->
+    all_addr_no_overflow CE ->
     store_params st CE lparams =: initparams ->
     forall astnum g proc_t sp e_chain m t2 e_postchain m' lvl,
       Datatypes.length CE = lvl -> 
@@ -4812,13 +4852,14 @@ Lemma exec_store_params_unchanged_on_subproof:
 Proof.
   !intros.
   !!pose proof (exec_store_params_preserve_forbidden_subproof
-                  _ _ _ _ h_exct_lvlG_CE h_nonul_ofs heq_store_prms_lparams_initparams
-                  astnum _ proc_t _ _ _ _ _ _ _ heq_length h_chain_lvl_sp h_aligned_g_m
+                  _ _ _ _ h_exct_lvlG_CE h_nonul_ofs h_bound_addr_CE
+                  heq_store_prms_lparams_initparams
+                  astnum _ proc_t _ _ _ _ _ _ _ heq_length h_chain_m_lvl_sp h_aligned_g_m
                   h_exec_stmt_initparams_Out_normal).
   decomp h_and.
   revert initparams h_exct_lvlG_CE h_nonul_ofs heq_store_prms_lparams_initparams astnum g proc_t
          sp e_chain m t2 e_postchain m' lvl heq_length h_aligned_g_m h_exec_stmt_initparams_Out_normal
-         h_unch_forbid_m_m' h_chain_lvl_sp h_chain_lvl_sp0.
+         h_unch_forbid_m_m' h_chain_m_lvl_sp h_chain_m'_lvl_sp.
   rewrite store_params_ok.
   !!functional induction function_utils.store_params st CE lparams;
     try rewrite <- store_params_ok in *;cbn;!intros;try discriminate.
@@ -4854,7 +4895,7 @@ Proof.
     { eapply unchange_forbidden_trans with (e2:= e_postchain)(m2:=m');eauto.
       apply unchange_forbidden_sym;auto. }
       
-    specialize (IHr h_unch_forbid_m_mid_m' h_chain_lvl_sp1 h_chain_lvl_sp2).
+    specialize (IHr h_unch_forbid_m_mid_m' h_chain_m_mid_lvl_sp h_chain_m'_lvl_sp0).
 
     apply trans_unchanged with m_mid;auto.
     + unfold Mem.storev in heq_storev_v_m_mid.
@@ -4897,7 +4938,7 @@ Proof.
     { eapply unchange_forbidden_trans with (e2:= e_postchain)(m2:=m');eauto.
       apply unchange_forbidden_sym;auto. }
       
-    specialize (IHr h_unch_forbid_m_mid_m' h_chain_lvl_sp1 h_chain_lvl_sp2).
+    specialize (IHr h_unch_forbid_m_mid_m' h_chain_m_mid_lvl_sp h_chain_m'_lvl_sp0).
 
     apply trans_unchanged with m_mid;auto.
     + unfold Mem.storev in heq_storev_v_m_mid.
@@ -4940,7 +4981,7 @@ Proof.
     { eapply unchange_forbidden_trans with (e2:= e_postchain)(m2:=m');eauto.
       apply unchange_forbidden_sym;auto. }
       
-    specialize (IHr h_unch_forbid_m_mid_m' h_chain_lvl_sp1 h_chain_lvl_sp2).
+    specialize (IHr h_unch_forbid_m_mid_m' h_chain_m_mid_lvl_sp h_chain_m'_lvl_sp0).
 
     apply trans_unchanged with m_mid;auto.
     + unfold Mem.storev in heq_storev_v_m_mid.
@@ -4966,6 +5007,7 @@ Lemma exec_init_locals_preserve_forbidden_subproof:
   forall decl st CE locvarinit,
     CompilEnv.exact_levelG CE ->    
     stack_no_null_offset st CE ->
+    all_addr_no_overflow CE ->
     init_locals st CE decl =: locvarinit ->
     forall astnum g proc_t sp e_chain e_chain' m t2 m' lvl,
       Datatypes.length CE = lvl -> 
@@ -5012,9 +5054,21 @@ Proof.
             !!assert (Datatypes.length CE = (S m'0)) by (eapply exact_level_top_lvl;eauto).
             rewrite heq_length.
             omega. }
+          red in h_bound_addr_CE.
+          specialize h_bound_addr_CE with (1:= heq_CEfetchG).
           
-          pose proof (chain_struct_build_loads_ofs _ _ _ h_chain_sp n _ _ _ _ h_CM_eval_expr_objname_t_objname_t_v) .
-          subst;assumption. }
+          
+          !assert (n mod Int.modulus = n).
+          { apply Z.mod_small.
+            assumption. }
+          specialize chain_struct_build_loads_ofs with (1:=h_chain_m) (2:=heq_modulo)
+                                                       (3:=h_CM_eval_expr_objname_t_objname_t_v);!intro.
+          (* pose proof (chain_struct_build_loads_ofs _ _ _ h_chain_sp n _ _ _ _ h_CM_eval_expr_objname_t_objname_t_v) . *)
+
+          subst.
+          rewrite Ptrofs.unsigned_repr;auto.
+          unfold Ptrofs.max_unsigned.
+          omega. }
         specialize (h_invis_sp__m_sp_id_ofs_id h_CM_eval_expr_id_t0).
         assumption.
 
@@ -5041,7 +5095,7 @@ Proof.
           { eapply eval_expr_transl_variable_inv_locenv;eauto. }
           !inversion h_exec_stmt_locvarinit_Out_normal;subst.
           destruct objname_t_v;try discriminate.
-          assert (4 <= Int.unsigned i).
+          assert (4 <= Ptrofs.unsigned i).
           { !functional inversion heq_transl_name;subst.
             !functional inversion heq_transl_variable0;subst.
             !!pose proof (h_nonul_ofs _ _ _ _ heq_transl_variable0).
@@ -5050,8 +5104,18 @@ Proof.
               !!assert (Datatypes.length CE = (S m'0)) by (eapply exact_level_top_lvl;eauto).
               rewrite heq_length.
               omega. }
-            pose proof (chain_struct_build_loads_ofs _ _ _ h_chain_sp n _ _ _ _ h_CM_eval_expr_objname_t_objname_t_v) .
-            subst;assumption. }
+          red in h_bound_addr_CE.
+          specialize h_bound_addr_CE with (1:= heq_CEfetchG).
+          !assert (n mod Int.modulus = n).
+          { apply Z.mod_small.
+            assumption. }
+          specialize chain_struct_build_loads_ofs with (1:=h_chain_m) (2:=heq_modulo)
+                                                       (3:=h_CM_eval_expr_objname_t_objname_t_v);!intro.
+
+            subst.
+            rewrite Ptrofs.unsigned_repr;auto.
+            unfold Ptrofs.max_unsigned.
+            omega. }
           eapply wf_chain_load_var;auto;eauto.
           -- eapply wf_chain_load_aligned;eauto. }
         specialize (h_invis_sp__m'_sp_id_ofs_id h_CM_eval_expr_id_t0).
@@ -5089,6 +5153,7 @@ Qed.
 Lemma init_locals_unchanged_on_subproof:
   forall decl st CE locvarinit,
     CompilEnv.exact_levelG CE ->
+    all_addr_no_overflow CE ->
     stack_no_null_offset st CE ->
     init_locals st CE decl =: locvarinit ->
     forall astnum g proc_t sp e_chain m t2 e_postchain m' lvl,
@@ -5100,13 +5165,17 @@ Lemma init_locals_unchanged_on_subproof:
 Proof.
   !intros.
   up_type.
-  !!pose proof (exec_init_locals_preserve_forbidden_subproof
-                  _ _ _ _ h_exct_lvlG_CE h_nonul_ofs heq_init_lcl_decl_locvarinit astnum _ proc_t
-                  _ _ _ _ _ _ lvl heq_length h_chain_lvl_sp h_aligned_g_m h_exec_stmt_locvarinit_Out_normal).
+  specialize exec_init_locals_preserve_forbidden_subproof
+    with (astnum:=astnum)
+      (1:=h_exct_lvlG_CE) (2:=h_nonul_ofs) (3:=h_bound_addr_CE) 
+         (4:=heq_init_lcl_decl_locvarinit)
+         (5:=heq_length) (6:=h_chain_m_lvl_sp) (7:=h_aligned_g_m)
+         (8:=h_exec_stmt_locvarinit_Out_normal).
+  !intro.
   decomp h_and.
   revert locvarinit h_exct_lvlG_CE h_nonul_ofs heq_init_lcl_decl_locvarinit astnum g proc_t sp
          e_chain m t2 e_postchain m' h_aligned_g_m lvl heq_length h_exec_stmt_locvarinit_Out_normal
-         h_unch_forbid_m_m' h_chain_lvl_sp h_chain_lvl_sp0.
+         h_unch_forbid_m_m' h_chain_m_lvl_sp h_chain_m'_lvl_sp.
   rewrite init_locals_ok.
   !!functional induction function_utils.init_locals st CE decl;try rewrite <- init_locals_ok in *;cbn;!intros;try discriminate.
   - !invclear heq_OK; inversion h_exec_stmt_locvarinit_Out_normal;subst. apply Mem.unchanged_on_refl.
@@ -5162,6 +5231,7 @@ Lemma init_params_preserves_structure:
   forall lparams st CE initparams,
     CompilEnv.exact_levelG CE ->
     stack_no_null_offset st CE ->
+    all_addr_no_overflow CE ->
     store_params st CE lparams =: initparams ->
     forall astnum g proc_t sp e_chain m t2 e_chain' m' lvl,
       Datatypes.length CE = lvl -> 
@@ -5181,6 +5251,7 @@ Lemma init_locals_preserves_structure:
   forall decl st CE locvarinit,
     CompilEnv.exact_levelG CE ->
     stack_no_null_offset st CE ->
+    all_addr_no_overflow CE ->
     init_locals st CE decl =: locvarinit ->
     forall astnum g proc_t sp e_chain m t2 e_chain' m' lvl,
       Datatypes.length CE = lvl -> 
@@ -5203,8 +5274,11 @@ Lemma build_compilenv_exact_lvl:
     CompilEnv.exact_levelG CE'.
 Proof.
   !intros.
-  rewrite <- build_compilenv_ok  in heq_build_compilenv.
+  rewrite <- build_compilenv_ok in heq_build_compilenv.
   functional inversion heq_build_compilenv.
+  rewrite -> build_compilenv_ok in *.
+  unfold stoszchainparam in *.
+  simpl in *.
   constructor;auto.
 Qed.  
 
@@ -5450,6 +5524,95 @@ Proof.
       assumption.
 Qed.
 
+Lemma transl_variable_cons:
+  forall st (scope_lvl:scope_level) x0 CE a nme  δ_lvl δ_id sz' lparams,
+    stack_no_null_offset st CE ->
+    all_addr_no_overflow CE ->
+    spark2Cminor.build_frame_decl st ([],4) lparams =: (x0,sz') ->
+    snd ([]:localframe,4) <= Int.modulus ->
+    transl_variable st ((scope_lvl, x0) :: CE) a nme =: build_loads δ_lvl δ_id ->
+    (transl_variable st ((scope_lvl, x0)::nil) a nme =: build_loads δ_lvl δ_id)
+    ∧ δ_lvl= 0%nat
+    ∨ (transl_variable st CE a nme =: build_loads (δ_lvl-1) δ_id).
+Proof.
+  !intros.
+  !functional inversion heq_transl_variable;clear heq_transl_variable.
+  !functional inversion heq_CEfetchG_nme; clear heq_CEfetchG_nme;subst.
+  - unfold CompilEnv.fetch in heq_CEfetch_nme.
+    simpl in heq_CEfetch_nme.
+    left.
+    unfold transl_variable.
+    cbn.
+    rewrite heq_CEfetch_nme.
+    erewrite CompilEnv.fetches_ok;eauto.
+    cbn in heq_lvloftop_m'.
+    inversion heq_lvloftop_m';subst;clear heq_lvloftop_m'.
+    cbn in heq_CEframeG_nme.
+    erewrite CompilEnv.fetches_ok in heq_CEframeG_nme;eauto.
+    inversion heq_CEframeG_nme;subst;clear heq_CEframeG_nme.
+    specialize build_loads__inj with (1:=heq_build_loads);!intro.
+    subst.
+    split;auto with arith.
+    apply f_equal.
+    apply f_equal.
+    
+    assert (Int.eqm δ_nme δ_id).
+    { admit. }
+    apply Int.eqm_small_eq;auto.
+    + specialize build_frame_decl_mon with (1:=heq_build_frame_decl)(2:=h_le).
+      !intros.
+      destruct  h_and as [_ h_good_compilenv].
+      specialize h_good_compilenv with (1:=eq_refl).
+      
+      assert (h_prem:(∀ (nme : idnum) (x : CompilEnv.V),
+                         CompilEnv.fetches nme [ ] = Some x → 0 <= x ∧ x < 4)).
+      { !intros.
+        functional inversion heq_CEfetches_nme0. }
+      specialize h_good_compilenv with (1:=h_prem) (2:=ltac:(auto with zarith):0<=4)
+                                       (3:=heq_CEfetch_nme).
+      assert (sz'<Int.modulus).
+      { rewrite build_frame_decl_ok in heq_build_frame_decl.
+        !functional induction heq_build_frame_decl; rewrite <- build_frame_decl_ok in *. 
+        - subst.
+          inversion heq_pair.
+          vm_compute.
+          reflexivity.
+        - subst.
+          edestruct (Z.geb_spec new_size Int.modulus);try discriminate;auto.
+        - subst.
+          edestruct (Z.geb_spec new_size Int.modulus);try discriminate;auto.
+          eapply Z.geb_le in heq_geb.
+          inversion heq_pair.
+          vm_compute.
+          reflexivity.
+      
+      }
+      split;try omega.
+      apply h_bound_addr_CE
+    
+    destruct (Int.repr δ_nme) eqn:heq1;destruct (Int.repr δ_id) eqn:heq2.
+    subst intval0.
+    apply repr_inj;auto.
+
+    assert ().
+    !inversion heq_lvloftop_m'.
+    assert (CompilEnv.fetchG nme [(scope_lvl, (y, δ_nme) :: s')] = Some δ_nme).
+    cbn.
+xxxxx    
+    !functional inversion heq_CEfetch_nme;clear heq_CEfetch_nme;subst.
+    + cbn in *;subst.
+      left.
+      unfold transl_variable.
+      cbn.
+      rewrite hbeqnat_true.
+      !inversion heq_lvloftop_m'.
+      assert (CompilEnv.fetchG nme [(scope_lvl, (y, δ_nme) :: s')] = Some δ_nme).
+      cbn.
+
+      
+      
+
+Qed.
 
 Lemma build_compilenv_stack_no_null_offset:
   ∀ (st : symboltable) (CE : CompilEnv.state) (proc_lvl : level) (lparams : list paramSpec) 
@@ -5465,6 +5628,56 @@ Proof.
   rewrite function_utils.build_frame_decl_ok in heq_build_frame_decl.
   !destruct x.
   subst stoszchainparam.
+  red;!intros.
+  destruct (CompilEnv.fetches nme x0) eqn:h1; destruct (CompilEnv.resides nme x0) eqn:h2; try discriminate;  up_type;
+    try match goal with
+        | h1 : CompilEnv.fetches nme x0 = Some ?t |- _ => 
+          specialize CompilEnv.fetches_ok with (1:=h1);
+            let h := fresh "h" in
+            intro h;
+              rewrite h in *;
+              discriminate
+        | h1 : CompilEnv.fetches nme x0 = None |- _ => 
+          specialize CompilEnv.fetches_ok_none_1 with (1:=h1);
+            let h := fresh "h" in
+            intro h;
+              rewrite h in *;
+              discriminate
+        end.
+  all:swap 1 2.
+  - (* nme is in CE, applying hyp. *)
+    eapply h_nonul_ofs with (a:=a)(nme:=nme)(δ_lvl:=(δ_lvl-1)%nat).
+    !functional inversion heq_transl_variable.
+    cbn in heq_CEfetchG_nme,heq_CEframeG_nme.
+    rewrite h1 in heq_CEfetchG_nme.
+    rewrite h2 in heq_CEframeG_nme.
+    unfold transl_variable.
+    rewrite heq_CEfetchG_nme,heq_CEframeG_nme.
+    !!destruct (CompilEnv.level_of_top CE) eqn:?.
+    all:swap 1 2.
+    { destruct CE.
+      * functional inversion heq_CEfetchG_nme.
+      * cbn in heq_lvloftop_none_CE.
+        destruct f.
+        discriminate. }
+
+    assert ((m' - lvl_nme)%nat = δ_lvl).
+    { admit. }
+    subst.
+    assert (m' = s0 + 1)%nat.
+    { admit. }
+    subst.
+    assert(s0 + 1 - lvl_nme - 1 = s0 - lvl_nme)%nat.
+    { assert (s0 + 1 - lvl_nme>0)%nat.
+      { admit. }
+      omega. }
+    rewrite H. ;reflexivity.
+    XXXXXXXXX
+    cbn in heq_lvloftop_m'.
+    !inversion heq_lvloftop_m';subst. clear heq_lvloftop_m'.
+    
+
+
   pose proof build_frame_lparams_mon' _ _ _ _ _ heq_bld_frm_lparams as h_bld_frm.
   cbn in h_bld_frm.
   !!assert (4 <= Int.modulus). {
@@ -5472,31 +5685,118 @@ Proof.
     intro abs;discriminate. }
    specialize (h_bld_frm h_le).
   destruct h_bld_frm as [h_bld_frm1 h_bld_frm2].
-
-  specialize (h_bld_frm2 [] 4  eq_refl 4).
+  specialize h_bld_frm2 with (1:=eq_refl) (k:=4).
   !!assert (h_ftch_nil: ∀ (nme : idnum) (x : CompilEnv.V), CompilEnv.fetches nme [] = Some x → 4 <= x < 4).
   { !intros.
     functional inversion heq_CEfetches_nme. }
-  !!assert (4 <= 4) by omega.
-  specialize (h_bld_frm2 h_ftch_nil h_le0).
+  specialize (h_bld_frm2 h_ftch_nil (ltac:(auto with zarith):4<=4)).
+  clear h_ftch_nil h_le.
   pose proof build_frame_decl_mon _ _ _ _ _ heq_build_frame_decl as h_bld_decl.
   cbn in h_bld_decl.
   !destruct h_bld_frm1.
   specialize (h_bld_decl h_le_z_modulus).
   destruct h_bld_decl as [h_le_z' h_bld_decl].
   cbn in h_le_z'.
-  specialize (h_bld_decl s z eq_refl 4 h_bld_frm2 h_le1).
+  specialize (h_bld_decl s z eq_refl 4 h_bld_frm2 h_le).
   red;!intros.
 (*   unfold transl_variable in heq_transl_variable. *)
 (*   cbn in heq_transl_variable. *)
+  destruct (CompilEnv.fetches nme x0) eqn:h1; destruct (CompilEnv.resides nme x0) eqn:h2; try discriminate;  up_type;
+    try match goal with
+        | h1 : CompilEnv.fetches nme x0 = Some ?t |- _ => 
+          specialize CompilEnv.fetches_ok with (1:=h1);
+            let h := fresh "h" in
+            intro h;
+              rewrite h in *;
+              discriminate
+        | h1 : CompilEnv.fetches nme x0 = None |- _ => 
+          specialize CompilEnv.fetches_ok_none_1 with (1:=h1);
+            let h := fresh "h" in
+            intro h;
+              rewrite h in *;
+              discriminate
+        end.
+  - (* nme is in the new top frame *)
+    admit.
+
+  - (* nme is CE, applying hyp. *)
+    eapply h_nonul_ofs with (a:=a)(nme:=nme)(δ_lvl:=(δ_lvl-1)%nat).
+    !functional inversion heq_transl_variable.
+    cbn in heq_CEfetchG_nme,heq_CEframeG_nme.
+    rewrite h1 in heq_CEfetchG_nme.
+    rewrite h2 in heq_CEframeG_nme.
+    unfold transl_variable.
+    rewrite heq_CEfetchG_nme,heq_CEframeG_nme.
+    destruct CE.
+    { functional inversion heq_CEfetchG_nme. }
+    cbn.
+    destruct f.
+    specialize build_compilenv_exact_lvl with (1:=h_exct_lvlG_CE) (2:=heq_build_compilenv);!intro.
+    !inversion h_exct_lvlG;subst.
+    !inversion h_exct_lvlG0;subst.
+    cbn in heq_lvloftop_m'.
+    !inversion heq_lvloftop_m';subst.
+    cbn in heq_build_loads.
+    destruct lvl_nme.
+    + specialize build_loads__inj with (1:=heq_build_loads);!intro;subst.
+    unfold build_loads.
+      
+      
+    }
+    eapply h_nonul_ofs ;eauto.
+    
+
+
+
+
   destruct (CompilEnv.fetches nme x0) eqn:h1; destruct (CompilEnv.resides nme x0) eqn:h2; try discriminate;  up_type.
   - unfold transl_variable in heq_transl_variable.
     cbn in heq_transl_variable.
     rewrite h1, h2 in heq_transl_variable.
+    assert ((build_loads (scope_lvl - scope_lvl) t) = build_loads δ_lvl δ_id).
+    { unfold build_loads in heq_transl_variable.
+      !invclear heq_transl_variable.
+      
+      
+      replace (scope_lvl - scope_lvl)%nat with 0%nat in *.
+      simpl in *.
+      symmetry in H0.
+      functional inversion H0;subst.
+      unfold build_loads in heq_transl_variable.
+      inversion heq_transl_variable.
+      
+      rewrite <- build_loads_OK in heq_transl_variable.
+      functional inversion heq_transl_variable.
+
+Opaque build_loads.
+    inversion heq_transl_variable.
     specialize (h_bld_decl _ _ h1).
     !destruct h_bld_decl.
     !destruct h_le_z'.
 
+    eapply h_nonul_ofs.
+    rewrite <- heq_transl_variable.
+    assert (δ_id = t).
+    { apply 
+    assert ((build_loads (scope_lvl - scope_lvl) t) = build_loads δ_lvl δ_id).
+    { 
+      inversion heq_transl_variable;auto.
+      specialize build_loads__inj with (1:=H0);!intros.
+      rewrite heq_sub in *.
+      destruct t;destruct δ_id;cbn in *; auto.
+      inversion heq_transl_variable;auto.
+      
+      
+
+
+      inversion heq_transl_variable.
+    simpl in heq_build_loads.
+
+    destruct (Int.repr t) eqn:heq_t;destruct (Int.repr δ_id) eqn:heq_δ_id;auto;subst.
+    apply build_loads_inj in heq_build_loads.
+
+
+xxxx
     assert (Int.unsigned (Int.repr t)=Int.unsigned (Int.repr δ_id)). {
       inversion heq_transl_variable.
       destruct (Int.repr t) eqn:heq_t;destruct (Int.repr δ_id) eqn:heq_δ_id;auto. }

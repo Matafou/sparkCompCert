@@ -1,4 +1,5 @@
-Require Import LibHypsNaming more_stdlib Memory Ctypes.
+From sparkfrontend Require Import LibHypsNaming more_stdlib.
+From compcert Require Import Memory Ctypes.
 Require Import ZArith Memory Cminor Integers Errors.
 Open Scope Z_scope.
 
@@ -23,7 +24,7 @@ Function build_loads_ base (m:nat) {struct m} : Cminor.expr :=
     above the current frame. This is done by following pointers from
     frames to frames. (Load^m 0)+n. *)
 Definition build_loads (m:nat) (n:Z) :=
-  let indirections := build_loads_ (Econst (Oaddrstack Integers.Int.zero)) m in
+  let indirections := build_loads_ (Econst (Oaddrstack Ptrofs.zero)) m in
   Ebinop Oadd indirections (Econst (Ointconst (Integers.Int.repr n))).
 
 (* no permission mean free. *)
@@ -119,6 +120,12 @@ Ltac rename_hyp1 h th :=
     | Values.Val.add ?v1 ?v2 = ?res => fresh "h_val_add_" v1
     | Values.Val.add ?v1 ?v2 = ?res => fresh "h_val_add_" v2
     | Values.Val.add ?v1 ?v2 = ?res => fresh "h_val_add"
+
+    | Values.Val.offset_ptr ?v1 ?v2 = ?res => fresh "h_val_offs_" v1 "_" v2 "_" res
+    | Values.Val.offset_ptr ?v1 ?v2 = ?res => fresh "h_val_offs_" v1 "_" v2
+    | Values.Val.offset_ptr ?v1 ?v2 = ?res => fresh "h_val_offs_" v1
+    | Values.Val.offset_ptr ?v1 ?v2 = ?res => fresh "h_val_offs_" v2
+    | Values.Val.offset_ptr ?v1 ?v2 = ?res => fresh "h_val_offs"
 
     | Mem.loadv ?chk ?m ?vaddr = Some ?res => fresh "h_loadv_" vaddr "_" res
     | Mem.loadv ?chk ?m ?vaddr = Some ?res => fresh "h_loadv_" res
@@ -219,12 +226,7 @@ Lemma mem_unchanged_on_mon : forall P m m',
       Mem.unchanged_on Q m m'.
 Proof.
   intros P m m' H Q H0. 
-  !destruct H.
-  split;!intros.
-  - split;!intros.
-    + apply unchanged_on_perm;auto.
-    + apply unchanged_on_perm;auto.
-  - apply unchanged_on_contents;auto.
+  eapply Mem.unchanged_on_implies;eauto.
 Qed.
 
 
