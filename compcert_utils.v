@@ -330,9 +330,9 @@ Lemma build_loads__inj_neq : forall x i₁ i₂,
     i₁ <> i₂ ->
     forall e₁ e₂ ,
       (* translating the variabe to a Cminor load address *)
-      build_loads_ (Econst x) i₁ = e₁ ->
+      build_loads_ x i₁ = e₁ ->
       (* translating the variabe to a Cminor load address *)
-      build_loads_ (Econst x) i₂ = e₂ ->
+      build_loads_ x i₂ = e₂ ->
       e₁ <> e₂.
 Proof.
   !intros.

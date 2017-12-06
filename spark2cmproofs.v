@@ -944,11 +944,26 @@ Definition subset_CE_stbl stbl CE := forall nme addr_nme,
     transl_name stbl CE nme = Errors.OK addr_nme
     -> exists typ_nme, type_of_name stbl nme = Errors.OK typ_nme.
 
-Definition stack_no_null_offset stbl CE := forall a nme δ_lvl δ_id,
-    transl_variable stbl CE a nme = Errors.OK (build_loads δ_lvl δ_id) ->
+Definition stack_no_null_offset CE := forall nme δ_id,
+    CompilEnv.fetchG nme CE = Some δ_id ->
     4 <= δ_id.
-    (* 4 <= Ptrofs.unsigned (Ptrofs.repr δ_id) *)
 
+(*
+Lemma stack_no_null_offset_var stbl CE : forall a nme δ_lvl δ_id,
+    stack_no_null_offset CE ->
+    transl_variable stbl CE a nme = Errors.OK (build_loads δ_lvl δ_id) ->
+    4 <= Ptrofs.unsigned (Int.repr δ_id).
+Proof.
+  !intros.
+  functional inversion heq_transl_variable.
+  
+  destruct (Int.repr δ_id) eqn:heq.
+  destruct (Int.repr n) eqn:heq2.
+  cbn in *.
+  red in H.
+  eapply H;eauto.
+  unfold transl_variable.
+*)
 Definition stack_match_lgth (s : STACK.state) (CE : compilenv) :=
   Datatypes.length s = Datatypes.length CE.
 (* The spark dynamic and the compiler static stack have the same structure. *)
@@ -1528,7 +1543,7 @@ Record safe_cm_env st (CE:compilenv) (sp:Values.val) locenv g m: Prop :=
       me_stack_match_functions: stack_match_functions st sp CE locenv g m ;
       me_stack_separate: stack_separate st CE sp locenv g m;
       me_stack_localstack_aligned: stack_localstack_aligned (Datatypes.length CE) locenv g m sp;
-      me_stack_no_null_offset: stack_no_null_offset st CE;
+      me_stack_no_null_offset: stack_no_null_offset CE;
       me_stack_freeable: stack_freeable st CE sp g locenv m;
       me_chain_struct: chained_stack_structure m (Datatypes.length CE) sp 
     }.
@@ -1656,9 +1671,7 @@ Ltac rename_hyp3 h th :=
   | stack_complete _ ?s ?CE => fresh "h_stk_cmpl_" s "_" CE
   | stack_complete _ ?s _ => fresh "h_stk_cmpl_" s
   | stack_complete _ _ _ => fresh "h_stk_cmpl"
-  | stack_no_null_offset _ _ => fresh "h_nonul_ofs"
-  | stack_no_null_offset _ ?CE => fresh "h_nonul_ofs_" CE
-  | stack_no_null_offset ?s _ => fresh "h_nonul_ofs_" s
+  | stack_no_null_offset ?CE => fresh "h_nonul_ofs_" CE
   | stack_no_null_offset _ _ => fresh "h_nonul_ofs"
   | stack_separate _ ?CE _ _ _ ?m => fresh "h_separate_" CE "_" m
   | stack_separate _ _ _ _ _ ?m => fresh "h_separate_" m
@@ -2002,7 +2015,6 @@ Proof.
     rewrite Ptrofs.add_zero.
     reflexivity.
   + red;!intros.
-    !functional inversion heq_transl_variable.
     functional inversion heq_CEfetchG_nme.
   + red.
     !intros.
@@ -2549,7 +2561,7 @@ Lemma eval_build_loads_offset_non_null_var:
   forall stbl CE g stkptr locenv m nme a bld_lds b ofs,
     CompilEnv.exact_levelG CE ->
     all_addr_no_overflow CE ->
-    stack_no_null_offset stbl CE ->
+    stack_no_null_offset CE ->
     stack_localstack_aligned (Datatypes.length CE) locenv g m stkptr ->
     transl_variable stbl CE a nme = Errors.OK bld_lds ->
     Cminor.eval_expr g stkptr locenv m bld_lds (Values.Vptr b ofs) ->
@@ -2569,8 +2581,8 @@ Proof.
       + assumption.
       + assumption. }
   subst.
-  red in h_nonul_ofs.
-  specialize h_nonul_ofs with (1:=heq_transl_variable).
+  red in h_nonul_ofs_CE.
+  specialize h_nonul_ofs_CE with (1:=heq_CEfetchG_nme_CE).
   red in h_bound_addr_CE.
   specialize h_bound_addr_CE with (1:=heq_CEfetchG_nme_CE).
   rewrite Ptrofs.unsigned_repr;auto.
@@ -3145,6 +3157,64 @@ Proof.
   - discriminate.
 Qed.
 
+Lemma transl_variable_inj2 : forall CE stbl a₁ a₂ id₁ id₂ x,
+    (* Frame are numbered with different (increasing) numers *)
+    CompilEnv.exact_levelG CE ->
+    (* In each frame, stacks are also numbered with (increasing) numbers *)
+    all_frm_increasing CE ->
+    all_addr_no_overflow CE ->
+    (* translating the variabe to a Cminor load address *)
+    transl_variable stbl CE a₁ id₁ = Errors.OK x ->
+    (* translating the variabe to a Cminor load address *)
+    transl_variable stbl CE a₂ id₂ = Errors.OK x ->
+    id₁ = id₂.
+Proof.
+  !intros.
+  destruct (Nat.eq_dec id₁ id₂).
+  { assumption. }
+  exfalso.
+  !functional inversion heq_transl_variable.
+  rewrite <- heq_build_loads in heq_transl_variable.
+  !functional inversion heq_transl_variable0.
+  rewrite <- heq_build_loads0 in heq_transl_variable0.
+  specialize transl_variable_inj with (1:=h_exct_lvlG_CE)(2:=h_allincr_CE)
+                                      (3:=h_bound_addr_CE)(4:=heq_transl_variable)
+                                      (5:=heq_transl_variable0).
+  assert (m' = m'0).
+  { rewrite heq_lvloftop_CE_m' in heq_lvloftop_CE_m'0.
+    injection heq_lvloftop_CE_m'0;auto. } 
+  subst m'0.
+  clear heq_lvloftop_CE_m'0.
+  up_type.
+  subst x.
+  specialize build_loads_inj with (1:=heq_build_loads0);!!intros ? h_inj.
+  decomp h_and.
+  assert (lvl_id₁ = lvl_id₂).
+  { !assert (lvl_id₁ <= m')%nat.
+    { eapply increase_order_level_of_top_ge;eauto. }
+    !assert (lvl_id₂ <= m')%nat.
+    { eapply increase_order_level_of_top_ge;eauto. }
+    eapply minus_same_eq;eauto. }
+  subst lvl_id₂.
+  assert (δ_id₁ = δ_id₂).
+  { red in h_bound_addr_CE.
+    specialize h_bound_addr_CE with (1:=heq_CEfetchG_id₁_CE) as h.
+    specialize h_bound_addr_CE with (1:=heq_CEfetchG_id₂_CE) as h'.
+    decomp h.
+    decomp h'.
+    repeat rewrite Int.Z_mod_modulus_eq in *.
+    rewrite Zmod_small in heq_Z_mod_modulus.
+    rewrite Zmod_small in heq_Z_mod_modulus.
+    - auto.
+    - split; auto.
+    - split; auto. } 
+  specialize (h_inj n).
+  !destruct h_inj.
+  + symmetry in heq_sub. contradiction.
+  + contradiction.
+Qed.
+
+
 Lemma transl_variable_astnum: forall stbl CE astnum id' addrof_nme,
     transl_variable stbl CE astnum id' = Errors.OK addrof_nme
     -> forall a,transl_variable stbl CE a id' = transl_variable stbl CE astnum id'.
@@ -3171,8 +3241,9 @@ Proof.
 Qed.
 
 
-Notation " x =: y" := (x = Errors.OK y) (at level 90).
-Notation " x =! y" := (x = Error y) (at level 120).
+Notation " x =: y" := (x = Errors.OK y) (at level 90): res_scope.
+Notation " x =! y" := (x = Error y) (at level 120): res_scope.
+Open Scope res_scope.
 
 Ltac simplify_do :=
   repeat progress
@@ -4017,7 +4088,7 @@ Lemma assignment_preserve_stack_no_null_offset :
     storeUpdate stbl s (Identifier a id) e_v (OK s') ->
     Mem.storev chk m idaddr e_t_v = Some m' ->
     match_env stbl s CE stkptr locenv g m ->
-    stack_no_null_offset stbl CE.
+    stack_no_null_offset CE.
 Proof.
   !intros.
   !destruct h_match_env.
@@ -4130,7 +4201,7 @@ Lemma assignment_preserve_chained_stack_structure:
     all_addr_no_overflow CE -> 
     Datatypes.length CE ≤ n -> (* the chaining structure must be at least as deep as CE *)
     (*     stack_localstack_aligned CE locenv g m ->  *)
-    stack_no_null_offset stbl CE -> 
+    stack_no_null_offset CE -> 
     CompilEnv.exact_levelG CE ->
     (* translating the variabe to a Cminor load address *)
     transl_variable stbl CE a id = Errors.OK id_t ->
@@ -4513,7 +4584,7 @@ Ltac rename_sparkprf ::= rename_hyp_forbid_unch.
 Lemma exec_store_params_preserve_forbidden_subproof:
   forall lparams st CE initparams,
     CompilEnv.exact_levelG CE ->    
-    stack_no_null_offset st CE ->
+    stack_no_null_offset CE ->
     all_addr_no_overflow CE ->
     store_params st CE lparams = Errors.OK initparams -> 
     forall astnum g proc_t sp e_chain e_chain' m t2 m' lvl,
@@ -4535,7 +4606,7 @@ Proof.
   (* The three following cases are identical, i.e. the parameter mode
        should not be case split but functional induction does and I don't
        want to make the induction by hand. *)
-  - specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs h_bound_addr_CE heq_store_params).
+  - specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs_CE h_bound_addr_CE heq_store_params).
     !invclear h_exec_stmt_initparams_Out_normal; eq_same_clear.
     specialize (fun h_chain h_align => IHr astnum _ _ _ _ _ _ _ _ _ heq_length h_chain h_align h_exec_stmt_x0_Out_normal).
     rename m1 into m_mid.
@@ -4634,7 +4705,7 @@ Proof.
           destruct x1_v; try discriminate.
           eapply Mem.perm_store_2 in abs2;eauto.
           eapply abs;eassumption. }
-  - specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs h_bound_addr_CE heq_store_params).
+  - specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs_CE h_bound_addr_CE heq_store_params).
     !invclear h_exec_stmt_initparams_Out_normal; eq_same_clear.
     specialize (fun h_chain h_align => IHr astnum _ _ _ _ _ _ _ _ _ heq_length h_chain h_align h_exec_stmt_x0_Out_normal).
     rename m1 into m_mid.
@@ -4733,7 +4804,7 @@ Proof.
           destruct x1_v; try discriminate.
           eapply Mem.perm_store_2 in abs2;eauto.
           eapply abs;eassumption. }
-  - specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs h_bound_addr_CE heq_store_params).
+  - specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs_CE h_bound_addr_CE heq_store_params).
     !invclear h_exec_stmt_initparams_Out_normal; eq_same_clear.
     specialize (fun h_chain h_align => IHr astnum _ _ _ _ _ _ _ _ _ heq_length h_chain h_align h_exec_stmt_x0_Out_normal).
     rename m1 into m_mid.
@@ -4840,7 +4911,7 @@ Qed.
 Lemma exec_store_params_unchanged_on_subproof:
   forall lparams st CE initparams,
     CompilEnv.exact_levelG CE ->
-    stack_no_null_offset st CE ->
+    stack_no_null_offset CE ->
     all_addr_no_overflow CE ->
     store_params st CE lparams =: initparams ->
     forall astnum g proc_t sp e_chain m t2 e_postchain m' lvl,
@@ -4852,12 +4923,12 @@ Lemma exec_store_params_unchanged_on_subproof:
 Proof.
   !intros.
   !!pose proof (exec_store_params_preserve_forbidden_subproof
-                  _ _ _ _ h_exct_lvlG_CE h_nonul_ofs h_bound_addr_CE
+                  _ _ _ _ h_exct_lvlG_CE h_nonul_ofs_CE h_bound_addr_CE
                   heq_store_prms_lparams_initparams
                   astnum _ proc_t _ _ _ _ _ _ _ heq_length h_chain_m_lvl_sp h_aligned_g_m
                   h_exec_stmt_initparams_Out_normal).
   decomp h_and.
-  revert initparams h_exct_lvlG_CE h_nonul_ofs heq_store_prms_lparams_initparams astnum g proc_t
+  revert initparams h_exct_lvlG_CE h_nonul_ofs_CE heq_store_prms_lparams_initparams astnum g proc_t
          sp e_chain m t2 e_postchain m' lvl heq_length h_aligned_g_m h_exec_stmt_initparams_Out_normal
          h_unch_forbid_m_m' h_chain_m_lvl_sp h_chain_m'_lvl_sp.
   rewrite store_params_ok.
@@ -4878,7 +4949,7 @@ Proof.
       destruct prm_name_t_v;try now (cbn in heq_storev_v_m1; discriminate).
       eapply wf_chain_load_aligned;eauto.
       eapply eval_build_loads_offset_non_null_var;eauto. }
-    specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs heq_store_params astnum
+    specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs_CE heq_store_params astnum
                     _ _ _ _ _ _ _ _ _ heq_length h_aligned_g_m1 h_exec_stmt_initparams'_Out_normal).
     rename m1 into m_mid.
     rename e1 into e_mid.
@@ -4921,7 +4992,7 @@ Proof.
       destruct prm_name_t_v;try now (cbn in heq_storev_v_m1; discriminate).
       eapply wf_chain_load_aligned;eauto.
       eapply eval_build_loads_offset_non_null_var;eauto. }
-    specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs heq_store_params astnum
+    specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs_CE heq_store_params astnum
                     _ _ _ _ _ _ _ _ _ heq_length h_aligned_g_m1 h_exec_stmt_initparams'_Out_normal).
     rename m1 into m_mid.
     rename e1 into e_mid.
@@ -4964,7 +5035,7 @@ Proof.
       destruct prm_name_t_v;try now (cbn in heq_storev_v_m1; discriminate).
       eapply wf_chain_load_aligned;eauto.
       eapply eval_build_loads_offset_non_null_var;eauto. }
-    specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs heq_store_params astnum
+    specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs_CE heq_store_params astnum
                     _ _ _ _ _ _ _ _ _ heq_length h_aligned_g_m1 h_exec_stmt_initparams'_Out_normal).
     rename m1 into m_mid.
     rename e1 into e_mid.
@@ -5006,7 +5077,7 @@ Qed.
 Lemma exec_init_locals_preserve_forbidden_subproof:
   forall decl st CE locvarinit,
     CompilEnv.exact_levelG CE ->    
-    stack_no_null_offset st CE ->
+    stack_no_null_offset CE ->
     all_addr_no_overflow CE ->
     init_locals st CE decl =: locvarinit ->
     forall astnum g proc_t sp e_chain e_chain' m t2 m' lvl,
@@ -5045,7 +5116,7 @@ Proof.
           eapply wf_chain_load_var';auto;eauto.
           !functional inversion heq_transl_name;subst.
           !functional inversion heq_transl_variable0;subst.
-          !!pose proof (h_nonul_ofs _ _ _ _ heq_transl_variable0).
+          !!pose proof (h_nonul_ofs_CE _ _ heq_CEfetchG).
           !assert (chained_stack_structure m (m'0 - m0) sp).
           { 
             (*rewrite heq_lvloftop_CE_lvl in heq_lvloftop_CE_m'0.*)
@@ -5098,7 +5169,7 @@ Proof.
           assert (4 <= Ptrofs.unsigned i).
           { !functional inversion heq_transl_name;subst.
             !functional inversion heq_transl_variable0;subst.
-            !!pose proof (h_nonul_ofs _ _ _ _ heq_transl_variable0).
+            !!pose proof (h_nonul_ofs_CE _ _ heq_CEfetchG).
             !assert (chained_stack_structure m (m'0 - m0) sp).
             { eapply chained_stack_structure_le;eauto.
               !!assert (Datatypes.length CE = (S m'0)) by (eapply exact_level_top_lvl;eauto).
@@ -5154,7 +5225,7 @@ Lemma init_locals_unchanged_on_subproof:
   forall decl st CE locvarinit,
     CompilEnv.exact_levelG CE ->
     all_addr_no_overflow CE ->
-    stack_no_null_offset st CE ->
+    stack_no_null_offset CE ->
     init_locals st CE decl =: locvarinit ->
     forall astnum g proc_t sp e_chain m t2 e_postchain m' lvl,
       Datatypes.length CE = lvl -> 
@@ -5167,13 +5238,13 @@ Proof.
   up_type.
   specialize exec_init_locals_preserve_forbidden_subproof
     with (astnum:=astnum)
-      (1:=h_exct_lvlG_CE) (2:=h_nonul_ofs) (3:=h_bound_addr_CE) 
+      (1:=h_exct_lvlG_CE) (2:=h_nonul_ofs_CE) (3:=h_bound_addr_CE) 
          (4:=heq_init_lcl_decl_locvarinit)
          (5:=heq_length) (6:=h_chain_m_lvl_sp) (7:=h_aligned_g_m)
          (8:=h_exec_stmt_locvarinit_Out_normal).
   !intro.
   decomp h_and.
-  revert locvarinit h_exct_lvlG_CE h_nonul_ofs heq_init_lcl_decl_locvarinit astnum g proc_t sp
+  revert locvarinit h_exct_lvlG_CE h_nonul_ofs_CE heq_init_lcl_decl_locvarinit astnum g proc_t sp
          e_chain m t2 e_postchain m' h_aligned_g_m lvl heq_length h_exec_stmt_locvarinit_Out_normal
          h_unch_forbid_m_m' h_chain_m_lvl_sp h_chain_m'_lvl_sp.
   rewrite init_locals_ok.
@@ -5230,7 +5301,7 @@ Qed.
 Lemma init_params_preserves_structure:
   forall lparams st CE initparams,
     CompilEnv.exact_levelG CE ->
-    stack_no_null_offset st CE ->
+    stack_no_null_offset CE ->
     all_addr_no_overflow CE ->
     store_params st CE lparams =: initparams ->
     forall astnum g proc_t sp e_chain m t2 e_chain' m' lvl,
@@ -5250,7 +5321,7 @@ Qed.
 Lemma init_locals_preserves_structure:
   forall decl st CE locvarinit,
     CompilEnv.exact_levelG CE ->
-    stack_no_null_offset st CE ->
+    stack_no_null_offset CE ->
     all_addr_no_overflow CE ->
     init_locals st CE decl =: locvarinit ->
     forall astnum g proc_t sp e_chain m t2 e_chain' m' lvl,
@@ -5524,12 +5595,12 @@ Proof.
       assumption.
 Qed.
 
-Lemma transl_variable_cons:
-  forall st (scope_lvl:scope_level) x0 CE a nme  δ_lvl δ_id sz' lparams,
-    stack_no_null_offset st CE ->
-    all_addr_no_overflow CE ->
-    spark2Cminor.build_frame_decl st ([],4) lparams =: (x0,sz') ->
-    snd ([]:localframe,4) <= Int.modulus ->
+(* Too much hyps. *)
+Lemma transl_variable_cons':
+  forall st (scope_lvl:scope_level) x0 CE a nme  δ_lvl δ_id (*sz'*) (*lparams*),
+    all_addr_no_overflow ((scope_lvl, x0) :: CE) ->
+    CompilEnv.exact_levelG ((scope_lvl, x0) :: CE) ->
+    0 <= δ_id -> δ_id < Int.modulus ->
     transl_variable st ((scope_lvl, x0) :: CE) a nme =: build_loads δ_lvl δ_id ->
     (transl_variable st ((scope_lvl, x0)::nil) a nme =: build_loads δ_lvl δ_id)
     ∧ δ_lvl= 0%nat
@@ -5537,6 +5608,19 @@ Lemma transl_variable_cons:
 Proof.
   !intros.
   !functional inversion heq_transl_variable;clear heq_transl_variable.
+  red in h_bound_addr.
+  specialize h_bound_addr with (1:=heq_CEfetchG_nme) as h'.
+  decomp h'.
+  !assert (Int.Z_mod_modulus δ_nme = Int.Z_mod_modulus δ_id).
+  { (* convertible even if unfolding problem *)
+    exact heq.  }
+  clear heq.    
+  rewrite Int.Z_mod_modulus_eq in heq_Z_mod_modulus.
+  rewrite Int.Z_mod_modulus_eq in heq_Z_mod_modulus.
+  rewrite Zmod_small in heq_Z_mod_modulus;auto.
+  rewrite Zmod_small in heq_Z_mod_modulus;auto.
+  subst.
+  clear h_lt_δ_nme_modulus h_le_Z0_δ_nme.
   !functional inversion heq_CEfetchG_nme; clear heq_CEfetchG_nme;subst.
   - unfold CompilEnv.fetch in heq_CEfetch_nme.
     simpl in heq_CEfetch_nme.
@@ -5553,74 +5637,214 @@ Proof.
     specialize build_loads__inj with (1:=heq_build_loads);!intro.
     subst.
     split;auto with arith.
-    apply f_equal.
-    apply f_equal.
-    
-    assert (Int.eqm δ_nme δ_id).
-    { admit. }
-    apply Int.eqm_small_eq;auto.
-    + specialize build_frame_decl_mon with (1:=heq_build_frame_decl)(2:=h_le).
-      !intros.
-      destruct  h_and as [_ h_good_compilenv].
-      specialize h_good_compilenv with (1:=eq_refl).
-      
-      assert (h_prem:(∀ (nme : idnum) (x : CompilEnv.V),
-                         CompilEnv.fetches nme [ ] = Some x → 0 <= x ∧ x < 4)).
-      { !intros.
-        functional inversion heq_CEfetches_nme0. }
-      specialize h_good_compilenv with (1:=h_prem) (2:=ltac:(auto with zarith):0<=4)
-                                       (3:=heq_CEfetch_nme).
-      assert (sz'<Int.modulus).
-      { rewrite build_frame_decl_ok in heq_build_frame_decl.
-        !functional induction heq_build_frame_decl; rewrite <- build_frame_decl_ok in *. 
-        - subst.
-          inversion heq_pair.
-          vm_compute.
-          reflexivity.
-        - subst.
-          edestruct (Z.geb_spec new_size Int.modulus);try discriminate;auto.
-        - subst.
-          edestruct (Z.geb_spec new_size Int.modulus);try discriminate;auto.
-          eapply Z.geb_le in heq_geb.
-          inversion heq_pair.
-          vm_compute.
-          reflexivity.
-      
-      }
-      split;try omega.
-      apply h_bound_addr_CE
-    
-    destruct (Int.repr δ_nme) eqn:heq1;destruct (Int.repr δ_id) eqn:heq2.
-    subst intval0.
-    apply repr_inj;auto.
-
-    assert ().
-    !inversion heq_lvloftop_m'.
-    assert (CompilEnv.fetchG nme [(scope_lvl, (y, δ_nme) :: s')] = Some δ_nme).
+  - unfold CompilEnv.fetch in heq_CEfetch_nme.
+    simpl in heq_CEfetch_nme.
+    right.
+    unfold transl_variable.
     cbn.
-xxxxx    
-    !functional inversion heq_CEfetch_nme;clear heq_CEfetch_nme;subst.
-    + cbn in *;subst.
-      left.
-      unfold transl_variable.
-      cbn.
-      rewrite hbeqnat_true.
-      !inversion heq_lvloftop_m'.
-      assert (CompilEnv.fetchG nme [(scope_lvl, (y, δ_nme) :: s')] = Some δ_nme).
-      cbn.
-
-      
-      
-
+    rewrite heq_CEfetchG_nme_CE.
+    !functional inversion heq_CEframeG_nme.
+    + exfalso.
+      subst.
+      unfold CompilEnv.reside in heq_reside.
+      apply CompilEnv.fetches_ok_none_1 in heq_CEfetch_nme.
+      cbn in heq_reside.
+      rewrite heq_CEfetch_nme in heq_reside.
+      discriminate.
+    + subst.
+      rewrite heq_CEframeG_nme_CE.
+      !assert (CompilEnv.exact_levelG CE).
+      { eapply CompilEnv.exact_levelG_sublist;eauto. }
+      specialize exact_lvlG_lgth with (1:=h_exct_lvlG) (2:=heq_lvloftop_m');intro h_top.
+      cbn in h_top.
+      !!inversion h_top.
+      destruct CE.
+      -- discriminate.
+      -- cbn. destruct p.
+         specialize build_loads__inj with (1:=heq_build_loads);!intro;subst.
+         erewrite exact_level_top_lvl;auto.
+         all: swap 2 1.
+         ++ cbn.
+            reflexivity.
+         ++ !!assert (s - lvl_nme = S s - lvl_nme - 1)%nat by omega.
+            rewrite heq_sub;reflexivity.
 Qed.
 
+(* Too much hyps. *)
+Lemma transl_variable_cons'':
+  forall st (scope_lvl:scope_level) x0 CE a nme  δ_lvl δ_id (*sz'*) (*lparams*),
+    all_addr_no_overflow ((scope_lvl, x0) :: CE) ->
+    CompilEnv.exact_levelG ((scope_lvl, x0) :: CE) ->
+    transl_variable st ((scope_lvl, x0) :: CE) a nme =: build_loads δ_lvl δ_id ->
+    exists δ_id',
+           eqm Int.modulus δ_id δ_id' ∧
+           ((transl_variable st ((scope_lvl, x0)::nil) a nme =: build_loads δ_lvl δ_id')
+            ∧ δ_lvl= 0%nat
+              ∨ (transl_variable st CE a nme =: build_loads (δ_lvl-1) δ_id')).
+Proof.
+  !intros.
+  !functional inversion heq_transl_variable;clear heq_transl_variable.
+  red in h_bound_addr.
+  specialize h_bound_addr with (1:=heq_CEfetchG_nme) as h'.
+  decomp h'.
+  !assert (Int.Z_mod_modulus δ_nme = Int.Z_mod_modulus δ_id).
+  { (* convertible even if unfolding problem *)
+    exact heq.  }
+  clear heq.    
+  rewrite Int.Z_mod_modulus_eq in heq_Z_mod_modulus.
+  rewrite Int.Z_mod_modulus_eq in heq_Z_mod_modulus.
+  rewrite Zmod_small in heq_Z_mod_modulus;auto.
+  (* rewrite Zmod_small in heq_Z_mod_modulus;auto. *)
+  subst.
+  clear h_lt_δ_nme_modulus h_le_Z0_δ_nme.
+  !functional inversion heq_CEfetchG_nme; clear heq_CEfetchG_nme;subst.
+  - unfold CompilEnv.fetch in heq_CEfetch_nme.
+    simpl in heq_CEfetch_nme.
+    (* left. *)
+    unfold transl_variable.
+    cbn.
+    rewrite heq_CEfetch_nme.
+    erewrite CompilEnv.fetches_ok;eauto.
+    cbn in heq_lvloftop_m'.
+    inversion heq_lvloftop_m';subst;clear heq_lvloftop_m'.
+    cbn in heq_CEframeG_nme.
+    erewrite CompilEnv.fetches_ok in heq_CEframeG_nme;eauto.
+    inversion heq_CEframeG_nme;subst;clear heq_CEframeG_nme.
+    specialize build_loads__inj with (1:=heq_build_loads);!intro.
+    subst.
+    exists (δ_id mod Int.modulus).
+    split.
+    + symmetry.
+      apply Zmod_eqm.
+    + left;split.
+      * reflexivity.
+      * auto with arith.
+  - unfold CompilEnv.fetch in heq_CEfetch_nme.
+    simpl in heq_CEfetch_nme.
+    (* right. *)
+    unfold transl_variable.
+    cbn.
+    rewrite heq_CEfetchG_nme_CE.
+    !functional inversion heq_CEframeG_nme.
+    + exfalso.
+      subst.
+      unfold CompilEnv.reside in heq_reside.
+      apply CompilEnv.fetches_ok_none_1 in heq_CEfetch_nme.
+      cbn in heq_reside.
+      rewrite heq_CEfetch_nme in heq_reside.
+      discriminate.
+    + subst.
+      rewrite heq_CEframeG_nme_CE.
+      !assert (CompilEnv.exact_levelG CE).
+      { eapply CompilEnv.exact_levelG_sublist;eauto. }
+      specialize exact_lvlG_lgth with (1:=h_exct_lvlG) (2:=heq_lvloftop_m');intro h_top.
+      cbn in h_top.
+      !!inversion h_top.
+      destruct CE.
+      -- discriminate.
+      -- cbn. destruct p.
+         specialize build_loads__inj with (1:=heq_build_loads);!intro;subst.
+         erewrite exact_level_top_lvl;auto.
+         all: swap 2 1.
+         ++ cbn.
+            reflexivity.
+         ++ !!assert (s - lvl_nme = S s - lvl_nme - 1)%nat by omega.
+            exists (δ_id mod Int.modulus);split.
+            ** symmetry.
+               apply Zmod_eqm.
+            ** right.
+               rewrite heq_sub;reflexivity.
+Qed.
+
+(* Too much hyps. *)
+(*
+Lemma transl_variable_cons:
+  forall st (scope_lvl:scope_level) x0 CE a nme  δ_lvl δ_id (*sz'*) (*lparams*),
+    all_addr_no_overflow ((scope_lvl, x0) :: CE) ->
+    CompilEnv.exact_levelG ((scope_lvl, x0) :: CE) ->
+    transl_variable st ((scope_lvl, x0) :: CE) a nme =: build_loads δ_lvl δ_id ->
+           ((transl_variable st ((scope_lvl, x0)::nil) a nme =: build_loads δ_lvl δ_id)
+            ∧ δ_lvl= 0%nat
+              ∨ (transl_variable st CE a nme =: build_loads (δ_lvl-1) δ_id)).
+Proof.
+  !intros.
+  !functional inversion heq_transl_variable;clear heq_transl_variable.
+  red in h_bound_addr.
+  specialize h_bound_addr with (1:=heq_CEfetchG_nme) as h'.
+  decomp h'.
+  !assert (Int.Z_mod_modulus δ_nme = Int.Z_mod_modulus δ_id).
+  { (* convertible even if unfolding problem *)
+    exact heq.  }
+  clear heq.    
+  rewrite Int.Z_mod_modulus_eq in heq_Z_mod_modulus.
+  rewrite Int.Z_mod_modulus_eq in heq_Z_mod_modulus.
+  rewrite Zmod_small in heq_Z_mod_modulus;auto.
+  (* rewrite Zmod_small in heq_Z_mod_modulus;auto. *)
+  subst.
+  clear h_lt_δ_nme_modulus h_le_Z0_δ_nme.
+  !functional inversion heq_CEfetchG_nme; clear heq_CEfetchG_nme;subst.
+  - unfold CompilEnv.fetch in heq_CEfetch_nme.
+    simpl in heq_CEfetch_nme.
+    (* left. *)
+    unfold transl_variable.
+    cbn.
+    rewrite heq_CEfetch_nme.
+    erewrite CompilEnv.fetches_ok;eauto.
+    cbn in heq_lvloftop_m'.
+    inversion heq_lvloftop_m';subst;clear heq_lvloftop_m'.
+    cbn in heq_CEframeG_nme.
+    erewrite CompilEnv.fetches_ok in heq_CEframeG_nme;eauto.
+    inversion heq_CEframeG_nme;subst;clear heq_CEframeG_nme.
+    specialize build_loads__inj with (1:=heq_build_loads);!intro.
+    subst.
+    left;split.
+    * reflexivity.
+    * auto with arith.
+  - unfold CompilEnv.fetch in heq_CEfetch_nme.
+    simpl in heq_CEfetch_nme.
+    (* right. *)
+    unfold transl_variable.
+    cbn.
+    rewrite heq_CEfetchG_nme_CE.
+    !functional inversion heq_CEframeG_nme.
+    + exfalso.
+      subst.
+      unfold CompilEnv.reside in heq_reside.
+      apply CompilEnv.fetches_ok_none_1 in heq_CEfetch_nme.
+      cbn in heq_reside.
+      rewrite heq_CEfetch_nme in heq_reside.
+      discriminate.
+    + subst.
+      rewrite heq_CEframeG_nme_CE.
+      !assert (CompilEnv.exact_levelG CE).
+      { eapply CompilEnv.exact_levelG_sublist;eauto. }
+      specialize exact_lvlG_lgth with (1:=h_exct_lvlG) (2:=heq_lvloftop_m');intro h_top.
+      cbn in h_top.
+      !!inversion h_top.
+      destruct CE.
+      -- discriminate.
+      -- cbn. destruct p.
+         specialize build_loads__inj with (1:=heq_build_loads);!intro;subst.
+         erewrite exact_level_top_lvl;auto.
+         all: swap 2 1.
+         ++ cbn.
+            reflexivity.
+         ++ !!assert (s - lvl_nme = S s - lvl_nme - 1)%nat by omega.
+            exists (δ_id mod Int.modulus);split.
+            ** symmetry.
+               apply Zmod_eqm.
+            ** right.
+               rewrite heq_sub;reflexivity.
+Qed.
+*)
 Lemma build_compilenv_stack_no_null_offset:
   ∀ (st : symboltable) (CE : CompilEnv.state) (proc_lvl : level) (lparams : list paramSpec) 
     (decl : decl) (CE' : compilenv) (sz : Z),
     CompilEnv.exact_levelG CE →
-    stack_no_null_offset st CE →
+    all_addr_no_overflow CE →
+    stack_no_null_offset CE →
     build_compilenv st CE proc_lvl lparams decl =: (CE', sz) →
-    stack_no_null_offset st CE'.
+    stack_no_null_offset CE'.
 Proof.
   !intros.
   rewrite <- build_compilenv_ok  in heq_build_compilenv.
@@ -5646,219 +5870,31 @@ Proof.
         end.
   all:swap 1 2.
   - (* nme is in CE, applying hyp. *)
-    eapply h_nonul_ofs with (a:=a)(nme:=nme)(δ_lvl:=(δ_lvl-1)%nat).
-    !functional inversion heq_transl_variable.
-    cbn in heq_CEfetchG_nme,heq_CEframeG_nme.
-    rewrite h1 in heq_CEfetchG_nme.
-    rewrite h2 in heq_CEframeG_nme.
-    unfold transl_variable.
-    rewrite heq_CEfetchG_nme,heq_CEframeG_nme.
-    !!destruct (CompilEnv.level_of_top CE) eqn:?.
-    all:swap 1 2.
-    { destruct CE.
-      * functional inversion heq_CEfetchG_nme.
-      * cbn in heq_lvloftop_none_CE.
-        destruct f.
-        discriminate. }
-
-    assert ((m' - lvl_nme)%nat = δ_lvl).
-    { admit. }
-    subst.
-    assert (m' = s0 + 1)%nat.
-    { admit. }
-    subst.
-    assert(s0 + 1 - lvl_nme - 1 = s0 - lvl_nme)%nat.
-    { assert (s0 + 1 - lvl_nme>0)%nat.
-      { admit. }
-      omega. }
-    rewrite H. ;reflexivity.
-    XXXXXXXXX
-    cbn in heq_lvloftop_m'.
-    !inversion heq_lvloftop_m';subst. clear heq_lvloftop_m'.
-    
-
-
-  pose proof build_frame_lparams_mon' _ _ _ _ _ heq_bld_frm_lparams as h_bld_frm.
-  cbn in h_bld_frm.
-  !!assert (4 <= Int.modulus). {
-    vm_compute.
-    intro abs;discriminate. }
-   specialize (h_bld_frm h_le).
-  destruct h_bld_frm as [h_bld_frm1 h_bld_frm2].
-  specialize h_bld_frm2 with (1:=eq_refl) (k:=4).
-  !!assert (h_ftch_nil: ∀ (nme : idnum) (x : CompilEnv.V), CompilEnv.fetches nme [] = Some x → 4 <= x < 4).
-  { !intros.
-    functional inversion heq_CEfetches_nme. }
-  specialize (h_bld_frm2 h_ftch_nil (ltac:(auto with zarith):4<=4)).
-  clear h_ftch_nil h_le.
-  pose proof build_frame_decl_mon _ _ _ _ _ heq_build_frame_decl as h_bld_decl.
-  cbn in h_bld_decl.
-  !destruct h_bld_frm1.
-  specialize (h_bld_decl h_le_z_modulus).
-  destruct h_bld_decl as [h_le_z' h_bld_decl].
-  cbn in h_le_z'.
-  specialize (h_bld_decl s z eq_refl 4 h_bld_frm2 h_le).
-  red;!intros.
-(*   unfold transl_variable in heq_transl_variable. *)
-(*   cbn in heq_transl_variable. *)
-  destruct (CompilEnv.fetches nme x0) eqn:h1; destruct (CompilEnv.resides nme x0) eqn:h2; try discriminate;  up_type;
-    try match goal with
-        | h1 : CompilEnv.fetches nme x0 = Some ?t |- _ => 
-          specialize CompilEnv.fetches_ok with (1:=h1);
-            let h := fresh "h" in
-            intro h;
-              rewrite h in *;
-              discriminate
-        | h1 : CompilEnv.fetches nme x0 = None |- _ => 
-          specialize CompilEnv.fetches_ok_none_1 with (1:=h1);
-            let h := fresh "h" in
-            intro h;
-              rewrite h in *;
-              discriminate
-        end.
-  - (* nme is in the new top frame *)
-    admit.
-
-  - (* nme is CE, applying hyp. *)
-    eapply h_nonul_ofs with (a:=a)(nme:=nme)(δ_lvl:=(δ_lvl-1)%nat).
-    !functional inversion heq_transl_variable.
-    cbn in heq_CEfetchG_nme,heq_CEframeG_nme.
-    rewrite h1 in heq_CEfetchG_nme.
-    rewrite h2 in heq_CEframeG_nme.
-    unfold transl_variable.
-    rewrite heq_CEfetchG_nme,heq_CEframeG_nme.
-    destruct CE.
-    { functional inversion heq_CEfetchG_nme. }
-    cbn.
-    destruct f.
-    specialize build_compilenv_exact_lvl with (1:=h_exct_lvlG_CE) (2:=heq_build_compilenv);!intro.
-    !inversion h_exct_lvlG;subst.
-    !inversion h_exct_lvlG0;subst.
-    cbn in heq_lvloftop_m'.
-    !inversion heq_lvloftop_m';subst.
-    cbn in heq_build_loads.
-    destruct lvl_nme.
-    + specialize build_loads__inj with (1:=heq_build_loads);!intro;subst.
-    unfold build_loads.
-      
-      
-    }
-    eapply h_nonul_ofs ;eauto.
-    
-
-
-
-
-  destruct (CompilEnv.fetches nme x0) eqn:h1; destruct (CompilEnv.resides nme x0) eqn:h2; try discriminate;  up_type.
-  - unfold transl_variable in heq_transl_variable.
-    cbn in heq_transl_variable.
-    rewrite h1, h2 in heq_transl_variable.
-    assert ((build_loads (scope_lvl - scope_lvl) t) = build_loads δ_lvl δ_id).
-    { unfold build_loads in heq_transl_variable.
-      !invclear heq_transl_variable.
-      
-      
-      replace (scope_lvl - scope_lvl)%nat with 0%nat in *.
-      simpl in *.
-      symmetry in H0.
-      functional inversion H0;subst.
-      unfold build_loads in heq_transl_variable.
-      inversion heq_transl_variable.
-      
-      rewrite <- build_loads_OK in heq_transl_variable.
-      functional inversion heq_transl_variable.
-
-Opaque build_loads.
-    inversion heq_transl_variable.
-    specialize (h_bld_decl _ _ h1).
-    !destruct h_bld_decl.
-    !destruct h_le_z'.
-
-    eapply h_nonul_ofs.
-    rewrite <- heq_transl_variable.
-    assert (δ_id = t).
-    { apply 
-    assert ((build_loads (scope_lvl - scope_lvl) t) = build_loads δ_lvl δ_id).
-    { 
-      inversion heq_transl_variable;auto.
-      specialize build_loads__inj with (1:=H0);!intros.
-      rewrite heq_sub in *.
-      destruct t;destruct δ_id;cbn in *; auto.
-      inversion heq_transl_variable;auto.
-      
-      
-
-
-      inversion heq_transl_variable.
-    simpl in heq_build_loads.
-
-    destruct (Int.repr t) eqn:heq_t;destruct (Int.repr δ_id) eqn:heq_δ_id;auto;subst.
-    apply build_loads_inj in heq_build_loads.
-
-
-xxxx
-    assert (Int.unsigned (Int.repr t)=Int.unsigned (Int.repr δ_id)). {
-      inversion heq_transl_variable.
-      destruct (Int.repr t) eqn:heq_t;destruct (Int.repr δ_id) eqn:heq_δ_id;auto. }
-    rewrite <- H.
-    rewrite Int.unsigned_repr.
-    * omega.
-    * split;try omega.
-      unfold Int.max_unsigned.
-      omega.
-  - !assert (CompilEnv.resides nme x0 = true). {
-      apply (CompilEnv.fetches_resides nme x0).
-      exists t;auto. }
-    rewrite h2 in heq_resides;discriminate.
-  - !assert (exists t, CompilEnv.fetches nme x0 = Some t). {
-      apply (CompilEnv.fetches_resides nme x0).
+    (* specialize transl_variable_cons'' with (1:=h_bound_addr_CE). *)
+    !assert (CompilEnv.fetchG nme CE = Some δ_nme).
+    { cbn in heq_CEfetchG_nme.
+      rewrite h1 in heq_CEfetchG_nme.
       assumption. }
-    !!decompose [ex] h_ex.
-    rewrite h1 in heq_CEfetches_nme_x0;discriminate.
-
-  - red in h_nonul_ofs.
-    !assert (exists top, CompilEnv.level_of_top CE = Some top /\ Datatypes.length CE = S top).
-    { destruct (CompilEnv.level_of_top CE) eqn:heq_top.
-      - exists s0;split;auto.
-        eapply exact_level_top_lvl;eauto.
-      - !functional inversion heq_transl_variable.
-        cbn in heq_CEframeG_nme.
-        rewrite h2 in heq_CEframeG_nme.
-        functional inversion heq_CEframeG_nme.
-        + subst CE.
-          cbn in heq_top.
-          destruct f.
-          inversion heq_top.
-        + subst CE.
-          cbn in heq_top.
-          destruct f.
-          inversion heq_top. }
-    decomp h_ex.
-    rename top into top_CE.
-    autorename heq_lvloftop_CE_top.
-    !!enough(exists δ_lvl', transl_variable st CE a nme =: build_loads δ_lvl' δ_id).
-    { decomp h_ex.
-      eapply h_nonul_ofs;eauto. }
-    unfold transl_variable in heq_transl_variable.
-    cbn in heq_transl_variable.
-    rewrite h1, h2 in heq_transl_variable. 
-    cbn.
-    unfold transl_variable.
-    cbn.
-    rewrite heq_lvloftop_CE_top_CE.
-    unfold scope_lvl in heq_transl_variable.
-    rewrite heq_length in heq_transl_variable.
-    !!destruct (CompilEnv.fetchG nme CE) eqn:?;destruct (CompilEnv.frameG nme CE) eqn:?;cbn in * ;eauto.
-    destruct f;cbn in *.
-    apply OK_inv in heq_transl_variable.
-    !!pose proof build_loads_inj_2 _ _ _ _ heq_transl_variable.
-    decomp h_and.
-    exists (top_CE - s0)%nat.
-    f_equal.
-    unfold build_loads.
-    rewrite heq_repr.
-    reflexivity.
+    eapply h_nonul_ofs_CE ;eauto.
+  - (* nme is in the new top frame *)
+    cbn in heq_CEfetchG_nme.
+    rewrite h1 in heq_CEfetchG_nme.    
+    inversion heq_CEfetchG_nme;subst.
+    Lemma build_compilenv_preserve_no_null_offset:
+    forall st CE proc_lvl lparams decl lvl sto sz,
+      build_compilenv st CE proc_lvl lparams decl =: ((lvl,sto) :: CE, sz) ->
+      forall nme δ_nme,
+        CompilEnv.fetches nme sto = Some δ_nme ->
+      4 <= δ_nme.
+    Proof.
+      !!intros.
+      rewrite <- build_compilenv_ok in *.
+      functional inversion heq_build_compilenv;subst.
+      xxx need lemma  about build_frame_lparams + build_frame_decl with positive (snd stoszchainparam) 
+      
+    Qed.
 Qed.
+
 (** Consequence of chained structure: build_load returns always a pointeur *)
 Lemma build_loads_Vptr : forall lvl_nme lvl g spb ofs locenv m δ_nme nme_t nme_t_v,
     stack_localstack_aligned lvl locenv g m (Values.Vptr spb ofs) ->
