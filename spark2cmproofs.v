@@ -944,10 +944,12 @@ Definition subset_CE_stbl stbl CE := forall nme addr_nme,
     transl_name stbl CE nme = Errors.OK addr_nme
     -> exists typ_nme, type_of_name stbl nme = Errors.OK typ_nme.
 
-Definition stack_no_null_offset CE := forall nme δ_id,
-    CompilEnv.fetchG nme CE = Some δ_id ->
-    4 <= δ_id.
+Definition all_greater stck n := forall nme δ_id,
+    CompilEnv.fetchG nme stck = Some δ_id ->
+    n <= δ_id.
 
+Definition stack_no_null_offset CE := all_greater CE 4.
+  
 (*
 Lemma stack_no_null_offset_var stbl CE : forall a nme δ_lvl δ_id,
     stack_no_null_offset CE ->
@@ -2015,6 +2017,7 @@ Proof.
     rewrite Ptrofs.add_zero.
     reflexivity.
   + red;!intros.
+    red;!intros.
     functional inversion heq_CEfetchG_nme.
   + red.
     !intros.
@@ -2581,6 +2584,7 @@ Proof.
       + assumption.
       + assumption. }
   subst.
+  red in h_nonul_ofs_CE.
   red in h_nonul_ofs_CE.
   specialize h_nonul_ofs_CE with (1:=heq_CEfetchG_nme_CE).
   red in h_bound_addr_CE.
@@ -5836,6 +5840,35 @@ Proof.
     omega.
 Qed.
 
+Lemma build_compilenv_no_null_offset:
+  forall st CE proc_lvl lparams decl lvl sto sz,
+    build_compilenv st CE proc_lvl lparams decl =: ((lvl,sto) :: CE, sz) ->
+    forall nme δ_nme,
+      CompilEnv.fetches nme sto = Some δ_nme ->
+      4 <= δ_nme.
+Proof.
+  !!intros.
+  rewrite <- build_compilenv_ok in *.
+  !functional inversion heq_build_compilenv;subst.
+  rewrite build_compilenv_ok in *.
+  subst stoszchainparam.
+  subst scope_lvl.
+  up_type.
+  clear heq_build_compilenv.
+  destruct x.
+  eapply build_frame_decl_no_null_offset with (1:=heq_build_frame_decl);eauto.
+  - specialize build_frame_lparams_mon with (1:=heq_bld_frm_lparams).
+    !intro.
+    decomp h_and.
+    cbn in h_le.
+    omega.
+  - !intros.
+    eapply build_frame_lparams_no_null_offset;eauto.
+    + omega.
+    + !intros.
+      functional inversion heq_CEfetches_nme1.
+Qed.
+
 (* Too much hyps. *)
 (*
 Lemma transl_variable_cons:
@@ -5932,7 +5965,7 @@ Proof.
   rewrite function_utils.build_frame_decl_ok in heq_build_frame_decl.
   !destruct x.
   subst stoszchainparam.
-  red;!intros.
+  red;red;!intros.
   destruct (CompilEnv.fetches nme x0) eqn:h1; destruct (CompilEnv.resides nme x0) eqn:h2; try discriminate;  up_type;
     try match goal with
         | h1 : CompilEnv.fetches nme x0 = Some ?t |- _ => 
@@ -5960,62 +5993,12 @@ Proof.
     cbn in heq_CEfetchG_nme.
     rewrite h1 in heq_CEfetchG_nme.    
     inversion heq_CEfetchG_nme;subst.
-
-    Lemma build_compilenv_no_null_offset:
-      forall st CE proc_lvl lparams decl lvl sto sz n,
-        build_compilenv st CE proc_lvl lparams decl =: ((lvl,sto) :: CE, sz) ->
-xxx(* Change this *)        n <= sz ->
-        forall nme δ_nme,
-          CompilEnv.fetches nme sto = Some δ_nme ->
-          n <= δ_nme.
-    Proof.
-      !!intros.
-      rewrite <- build_compilenv_ok in *.
-      !functional inversion heq_build_compilenv;subst.
-      rewrite build_compilenv_ok in *.
-      subst stoszchainparam.
-      destruct x.
-      
-      eapply build_frame_decl_no_null_offset with (1:=heq_build_frame_decl).
-      - eauto.
-      - eauto.
-      -
-      ;eauto.
-      - apply Zge_trans with sz;try omega.
-        specialize build_frame_decl_mon_sz with (1:=heq_build_frame_decl);cbn.
-        auto.
-        
-        eapply build_frame_lparams_no_null_offset;eauto.
-      Focus 2.
-      intros nme0 δ_nme0 H. 
-      
-      eapply build_frame_lparams_no_null_offset;eauto.
-      - specialize build_frame_decl_mon_sz with (1:=heq_build_frame_decl);cbn.
-        specialize build_frame_decl_mon_sz with (1:=heq_build_frame_decl);cbn.
-
-      - functional inversion H5.
-      eapply build_frame_lparams_no_null_offset;eauto.
-      - 
-          
-          
-
-    Lemma build_compilenv_preserve_no_null_offset:
-    forall st CE proc_lvl lparams decl lvl sto sz,
-      build_compilenv st CE proc_lvl lparams decl =: ((lvl,sto) :: CE, sz) ->
-      forall nme δ_nme,
-        CompilEnv.fetches nme sto = Some δ_nme ->
-      4 <= δ_nme.
-    Proof.
-      !!intros.
-      rewrite <- build_compilenv_ok in *.
-      functional inversion heq_build_compilenv;subst.
-      xxx need lemma  about build_frame_lparams + build_frame_decl with positive (snd stoszchainparam) 
-      
-    Qed.
+    eapply build_compilenv_no_null_offset;eauto.
 Qed.
 
 (** Consequence of chained structure: build_load returns always a pointeur *)
 Lemma build_loads_Vptr : forall lvl_nme lvl g spb ofs locenv m δ_nme nme_t nme_t_v,
+    Archi.ptr64 = false ->
     stack_localstack_aligned lvl locenv g m (Values.Vptr spb ofs) ->
     (lvl_nme < lvl)%nat ->
     build_loads lvl_nme δ_nme = nme_t ->
@@ -6032,6 +6015,7 @@ Proof.
   subst_det_addrstack_zero.
   !invclear h_CM_eval_expr_v2.
   cbn in *.
+  rewrite heq_ptr64.
   !invclear h_eval_constant.
   eauto.
 Qed.
