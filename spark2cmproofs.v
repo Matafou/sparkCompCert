@@ -6354,31 +6354,18 @@ Proof.
        discriminate.
   + unfold CompilEnv.NoDup in *.
     !intros.
-    cbn in heq_CEframeG_nme.
-    destruct (CompilEnv.resides nme x0) eqn:hresid.
-    * admit. (* spark typing, no name collision intra frame *)
+    cbn in h_in.
+    !destruct h_in.
+    * !invclear heq_pair;subst.
+      admit. (* spark typing, no name collision intra frame *)
     * !!pose proof (ce_nodup_CE h_inv_comp_CE_st).
       red in h_CEnodup_CE.
       eapply h_CEnodup_CE;eauto.
   + unfold CompilEnv.NoDup_G in *.
-    !intros.
-    cbn in heq_CEframeG_nme.
-    destruct (CompilEnv.resides nme x0) eqn:hresid.
-    * !invclear heq_CEframeG_nme.
-      !inversion h_CEcut.
-      -- cbn in h_lt;exfalso;omega.
-      -- clear H1.
-         admit. (* spark typing no name collision inter frame *)
-    * !!pose proof (ce_nodup_G_CE h_inv_comp_CE_st).
-      !inversion h_CEcut.
-      -- cbn in *.
-         !assert (CompilEnv.exact_levelG CE).
-         { apply h_inv_comp_CE_st. }         
-         pose proof (CompilEnv.exact_levelG_lgth _ _ _ _ h_exct_lvlG_CE heq_CEframeG_nme).
-         exfalso.
-         subst scope_lvl.
-         omega.
-      -- eapply h_CEnodupGCE;eauto.
+    constructor.
+    all:swap 1 2.
+    * apply h_inv_comp_CE_st.
+    * admit. (* spark typing no name collision inter frame *)
 Admitted.
 
 Lemma add_to_frame_sz: forall stbl fram_sz parname parsubtype p sz,
@@ -7047,7 +7034,7 @@ Proof.
   !intros.
   remember (OK (pb_lvl, sto')) as res_copy_in.
   remember (pb_lvl, sto) as pb_lvl_sto.
-  revert heq_transl_paramexprlist h_chain h_inv_comp_CE_st 
+  revert heq_transl_paramexprlist h_chain_m h_inv_comp_CE_st 
          h_match_env Heqres_copy_in Heqpb_lvl_sto .
   revert spb ofs locenv g m sto pb_lvl args_t sto'.
   !induction h_copy_in; try discriminate;subst;repeat eq_same_clear;!intros.
