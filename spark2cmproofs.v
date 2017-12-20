@@ -7078,7 +7078,7 @@ Proof.
     + unfold push;simpl. reflexivity.
     + rename x0 into le_t.
       rename x into le_t_v.
-      (* We need to show that [n_t] can be evaluated to something.
+      (* We need to show that [nm_t] can be evaluated to something.
          since [n_t] is the adresse of a variable of the program,
          by well_formedness/well_typedness it should correctly evaluate
          to an address.
@@ -7095,9 +7095,19 @@ Proof.
       assert (h_ex: exists load_addr_nme, make_load nm_t typ =: load_addr_nme).
       { admit. (* completness of make_load? *) }
       !!destruct h_ex as [load_addr_nme ?].
+      up_type.
+      !assert (exists vaddr, eval_expr g (Values.Vptr spb ofs) locenv m nm_t vaddr).
+      { eapply me_safe_cm_env with (1:=h_match_env) ;eauto. }
       assert (h_stack_mtch:=(me_stack_match h_match_env)).
       red in h_stack_mtch.
-      !!destruct (h_stack_mtch _ _ _ _ _ _ h_eval_name_nm_v heq_type_of_name heq_transl_name heq_transl_type heq_make_load) as [v_t [htrsl h_eval]];eauto.
+      !!destruct h_ex.
+      specialize h_stack_mtch with 
+          (1:=heq_transl_name)
+          (2:=h_CM_eval_expr_nm_t_nm_t_v)
+          (3:=h_eval_name_nm_v)(4:=heq_transl_type)
+          (5:=heq_type_of_name) (6:=heq_make_load). 
+
+      !!destruct h_stack_mtch as [v_t [htrsl h_eval]].
       up_type.
       (* Currently we only have by_value loads (but with arrays this may change) *)
       !functional inversion heq_make_load.
@@ -7132,9 +7142,19 @@ Proof.
       assert (h_ex: exists load_addr_nme, make_load nm_t typ =: load_addr_nme).
       { admit. (* completness of make_load? *) }
       !!destruct h_ex as [load_addr_nme ?].
+      up_type.
+      !assert (exists vaddr, eval_expr g (Values.Vptr spb ofs) locenv m nm_t vaddr).
+      { eapply me_safe_cm_env with (1:=h_match_env) ;eauto. }
       assert (h_stack_mtch:=(me_stack_match h_match_env)).
       red in h_stack_mtch.
-      !!destruct (h_stack_mtch _ _ _ _ _ _ h_eval_name_nm heq_type_of_name heq_transl_name heq_transl_type heq_make_load) as [v_t [htrsl h_eval]];eauto.
+      !!destruct h_ex.
+      specialize h_stack_mtch with 
+          (1:=heq_transl_name)
+          (2:=h_CM_eval_expr_nm_t_nm_t_v)
+          (3:=h_eval_name_nm)(4:=heq_transl_type)
+          (5:=heq_type_of_name) (6:=heq_make_load). 
+
+      !!destruct h_stack_mtch as [v_t [htrsl h_eval]].
       up_type.
       (* Currently we only have by_value loads (but with arrays this may change) *)
       functional inversion heq_make_load.
@@ -7153,16 +7173,13 @@ Proof.
     + unfold push;simpl. reflexivity.
     + rename x0 into le_t.
       rename x into le_t_v.
-      (* We need to show that [n_t] can be evaluated to something.
-         since [n_t] is the adresse of a variable of the program,
+      (* We need to show that [nm_t] can be evaluated to something.
+         since [nm_t] is the adresse of a variable of the program,
          by well_formedness/well_typedness it should correctly evaluate
          to an address. Even if it is not guaranteed that this address
          contains a value in the current case: (Out parameter). *)
       assert (h_ex:∃ n_t_v, Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nm_t n_t_v).
-      { !!pose proof (me_stack_match_addresses (me_safe_cm_env h_match_env)).
-        red in h_stk_mtch_addr_CE_m.
-        eapply h_stk_mtch_addr_CE_m.
-        eassumption. }
+      { eapply me_safe_cm_env with (1:=h_match_env) ;eauto. }
 
       !!destruct h_ex as [? ?].
       exists (nm_t_v::le_t_v).
@@ -7203,7 +7220,7 @@ Lemma repeat_Mem_loadv_cut_mem_loadv :
       → chained_stack_structure m n''%nat v.
 Proof.
   !!intros until n'.
-  revert m n sp h_chain_n_sp.
+  revert m n sp h_chain_m_n_sp.
   !induction n';cbn;!intros.
   - subst.
     !inversion h_repeat_loadv_O_sp.
@@ -7212,7 +7229,7 @@ Proof.
     eapply IHn' with (n:=(n' + n'')%nat);eauto.
     subst n.
     
-    !inversion h_chain_n_sp.
+    !inversion h_chain_m_n_sp.
     rewrite h_loadv in h_loadv_sp_sp'.
     !inversion h_loadv_sp_sp'.
     assumption.
@@ -7226,9 +7243,9 @@ Lemma malloc_preserves_chained_structure :
 Proof.
   intro lvl.
   !induction lvl;!intros.
-  - !inversion h_chain_O_sp.
+  - !inversion h_chain_m_O_sp.
     constructor.
-  - !inversion h_chain_sp.
+  - !inversion h_chain_m.
     cbn in *.
     econstructor.
     + eapply IHlvl;eauto.
@@ -7245,19 +7262,19 @@ Lemma malloc_preserves_chaining_loads :
     ∀ n, (n <= lvl)%nat ->
          chained_stack_structure m lvl sp ->
          ∀ e g sp',
-           Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Int.zero)) n) sp'
-           -> Cminor.eval_expr g sp e m' (build_loads_ (Econst (Oaddrstack Int.zero)) n) sp'.
+           Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) sp'
+           -> Cminor.eval_expr g sp e m' (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) sp'.
 Proof.
   !!intros until n.
   induction n;!intros.
   - cbn in *.
-    !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_lvl_sp.
+    !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_lvl_sp.
     decomp h_ex.
     subst.
     subst_det_addrstack_zero.
     apply cm_eval_addrstack_zero.
   - !!assert (n <= lvl)%nat by omega.
-    specialize (IHn h_le_n_lvl h_chain_lvl_sp).
+    specialize (IHn h_le_n_lvl h_chain_m_lvl_sp).
     cbn -[Mem.storev] in *.
     !inversion h_CM_eval_expr_sp'.
     specialize (IHn _ _ _ h_CM_eval_expr_vaddr).
@@ -7281,19 +7298,19 @@ Lemma malloc_preserves_chaining_loads_2 :
     ∀ n, (n <= lvl)%nat ->
          chained_stack_structure m lvl sp ->
          ∀ e g sp',
-           Cminor.eval_expr g sp e m' (build_loads_ (Econst (Oaddrstack Int.zero)) n) sp'
-           -> Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Int.zero)) n) sp'.
+           Cminor.eval_expr g sp e m' (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) sp'
+           -> Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) sp'.
 Proof.
   !!intros until n.
   induction n;!intros.
   - cbn in *.
-    !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_lvl_sp.
+    !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_lvl_sp.
     decomp h_ex.
     subst.
     subst_det_addrstack_zero.
     apply cm_eval_addrstack_zero.
   - !!assert (n <= lvl)%nat by omega.
-    specialize (IHn h_le_n_lvl h_chain_lvl_sp).
+    specialize (IHn h_le_n_lvl h_chain_m_lvl_sp).
     cbn -[Mem.storev] in *.
     !inversion h_CM_eval_expr_sp'.
     specialize (IHn _ _ _ h_CM_eval_expr_vaddr).
@@ -7313,8 +7330,8 @@ Proof.
       * exfalso.
         subst.
         !!assert ((lvl-n) + n = lvl)%nat by omega.
-        rewrite <- heq_add in h_chain_lvl_sp.
-        !!pose proof (chain_structure_cut _ _ _ _ h_chain_lvl_sp) g e.
+        rewrite <- heq_add in h_chain_m_lvl_sp.
+        !!pose proof (chain_structure_cut _ _ _ _ h_chain_m_lvl_sp) g e.
         decomp h_ex.
         rewrite heq_add in h_CM_eval_expr_v.
         subst_det_addrstack_zero.
@@ -7456,7 +7473,7 @@ Lemma exec_preserve_invisible:
     ∀ st CE stmt s lvl,
       wf_st st ->
       lvl = Datatypes.length CE ->
-      strong_match_env st s CE stkptr locenv g m ->
+      match_env st s CE stkptr locenv g m ->
       chained_stack_structure m lvl stkptr ->
       invariant_compile CE st ->
       transl_stmt st CE stmt =: stmt_t ->
@@ -7484,20 +7501,25 @@ Proof.
   - destruct addr_v;try discriminate. 
     up_type.
     simpl in heq_storev_a_v_m'.
-    split.
-    + admit.
-    + !intros.
-      eapply Mem.store_unchanged_on;eauto.
-      !intros.
-      intros [abs1 abs2].
-      red in abs1.
-      !functional inversion heq_transl_name;subst.
-      simpl in heq_compute_chnk_nme.
-      rewrite <- transl_variable_astnum with (a:=astnum) (1:=heq_transl_variable) in heq_transl_variable.
-      specialize (abs1 id addr chunk b i heq_transl_variable heq_compute_chnk_nme h_CM_eval_expr_addr_addr_v). 
-      destruct abs1;auto;omega.
+    eapply Mem.store_unchanged_on;eauto.
+    !intros.
+    intros [abs1 abs2].
+    red in abs1.
+    !functional inversion heq_transl_name;subst.
+    simpl in heq_compute_chnk_nme.
+    rewrite <- transl_variable_astnum with (a:=astnum) (1:=heq_transl_variable) in heq_transl_variable.
+    specialize (abs1 id addr chunk b i heq_transl_variable heq_compute_chnk_nme h_CM_eval_expr_addr_addr_v). 
+    destruct abs1;auto;omega.
   (* Scall => chained_struct *)
-  - admit.
+  - !!specialize chained_stack_struct_inv_sp_zero with (1:=h_chain_m_lvl_sp) as ?.
+    decomp h_ex;subst.
+    (* Needs to deal with copyout and copyin, copyin is almost done
+    but we must deal with the fact that when funcall starts, there is
+    one single step where chainstructure is not true. this step is
+    when the first argument (the address of the enclosing frame) is
+    copied to the local stack. The effect of this step is to set
+    chain_structure back again. *)
+    admit.
   (* Scall => unchanged on forbidden *)
   - rename x into args_t.
     rename lexp into args.
