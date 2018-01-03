@@ -1901,6 +1901,74 @@ Proof.
     omega.
 Qed.
 
+
+
+Lemma no_overflow_NoDup_G__app: forall CE CE',  CompilEnv.NoDup_G (CE++ CE') -> 
+                                         all_addr_no_overflow (CE++ CE') -> all_addr_no_overflow CE'.
+Proof.
+  induction CE.
+  - cbn;auto.
+  - cbn.
+    !intros. 
+    apply IHCE;auto.
+    + eapply CompilEnv.stack_NoDup_G_cons;eauto.
+    + eapply all_addr_nooverf_cons;eauto.
+Qed.
+
+Lemma no_overflow_NoDup_G_cut: forall n CE CE' CE'',
+    CompilEnv.NoDup_G CE ->
+    CompilEnv.cut_until CE n CE' CE'' -> 
+    all_addr_no_overflow (CE'++ CE'') → all_addr_no_overflow CE''.
+Proof.
+  !intros.
+  eapply no_overflow_NoDup_G__app;eauto.
+  erewrite CompilEnv.cut_until_spec1;eauto.
+Qed.
+
+
+Lemma no_null_offset_NoDup_G_cons:
+  forall x CE',  CompilEnv.NoDup_G (x :: CE') -> 
+                  stack_no_null_offset (x :: CE') -> stack_no_null_offset CE'.
+Proof.
+  red.
+  !intros.
+  red in H0.
+  red in H0.
+  red.
+  !intros.
+  eapply H0 with nme.
+  cbn.
+  specialize CompilEnv.nodup_G_cons with(1:=h_CEnodupG);intro h.
+  !assert (CompilEnv.fetch nme x = None).
+  { apply CompilEnv.reside_false_fetch_none.
+    apply h.
+    eapply CompilEnv.fetchG_ok;eauto. }
+  now rewrite heq_CEfetch_nme_x.
+Qed.
+
+Lemma no_null_offset_NoDup_G_app:
+  forall CE CE',  CompilEnv.NoDup_G (CE++ CE') -> 
+                  stack_no_null_offset (CE++ CE') -> stack_no_null_offset CE'.
+Proof.
+  induction CE.
+  - cbn;auto.
+  - cbn.
+    !intros. 
+    apply IHCE;auto.
+    + eapply CompilEnv.stack_NoDup_G_cons;eauto.
+    + eapply no_null_offset_NoDup_G_cons;eauto.
+Qed.
+
+Lemma no_null_offset_NoDup_G_cut: forall n CE CE' CE'',
+    CompilEnv.NoDup_G CE ->
+    CompilEnv.cut_until CE n CE' CE'' -> 
+    stack_no_null_offset (CE'++ CE'') -> stack_no_null_offset CE''.
+Proof.
+  !intros.
+  eapply no_null_offset_NoDup_G_app;eauto.
+  erewrite CompilEnv.cut_until_spec1;eauto.
+Qed.
+
 Lemma stack_match_empty: forall st sp locenv g m,
     stack_match st [] [] sp locenv g m.
 Proof.
@@ -7757,10 +7825,12 @@ Proof.
             eapply exact_lvlG_cut_until;eauto.
           - eapply build_compilenv_stack_no_null_offset with (CE:=CE_sufx).
             + eapply exact_lvlG_cut_until;eauto.
-            + specialize (h_mtchenv e).
-              eapply me_safe_cm_env.
-              eapply h_mtchenv.
-            + eauto.
+            + eapply no_overflow_NoDup_G_cut;eauto.
+              erewrite CompilEnv.cut_until_spec1;eauto.
+            + (* needs no_null_offset_cons/app/cut *)
+              eapply no_null_offset_NoDup_G_cut; eauto.
+              erewrite CompilEnv.cut_until_spec1;eauto.
+            + xxx admit.
           - rewrite heq_lgth_CE_proc.
             assumption.
           - (* after chaining is done the stkptr of the procedure points to an aligned stack  *)
