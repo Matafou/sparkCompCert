@@ -7527,8 +7527,6 @@ Proof.
     rename a_v into proc_addr.
     rename fd into proc_value.
     rename y into proc_lvl.
-    !assert (match_env st s CE sp e g m).
-    { inversion h_strg_mtch_s_CE_m;auto. }
     !inversion h_evalfuncall_fd_vargs_vres;subst.
     + (* internal function *)
       !assert (
@@ -7624,15 +7622,15 @@ Proof.
           rename mb into m_cpout; rename e into e_cpout
         end.
         (* END RENAMING *)
-        set (sp_proc := Values.Vptr sp0 Int.zero) in *.
+        set (sp_proc := Values.Vptr sp0 Ptrofs.zero) in *.
         up_type.
         !assert (Mem.unchanged_on (forbidden st CE g astnum e sp m m_chain) m m_pre_chain).
         { (* Lemma about invisible and alloc. *)
           eapply Mem.alloc_unchanged_on.
           eauto. }
-        !!(pose proof strong_match_env_match_env_sublist _ _ _ _ _ _ _ h_strg_mtch_s_CE_m
-                h_inv_comp_CE_st _ _ _ h_CEcut_CE_proc_lvl).
-        !!destruct h_ex as [s' [s'' [sp'' [? [? h_mtchenv]]]]].
+        (* !!(pose proof strong_match_env_match_env_sublist _ _ _ _ _ _ _ h_strg_mtch_s_CE_m *)
+                (* h_inv_comp_CE_st _ _ _ h_CEcut_CE_proc_lvl). *)
+        (* !!destruct h_ex as [s' [s'' [sp'' [? [? h_mtchenv]]]]]. *)
          (* well formedness: one can call only visible procedures,
             i.e. of level at most (current level) + 1, where current level
             is |CE|-1, hence: *)
@@ -7640,19 +7638,32 @@ Proof.
         { admit. }
         assert (proc_lvl = Datatypes.length CE_sufx)%nat.
         { !!assert (CompilEnv.exact_levelG CE) by eauto.
-          eapply cut_until_CompilEnv.exact_levelG;eauto. }
-        subst proc_lvl.        
+          eapply CompilEnv.cut_until_exact_levelG;eauto. }
+        subst proc_lvl.
+
+        !assert (exists sp'' , repeat_Mem_loadv AST.Mint32 m (Datatypes.length CE - Datatypes.length CE_sufx)%nat sp sp'').
+        { unfold addr_enclosing_frame in h_CM_eval_exprl_bl_vargs.
+          !inversion h_CM_eval_exprl_bl_vargs;subst.
+          
+          rewrite <- chain_repeat_loadv in h_CM_eval_expr_v1.
+          - eauto.
+          - unfold current_lvl.
+            eapply chained_stack_structure_le;eauto.
+            omega. }
+        decomp h_ex.
         !assert (chained_stack_structure m (Datatypes.length CE_sufx) sp'').
-        { eapply (repeat_Mem_loadv_cut_mem_loadv _ _ _ h_chain_lvl_sp (Datatypes.length CE - Datatypes.length CE_sufx)).
+        { eapply repeat_Mem_loadv_cut_mem_loadv  with (1:=h_chain_m_lvl_sp)
+                 (n':=(Datatypes.length CE - Datatypes.length CE_sufx)%nat).
           - omega.
           - assumption. }
         assert (Datatypes.length CE_proc = S (Datatypes.length CE_sufx)) as heq_lgth_CE_proc.
         { rewrite <- build_compilenv_ok in heq_build_compilenv.
           functional inversion heq_build_compilenv.
           reflexivity. }
-        (* Since the chaining param is not the translation of a spark variable, 
-           we stay in callers environment, that is: from m1 to m4 there is no change
-           in the addresses visible in m. *)
+        (* Since the chaining param is not the translation of a spark
+           variable, we stay in callers environment, that is: from
+           m_pre_chain to m_chain there is no change in the addresses
+           visible in m. *)
         !assert (Mem.unchanged_on (forbidden st CE g astnum e sp m m_chain) m_pre_chain m_chain).
         { unfold chain_param in h_exec_stmt_chain_param_Out_normal.
           !inversion h_exec_stmt_chain_param_Out_normal.
@@ -7672,15 +7683,15 @@ Proof.
           intro.
           eapply fresh_block_alloc_perm;eauto. }
         (* the new sp (sp') has zero offset. *)
-        !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_sp''.
+        !!specialize chained_stack_struct_inv_sp_zero with (1:=h_chain_m) as h_ex.
         decomp h_ex.
         subst sp'' .
-        set (sp'' := Values.Vptr b' Int.zero).
+        set (sp'' := Values.Vptr b' Ptrofs.zero).
         up_type.
-        !assert (chained_stack_structure m_pre_chain (Datatypes.length CE_sufx) (Values.Vptr b' Int.zero)).
+        !assert (chained_stack_structure m_pre_chain (Datatypes.length CE_sufx) (Values.Vptr b' Ptrofs.zero)).
         { eapply malloc_preserves_chained_structure;eauto. }
 
-        !assert(chained_stack_structure m_chain (Datatypes.length CE_sufx) (Values.Vptr b' Int.zero)).
+        !assert(chained_stack_structure m_chain (Datatypes.length CE_sufx) (Values.Vptr b' Ptrofs.zero)).
         { !!inversion heq_lgth_CE_proc;clear heq_lgth_CE_proc.
 (*           rewrite <- heq_all_args_t in h_CM_eval_exprl_bl_vargs. *)
           !inversion h_CM_eval_exprl_bl_vargs.
@@ -7691,7 +7702,7 @@ Proof.
           eapply storev_outside_struct_chain_preserves_chained_structure with (m:=m_pre_chain) (g:=g)(e:=e) (sp0:=sp0).
           + !intros.
             !!assert (n < Datatypes.length CE_sufx)%nat by omega.
-            !!pose proof malloc_distinct_from_chaining_loads _ _ _ h_chain_sp'' n _ _ _ h_malloc_m_m1 e g h_lt_n b'0.
+            !!pose proof malloc_distinct_from_chaining_loads _ _ _ h_chain_m n _ _ _ h_malloc_m_m1 e g h_lt_n b'0.
             apply H.
             eapply malloc_preserves_chaining_loads_2;eauto.
             eapply chained_stack_structure_le;eauto;omega.
@@ -7709,17 +7720,17 @@ Proof.
           rewrite map_get_set_same_nodup in heq_mget_chaining_param_v;auto.
           !assert (chained_stack_structure m (Datatypes.length CE - Datatypes.length CE_sufx) sp).
           { eapply chained_stack_structure_le;eauto;omega. }
-          pose proof chain_repeat_loadv _ _ _ h_chain_sp _ g e h_repeat_loadv.
+          pose proof chain_repeat_loadv_1 _ _ _ h_chain_m0 _ g e h_repeat_loadv.
           rewrite heq_length.
           apply chained_S with (b':=b').
-          - !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain.
+          - !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m0.
             decomp h_ex.
             unfold sp_proc in h_CM_eval_expr_vaddr.
             repeat subst_det_addrstack_zero.
             eapply storev_outside_struct_chain_preserves_chained_structure with (m:=m_pre_chain) (g:=g)(e:=e) (sp0:=sp0).
             + !intros.
               !!assert (n < Datatypes.length CE_sufx)%nat by omega.
-              !!pose proof malloc_distinct_from_chaining_loads _ _ _ h_chain_sp'' n _ _ _ h_malloc_m_m1 e g h_lt_n b'1 as h_alloc_diff.
+              !!pose proof malloc_distinct_from_chaining_loads _ _ _ h_chain_m n _ _ _ h_malloc_m_m1 e g h_lt_n b'1 as h_alloc_diff.
               apply h_alloc_diff.
               eapply malloc_preserves_chaining_loads_2;eauto.
               eapply chained_stack_structure_le;eauto;omega.

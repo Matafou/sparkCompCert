@@ -321,7 +321,7 @@ Proof.
       reflexivity.
 Qed.
 
-Lemma chain_repeat_loadv : forall m n sp,
+Lemma chain_repeat_loadv_1 : forall m n sp,
     chained_stack_structure m n sp ->
     forall v g e, repeat_Mem_loadv AST.Mint32 m n sp v ->
                   Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) v.
@@ -340,7 +340,6 @@ Proof.
       !invclear h_loadv_sp'.
       assumption.
 Qed.
-
 
 Lemma chained_stack_structure_decomp_S_2: forall n m sp,
     chained_stack_structure m (S n) sp ->
@@ -453,6 +452,53 @@ Proof.
   rewrite <- build_loads_compos_comm.
   rewrite Nat.add_comm.
   assumption.
+Qed.
+
+
+Lemma chain_repeat_loadv_2: forall (m : mem) (n : nat) (sp : Values.val),
+    chained_stack_structure m n sp
+    -> forall (v : Values.val) (g : genv) (e : env),
+      eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) v
+      -> repeat_Mem_loadv AST.Mint32 m n sp v.
+Proof.
+  !!intros until 1.
+  !induction h_chain_m_n_sp;!intros.
+  - !inversion h_CM_eval_expr_v.
+    inversion h_eval_constant.
+    rewrite Ptrofs.add_zero_l.
+    constructor.
+  - assert (chained_stack_structure m (S n) (Values.Vptr b Ptrofs.zero)) by (econstructor;eauto).    
+    econstructor 2.
+    all:swap 1 2.
+    + eassumption.
+    + eapply IHh_chain_m_n_sp with (g:=g)(e:=e).
+      cbn in h_CM_eval_expr_v.
+      specialize chained_stack_structure_decomp_S_2 with (1:=H)(2:=h_CM_eval_expr_v) as h.
+      decomp h.
+      !assert ((Values.Vptr b' Ptrofs.zero) = sp').
+      { clear h_CM_eval_expr_v0.
+        !inversion h_CM_eval_expr_sp';subst.
+        !inversion h_CM_eval_expr_vaddr.
+        cbn in h_eval_constant.
+        rewrite Ptrofs.add_zero_l in h_eval_constant.
+        inversion h_eval_constant.
+        subst.
+        rewrite h_loadv in h_loadv_vaddr_sp'.
+        inversion h_loadv_vaddr_sp'.
+        auto. }
+      rewrite heq_vptr_b'_zero.
+      assumption.
+Qed.
+
+Lemma chain_repeat_loadv: forall (m : mem) (n : nat) (sp : Values.val),
+    chained_stack_structure m n sp
+    -> forall (v : Values.val) (g : genv) (e : env),
+      repeat_Mem_loadv AST.Mint32 m n sp v
+      <-> eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) v.
+Proof.
+  split.
+  - apply chain_repeat_loadv_1;auto.
+  - apply chain_repeat_loadv_2;auto.
 Qed.
 
 Lemma chain_struct_build_loads_ofs : forall  m n sp_init,
