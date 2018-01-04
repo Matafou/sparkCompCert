@@ -7579,6 +7579,8 @@ split;[ | split].
 + eapply h_wf_st_st;eauto.
 Qed.
 
+(* This is not enough, proof fails at some point because we need to
+prove everything at once: i.e. this + match_env preservation. We keep this half finished proof here for now to grab parts for the next one. *)
 Lemma exec_preserve_invisible:
   ∀ g func stkptr locenv m stmt_t tr locenv' m' outc,
     exec_stmt g func stkptr locenv m stmt_t tr locenv' m' outc -> 
@@ -8104,10 +8106,15 @@ Proof.
   - destruct b.
     + eapply IHh_exec_stmt_stmt_t_outc;eauto.
     + eapply IHh_exec_stmt_stmt_t_outc;eauto.
-  - xxx specialize IHh_exec_stmt_stmt_t_outc1
-      with (1:=h_wf_st_st) (2:=eq_refl _) (3:=h_strg_mtch_s_CE_m)
-           (4:=h_chain_lvl_sp) (5:=h_inv_comp_CE_st) (6:=heq_transl_stmt0).
+  - specialize IHh_exec_stmt_stmt_t_outc1
+      with (1:=h_wf_st_st) (2:=eq_refl _) (3:=h_match_env)
+           (4:=h_chain_m_lvl_sp) (5:=h_inv_comp_CE_st) (6:=heq_transl_stmt0).
+    !!destruct IHh_exec_stmt_stmt_t_outc1 as [ ? h_unch_on1].
     (* Needing match_env preserved here. *)
+    specialize IHh_exec_stmt_stmt_t_outc2
+      with (1:=h_wf_st_st) (2:=eq_refl _)
+           (4:=h_chain_m1) (5:=h_inv_comp_CE_st) (6:=heq_transl_stmt).
+    (* assert (match_env st s CE sp e1 g m1). *)
     admit.
   (* specialize (IHh_exec_stmt_stmt_t_outc2 _ _ _ _ ?  heq0). *)
   (* transitivity of unchanged_on is proved in recent
@@ -8137,16 +8144,17 @@ Lemma transl_stmt_normal_OK : forall stbl (stm:stmt) s norms',
     evalStmt stbl s stm norms' ->
     forall s' CE (stm':Cminor.stmt),
       norms' = OK s' ->
+      wf_st stbl ->
       invariant_compile CE stbl ->
       transl_stmt stbl CE stm = (Errors.OK stm') ->
-      forall lvl spb ofs f locenv g m stkptr,
+      forall lvl (*spb ofs*) f locenv g m stkptr,
         lvl = Datatypes.length CE -> 
-        stkptr = Values.Vptr spb ofs -> 
+        (* stkptr = Values.Vptr spb ofs ->  *)
         chained_stack_structure m lvl stkptr ->
-        strong_match_env stbl s CE stkptr locenv g m ->
+        match_env stbl s CE stkptr locenv g m ->
         exists tr locenv' m',
           Cminor.exec_stmt g f stkptr locenv m stm' tr locenv' m' Out_normal
-          /\ strong_match_env stbl s' CE stkptr locenv' g m'
+          /\ match_env stbl s' CE stkptr locenv' g m'
           /\ chained_stack_structure m' lvl stkptr
           /\ forall astnum, unchange_forbidden stbl CE g astnum locenv locenv' stkptr m m'
                             /\ Mem.unchanged_on (forbidden stbl CE g astnum locenv stkptr m m) m m'.
@@ -8161,7 +8169,11 @@ Proof.
       rewrite <- transl_stmt_ok in h;
       !functional inversion h;
       subst;
-      try rewrite -> transl_stmt_ok in * ); eq_same_clear.
+      try rewrite -> transl_stmt_ok in * ); eq_same_clear;
+    !!specialize chained_stack_struct_inv_sp_zero with (1:=h_chain_m_lvl_stkptr) as h_ex;decomp h_ex;
+      try match type of heq_stkptr with
+          | _ = ?x => subst stkptr; (set (stkptr:=x) in * )
+          end.
   (* Skip *)
   - eexists. eexists. eexists.
     repeat (apply conj;!!intros).
@@ -8178,8 +8190,7 @@ Proof.
     exists Events.E0.
     exists locenv.
     decomp (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
-    !!pose proof (ltac:(eapply strong_match_env_match_env with (1:= h_strg_mtch_s_CE_m))).
-    !! (edestruct (me_stack_complete h_match_env);eauto).
+    (* !! (edestruct (me_stack_complete h_match_env);eauto). *)
     decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _
                            h_eval_expr_e_e_v h_match_env).
     (* transl_type never fails *)
@@ -8194,29 +8205,10 @@ Proof.
     decomp hex.
     (* make_load does not fail on a translated variable coming from CE *)
     decomp (make_load_no_fail _ _ nme_t _ heq_transl_type).
-    (* Cminor.eval_expr does not fail on a translated variable (invariant?) *)
-    assert (hex: exists vaddr,
-               Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t vaddr).
-    { !destruct h_match_env.
-      !destruct h_safe_cm_CE_m.
-      unfold stack_match in h_stk_mtch_s_m.
-      generalize (h_stk_mtch_s_m (Identifier astnum id) x nme_t load_addr_nme nme_type nme_type_t).
-      intro h.
-      !destruct h;auto.
-      (* correction of type_of_name wrt to stbl_exp_type *)
-      - simpl in heq_fetch_exp_type.
-        simpl.
-        rewrite heq_fetch_exp_type.
-        reflexivity.
-      - decomp h_and.
-        unfold make_load in heq_make_load.
-        destruct (Ctypes.access_mode nme_type_t) eqn:h;simpl in *;try discriminate.
-        !invclear heq_make_load.
-        !inversion h_CM_eval_expr_load_addr_nme_x0.
-        exists nme_t_v.
-        assumption. }
-    (* A translated variable always results in a Vptr. *)
-    !destruct hex.
+    (* Cminor.eval_expr does not fail on a translated variable (invariant) *)
+    !!specialize h_match_env.(me_safe_cm_env).(me_stack_match_addresses) as ?.
+    red in h_stk_mtch_addr_stkptr_m.
+    !!(edestruct h_stk_mtch_addr_stkptr_m;eauto;clear h_stk_mtch_addr_stkptr_m).
     specialize transl_variable_Vptr with
     (1:=h_inv_comp_CE_stbl)
     (2:=(me_stack_localstack_aligned h_match_env.(me_safe_cm_env)))
@@ -8225,7 +8217,7 @@ Proof.
     intro hex.
     decomp hex.
     (* Adresses of translated variables are always writable (invariant?) *)
-    !assert (Mem.valid_access m nme_chk nme_block (Int.unsigned nme_ofst) Writable). {
+    !assert (Mem.valid_access m nme_chk nme_block (Ptrofs.unsigned nme_ofst) Writable). {
       apply Mem.valid_access_implies with (p1:=Freeable).
       - !destruct h_match_env.
         !destruct h_safe_cm_CE_m.
@@ -8235,7 +8227,7 @@ Proof.
       - constructor 2. }
     eapply Mem.valid_access_store in h_valid_access_nme_block.
     !!destruct h_valid_access_nme_block as [m' ?].
-    !assert (exec_stmt g f (Values.Vptr spb ofs) locenv m (Sstore nme_chk nme_t e_t)
+    !assert (exec_stmt g f (Values.Vptr b' Ptrofs.zero) locenv m (Sstore nme_chk nme_t e_t)
                       Events.E0 locenv m' Out_normal). {
       econstructor;eauto.
       subst.
@@ -8248,13 +8240,13 @@ Proof.
       assert (e_t_v0 = e_t_v).
       { eapply det_eval_expr;eauto. }
       subst e_t_v0.
-      !assert (match_env stbl s' CE (Values.Vptr spb ofs) locenv g m').
+      !assert (match_env stbl s' CE (Values.Vptr b' Ptrofs.zero) locenv g m').
       { eapply assignment_preserve_match_env;eauto.
         !intros.
         subst.
         eapply eval_expr_overf;eauto. }
       up_type.
-      
+      xxxxxx
       apply assignment_preserve_chained_stack_structure_aux with (m:=m).
       admit. (* TODO strong match instead. *)
     *
