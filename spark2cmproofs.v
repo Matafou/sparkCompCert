@@ -7535,6 +7535,50 @@ Ltac rename_wf_st h th :=
   end.
 Ltac rename_sparkprf ::= rename_wf_st.
 
+(* [transl_procsig] gives [f0,proc_lvl], so f0 is the result
+   of a translation with the right CE. All procedures in
+   memory are supposed to come from compilation. *)
+Lemma transl_procsig_match_env_succeeds:
+  forall st s CE sp e g m pnum f0 proc_addr proc_lvl,
+    wf_st st -> 
+    match_env st s CE sp e g m -> 
+    transl_procsig st pnum =: (funsig (AST.Internal f0), proc_lvl) ->
+    eval_expr g sp e m (Econst (Oaddrsymbol (transl_procid pnum) (Ptrofs.repr 0))) proc_addr ->
+    Globalenvs.Genv.find_funct g proc_addr = Some (AST.Internal f0) -> 
+    ∃ CE_prfx CE_sufx pbdy X lotherproc,
+      CompilEnv.cut_until CE proc_lvl CE_prfx CE_sufx /\
+      transl_procedure st CE_sufx proc_lvl pbdy (* prov_lvl+1? *)
+      = Errors.OK ((X, AST.Gfun (AST.Internal f0))::lotherproc) /\
+      ∀ i : AST.ident,
+        List.In i (transl_decl_to_lident st (procedure_declarative_part pbdy))
+        → i ≠ chaining_param.
+Proof.
+  !intros.
+  unfold transl_procsig in heq_transl_procsig_pnum.
+  !!assert (stack_match_functions st sp CE e g m) by eauto.
+  red in h_stk_mtch_fun.
+  unfold symboltable.fetch_proc in h_stk_mtch_fun.
+  specialize (h_stk_mtch_fun pnum).
+  !!destruct (fetch_proc pnum st) eqn:?;try discriminate.
+  !destruct t.
+  specialize (h_stk_mtch_fun l p eq_refl).
+  decomp h_stk_mtch_fun.
+  exists CE', CE''.
+!!destruct 
+  (transl_lparameter_specification_to_procsig
+     st l (procedure_parameter_profile p)) eqn:?;try discriminate.
+simpl in heq_transl_procsig_pnum.
+!invclear heq_transl_procsig_pnum.
+exists p, pnum0, lglobdef.
+split;[ | split].
++ assumption.
++ subst_det_addrstack_zero.
+  rewrite heq_find_func_proc_addr in heq_find_func_paddr_fction.
+  !invclear heq_find_func_paddr_fction.
+  assumption.
++ eapply h_wf_st_st;eauto.
+Qed.
+
 Lemma exec_preserve_invisible:
   ∀ g func stkptr locenv m stmt_t tr locenv' m' outc,
     exec_stmt g func stkptr locenv m stmt_t tr locenv' m' outc -> 
@@ -7597,40 +7641,7 @@ Proof.
     rename y into proc_lvl.
     !inversion h_evalfuncall_fd_vargs_vres;subst.
     + (* internal function *)
-      !assert (
-         (* [transl_procsig] gives [f0,proc_lvl], so f0 is the result
-            of a translation with the right CE. All procedures in
-            memory are supposed to come from compilation. *)
-         ∃ CE_prfx CE_sufx pbdy X lotherproc,
-           CompilEnv.cut_until CE proc_lvl CE_prfx CE_sufx /\
-           transl_procedure st CE_sufx proc_lvl pbdy (* prov_lvl+1? *)
-           = Errors.OK ((X, AST.Gfun (AST.Internal f0))::lotherproc) /\
-           ∀ i : AST.ident,
-             List.In i (transl_decl_to_lident st (procedure_declarative_part pbdy))
-             → i ≠ chaining_param).
-      { unfold transl_procsig in heq_transl_procsig_pnum.
-        !!assert (stack_match_functions st sp CE e g m) by eauto.
-        red in h_stk_mtch_fun.
-        unfold symboltable.fetch_proc in h_stk_mtch_fun.
-        specialize (h_stk_mtch_fun pnum).
-        !!destruct (fetch_proc pnum st) eqn:?;try discriminate.
-        !destruct t0.
-        specialize (h_stk_mtch_fun l p eq_refl).
-        decomp h_stk_mtch_fun.
-        exists CE', CE''.
-        !!destruct 
-          (transl_lparameter_specification_to_procsig
-             st l (procedure_parameter_profile p)) eqn:?;try discriminate.
-        simpl in heq_transl_procsig_pnum.
-        !invclear heq_transl_procsig_pnum.
-        exists p, pnum0, lglobdef.
-        split;[ | split].
-        + assumption.
-        + subst_det_addrstack_zero.
-          rewrite heq_find_func_a_v_fd in heq_find_func_paddr_fction.
-          !invclear heq_find_func_paddr_fction.
-          assumption.
-        + eapply h_wf_st_st;eauto. }
+      !!specialize transl_procsig_match_env_succeeds with (1:=h_wf_st_st) (2:=h_match_env) (3:=heq_transl_procsig_pnum) (4:=h_CM_eval_expr_a_a_v) (5:=heq_find_func_a_v_fd) as ?.
       decomp h_ex;up_type.
       rename H2 into h_pbdy_chainarg_noclash.
       rewrite transl_procedure_ok in heq_transl_proc_pbdy.
@@ -7653,6 +7664,21 @@ Proof.
       up_type.
       cbn [ proc_t fn_vars fn_params fn_body pbody_t] in h_exec_stmt.
 
+      (* Stating relation between CE and CE_prfx ++ CE_sufx *)
+      !assert (CE = CE_prfx ++ CE_sufx). { 
+        erewrite CompilEnv.cut_until_spec1;eauto. }
+      subst CE.
+      set (CE:=CE_prfx ++ CE_sufx) in *.
+
+      (* thus CE_sufx preserves the invariant. *)
+      !assert (invariant_compile CE_proc st).
+      { rewrite <- build_compilenv_ok in heq_build_compilenv.
+        functional inversion heq_build_compilenv;subst.
+        rewrite build_compilenv_ok in heq_build_compilenv.
+        eapply build_compilenv_preserve_invariant_compile;eauto.
+        eapply invariant_compile_sublist.
+        erewrite CompilEnv.cut_until_spec1;eauto. }
+        
       (* splitting the execution of proc in 5: chain_param, initparam, initlocvar, bdy and cpout. *)
       !!inversion_clear h_exec_stmt;subst.
       2: admit. (* prematurate error, this should work with parts of the normal case *)
@@ -7821,18 +7847,13 @@ Proof.
                  ∧ chained_stack_structure m_init_params (Datatypes.length CE_proc) sp_proc
                  ∧ unchange_forbidden st CE_proc g astnum e_chain e_initparams sp_proc m_chain m_init_params).
         { eapply init_params_preserves_structure;eauto.
-          - eapply build_compilenv_exact_lvl with (2:=heq_build_compilenv);eauto.
-            eapply exact_lvlG_cut_until;eauto.
           - eapply build_compilenv_stack_no_null_offset with (CE:=CE_sufx).
-            + eapply exact_lvlG_cut_until;eauto.
-            + eapply no_overflow_NoDup_G_cut;eauto.
-              erewrite CompilEnv.cut_until_spec1;eauto.
-            + (* needs no_null_offset_cons/app/cut *)
-              eapply no_null_offset_NoDup_G_cut; eauto.
-              erewrite CompilEnv.cut_until_spec1;eauto.
-            + xxx admit.
-          - rewrite heq_lgth_CE_proc.
-            assumption.
+            + eapply exact_lvlG_cut_until with (CE:=CE) ;eauto.
+            + eapply no_overflow_NoDup_G_cut with (CE:=CE);eauto.
+            + eapply no_null_offset_NoDup_G_cut with (CE:=CE); eauto.
+            + eassumption.
+          - admit. (* TODO *)
+
           - (* after chaining is done the stkptr of the procedure points to an aligned stack  *)
             (* i.e. malloc+chaining link preserve stack_localstack_aligned. *)
             move pbody_t after t5.
@@ -7844,7 +7865,7 @@ Proof.
                                          (set_params vargs (chaining_param :: tlparams))) in *|- *.
             move initlocenv after proc_t.
             !assert (stack_localstack_aligned (Datatypes.length CE_sufx) e g m sp'').
-            { apply h_mtchenv. }
+            { eapply chain_aligned;eauto. }
             red.
             !intros.
             destruct δ_lvl.
@@ -7875,7 +7896,7 @@ Proof.
               subst_det_addrstack_zero.
               (* cleaning + recollecting all the occurrencies. *)
               subst sp_proc.
-              set (sp_proc:=(Values.Vptr sp0 Int.zero)) in *|-*.
+              set (sp_proc:=(Values.Vptr sp0 Ptrofs.zero)) in *|-*.
 (*               subst initlocenv. *)
               set (initlocenv := set_locals (transl_decl_to_lident st decl0) (set_params (addr_enclosing_frame_v :: vl) (chaining_param :: tlparams))) in *|-*.
               set (whole_trace := (Events.Eapp Events.E0 (Events.Eapp (Events.Eapp t2 t4) (Events.Eapp t0 t5)))) in *|-* .
@@ -7895,7 +7916,7 @@ Proof.
                     omega. }
                 apply chained_stack_structure_le with (n:=Datatypes.length CE_sufx);eauto. }
               !assert (chained_stack_structure m_chain (S δ_lvl) sp_proc).
-              { !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_δ_lvl_sp''.
+              { !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_δ_lvl_sp''.
                 decomp h_ex.
                 subst sp'' .
                 !inversion h_CM_eval_expr_v.
@@ -7908,25 +7929,26 @@ Proof.
                   eapply h_pbdy_chainarg_noclash.
                   cbn.
                   assumption. }
-                  subst chain_param.
-(*                   subst chaining_arg. *)
-                  cbn [set_params] in heq_mget_chaining_param_initlocenv_v.
-                  rewrite heq_mget_chaining_param_initlocenv_v in heq_mget_chaining_param_addr_enclosing_frame_v.
-                  !invclear heq_mget_chaining_param_addr_enclosing_frame_v.
-                  !assert (chained_stack_structure m (Datatypes.length CE - Datatypes.length CE_sufx) sp).
-                  { eapply chained_stack_structure_le;eauto;omega. }
-                  !!pose proof chain_repeat_loadv _ _ _ h_chain_sp _ g e h_repeat_loadv.
-                  apply chained_S with (b':=b').
-                - !assert (chained_stack_structure m_pre_chain  δ_lvl (Values.Vptr b' Int.zero)).
+                subst chain_param.
+                (* subst chaining_arg. *)
+                cbn [set_params] in heq_mget_chaining_param_initlocenv_v.
+                rewrite heq_mget_chaining_param_initlocenv_v in heq_mget_chaining_param_addr_enclosing_frame_v.
+                !invclear heq_mget_chaining_param_addr_enclosing_frame_v.
+                !assert (chained_stack_structure m (Datatypes.length CE - Datatypes.length CE_sufx) sp).
+                { eapply chained_stack_structure_le;eauto;omega. }
+                specialize chain_repeat_loadv_1 with (1:=h_chain_m0) (2:=h_repeat_loadv) as h.
+                apply chained_S with (b':=b').
+                - !assert (chained_stack_structure m_pre_chain  δ_lvl (Values.Vptr b' Ptrofs.zero)).
                   { eapply malloc_preserves_chained_structure;eauto. }
-                  !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_δ_lvl.
+                  !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_δ_lvl_sp''.
                   decomp h_ex.
                   eapply storev_outside_struct_chain_preserves_chained_structure with (m:=m_pre_chain) (g:=g)(e:=e) (sp0:=sp0).
                   + !intros.
                     !!assert (n < Datatypes.length CE_sufx)%nat by omega.
-                    pose proof malloc_distinct_from_chaining_loads _ _ _ h_chain_sp'' n
-                      _ _ _ h_malloc_m_m1 e g h_lt_n b'2 as h_b'2_sp0.
-                    apply h_b'2_sp0.
+                    !!specialize malloc_distinct_from_chaining_loads
+                      with (1:=h_chain_m_δ_lvl_sp'') (2:=h_malloc_m_m1) (3:=h_lt_n_δ_lvl) (b':=b'2)
+                      as h_b'2_sp0. 
+                    eapply h_b'2_sp0.
                     eapply malloc_preserves_chaining_loads_2;eauto.
                     eapply chained_stack_structure_le;eauto;omega.
                   + assumption.
@@ -7934,7 +7956,7 @@ Proof.
 
                 (* malloc + store didnt change chaingin struct. *)
                 - unfold sp_proc in *.
-                  assert ((Values.Vptr b' Int.zero) = addr_enclosing_frame_v).
+                  assert ((Values.Vptr b' Ptrofs.zero) = addr_enclosing_frame_v).
                   { eapply det_eval_expr ;eauto. }
                   subst.
                   cbn in heq_storev_v_m_chain |-* .
@@ -7966,7 +7988,7 @@ Proof.
                    subst.
                    apply Mem.load_store_same in heq_storev_v_m_chain.
                    unfold Values.Val.load_result in heq_storev_v_m_chain.
-                   !!pose proof match_env_sp_zero _ _ _ _ _ _ _ (h_mtchenv initlocenv).
+                   !!specialize match_env_sp_zero with (1:=h_match_env) as ?.
                    decomp h_ex.
                    subst sp''.
                    assumption.
@@ -7978,11 +8000,12 @@ Proof.
                   (* (build_loads (Oaddrstask 0)) is a chaingin address, so no variable points to it, so invisible, so unchanged. *)
 
                 (* sp'' is actuall of the form (Vptr sp''b Zero) *)
-                !destruct (match_env_sp_zero _ _ _ _ _ _ _ (h_mtchenv e)).
+                !!specialize match_env_sp_zero with (1:=h_match_env) as ?.
+                !destruct h_ex.
                 rename x into sp''b.
                 !assert (chained_stack_structure m δ_lvl sp'').
                 { apply chained_stack_structure_le with (n:=Datatypes.length CE_sufx).
-                  eapply (repeat_Mem_loadv_cut_mem_loadv _ _ _ h_chain_lvl_sp (Datatypes.length CE - Datatypes.length CE_sufx)).
+                  eapply repeat_Mem_loadv_cut_mem_loadv with (1:=h_chain_m_lvl_sp) (n':=(Datatypes.length CE - Datatypes.length CE_sufx)%nat).
                   - !assert(δ_lvl ≤ Datatypes.length CE).
                     { transitivity (Datatypes.length CE_sufx).
                       - assumption.
@@ -8001,8 +8024,8 @@ Proof.
                 eapply storev_outside_struct_chain_preserves_chaining with (m:=m_pre_chain) (lvl:=δ_lvl)(sp0:=sp0).
                 -- (* sp'' points to a structure unchanged by the malloc. *)
                   !intros.
-                  pose proof malloc_distinct_from_chaining_loads _ _ _ h_chain_δ_lvl_sp'' n _ _ _ h_malloc_m_m1 as h_b'_sp0.
-                  !assert (Cminor.eval_expr g sp'' e m (build_loads_ (Econst (Oaddrstack Int.zero)) n) (Values.Vptr b'0 Int.zero)).
+                  specialize malloc_distinct_from_chaining_loads with (1:=h_chain_m_δ_lvl_sp'') (2:=h_malloc_m_m1) as h_b'_sp0.
+                  !assert (Cminor.eval_expr g sp'' e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) (Values.Vptr b'0 Ptrofs.zero)).
                   { eapply malloc_preserves_chaining_loads_2 with (1:=h_malloc_m_m1);eauto.
                     eapply chained_stack_structure_le;eauto.
                     omega. }
@@ -8046,9 +8069,12 @@ Proof.
           !inversion h_exec_stmt_Sskip_Out_normal.
           eapply init_locals_preserves_structure.
           - eapply build_compilenv_exact_lvl with (2:=heq_build_compilenv) ;eauto.
-            eapply exact_lvlG_cut_until;eauto.
-          - eapply build_compilenv_stack_no_null_offset with (3:=heq_build_compilenv);eauto.
-            eapply exact_lvlG_cut_until;eauto.
+            eapply exact_lvlG_cut_until with (CE:=CE);eauto.
+          - eapply build_compilenv_stack_no_null_offset with (4:=heq_build_compilenv);eauto.
+            + eapply exact_lvlG_cut_until with (CE:=CE);eauto.
+            + eapply no_overflow_NoDup_G_cut with (CE:=CE);eauto.
+            + eapply no_null_offset_NoDup_G_cut with (CE:=CE);eauto.
+          - apply h_inv_comp_CE_proc_st.
           - eassumption.
           - assumption.
           - rewrite <- heq_lgth_CE_proc. assumption.
@@ -8078,7 +8104,7 @@ Proof.
   - destruct b.
     + eapply IHh_exec_stmt_stmt_t_outc;eauto.
     + eapply IHh_exec_stmt_stmt_t_outc;eauto.
-  - specialize IHh_exec_stmt_stmt_t_outc1
+  - xxx specialize IHh_exec_stmt_stmt_t_outc1
       with (1:=h_wf_st_st) (2:=eq_refl _) (3:=h_strg_mtch_s_CE_m)
            (4:=h_chain_lvl_sp) (5:=h_inv_comp_CE_st) (6:=heq_transl_stmt0).
     (* Needing match_env preserved here. *)
