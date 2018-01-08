@@ -949,7 +949,6 @@ Definition all_greater stck n := forall nme δ_id,
     n <= δ_id.
 
 Definition stack_no_null_offset CE := all_greater CE 4.
-  
 (*
 Lemma stack_no_null_offset_var stbl CE : forall a nme δ_lvl δ_id,
     stack_no_null_offset CE ->
@@ -8249,25 +8248,37 @@ Proof.
       assumption.
     * eapply assignment_preserve_chained_stack_structure_aux with (m:=m);eauto.
       subst.
-      { functional inversion heq_transl_variable;subst.
-        functional inversion heq_make_load;subst.
-        specialize chain_struct_build_loads_ofs with (3:=h_CM_eval_expr_nme_t_nme_t_v) as h.
-        rewrite h.
-        rewrite Ptrofs.unsigned_repr.
-        - eapply (h_match_env.(me_safe_cm_env).(me_stack_no_null_offset)).
-          eassumption.
-        - split.
-          + transitivity 4;try omega.
+      functional inversion heq_transl_variable;subst.
+      functional inversion heq_make_load;subst.        
+      specialize chain_struct_build_loads_ofs with (3:=h_CM_eval_expr_nme_t_nme_t_v) as h.
+      rewrite h.
+      rewrite Ptrofs.unsigned_repr.
+      -- eapply (h_match_env.(me_safe_cm_env).(me_stack_no_null_offset)).
+         eassumption.
+      -- split.
+         ++ transitivity 4;try omega.
             eapply (h_match_env.(me_safe_cm_env).(me_stack_no_null_offset)).
             eassumption.
-          + specialize (h_match_env.(me_overflow)) as h2.
-            red in h2.
-            
-            specialize h2 with (1:=H0).
-        - 
-      }
-
-      { destruct nme_t_v;try discriminate. 
+         ++ specialize (ci_no_overflow h_inv_comp_CE_stbl).
+            !intro.
+            red in h_bound_addr_CE.
+            specialize h_bound_addr_CE with (1:=H0).
+            decomp h_bound_addr_CE.
+            unfold Ptrofs.max_unsigned.
+            omega.
+      -- eapply chained_stack_structure_le;eauto.
+         specialize exact_lvlG_lgth with (2:=H2);!intros;eauto.
+         rewrite H.
+         ++ omega.
+         ++ apply h_inv_comp_CE_stbl.
+      -- specialize (ci_no_overflow h_inv_comp_CE_stbl).
+         !intro.
+         red in h_bound_addr_CE.
+         specialize h_bound_addr_CE with (1:=H0).
+         apply Z.mod_small.
+         assumption.
+    * xxx admit.
+    * { destruct nme_t_v;try discriminate. 
         up_type.
         eapply Mem.store_unchanged_on;eauto.
         !intros.
@@ -8275,9 +8286,17 @@ Proof.
         red in abs1.
         !functional inversion heq_transl_name;subst.
         simpl in heq_compute_chnk_nme.
-        rewrite <- transl_variable_astnum with (a:=astnum) (1:=heq_transl_variable) in heq_transl_variable.
-        specialize (abs1 id addr chunk b i heq_transl_variable heq_compute_chnk_nme h_CM_eval_expr_addr_addr_v). 
-        destruct abs1;auto;omega. }
+        rewrite <- transl_variable_astnum with (a:=astnum0) (1:=heq_transl_variable) in heq_transl_variable.
+        specialize (abs1 id _ nme_chk b i heq_transl_variable heq_compute_chnk_nme h_CM_eval_expr_nme_t_nme_t_v). 
+        !destruct abs1;auto;try omega.
+        - inversion heq_nme_t_v;subst.
+          exfalso;apply hneq0;auto.
+        - decomp h_and.
+          specialize size_chunk_pos with nme_chk.
+          intro.
+          omega.
+          
+      }
   (* Assignment with satisifed range constraint (Range l u) *)
   - rename x into nme.
     rename st into stbl.

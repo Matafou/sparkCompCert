@@ -504,7 +504,7 @@ Qed.
 Lemma chain_struct_build_loads_ofs : forall  m n sp_init,
     chained_stack_structure m n sp_init ->
     forall δ_var g e b ofs,
-      (δ_var mod Int.modulus)%Z = δ_var ->
+      (δ_var mod Ptrofs.modulus)%Z = δ_var ->
       Cminor.eval_expr g sp_init e m (build_loads n δ_var) (Values.Vptr b ofs) ->
       ofs = Ptrofs.repr δ_var.
 Proof.
