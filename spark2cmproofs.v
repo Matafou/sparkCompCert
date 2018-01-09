@@ -7622,7 +7622,9 @@ Proof.
     simpl in heq_compute_chnk_nme.
     rewrite <- transl_variable_astnum with (a:=astnum) (1:=heq_transl_variable) in heq_transl_variable.
     specialize (abs1 id addr chunk b i heq_transl_variable heq_compute_chnk_nme h_CM_eval_expr_addr_addr_v). 
-    destruct abs1;auto;omega.
+    destruct abs1.
+    + apply H. reflexivity.
+    + omega.
   (* Scall => chained_struct *)
   - !!specialize chained_stack_struct_inv_sp_zero with (1:=h_chain_m_lvl_sp) as ?.
     decomp h_ex;subst.
@@ -8277,7 +8279,7 @@ Proof.
          specialize h_bound_addr_CE with (1:=H0).
          apply Z.mod_small.
          assumption.
-    * xxx admit.
+    * admit.
     * { destruct nme_t_v;try discriminate. 
         up_type.
         eapply Mem.store_unchanged_on;eauto.
@@ -8288,15 +8290,8 @@ Proof.
         simpl in heq_compute_chnk_nme.
         rewrite <- transl_variable_astnum with (a:=astnum0) (1:=heq_transl_variable) in heq_transl_variable.
         specialize (abs1 id _ nme_chk b i heq_transl_variable heq_compute_chnk_nme h_CM_eval_expr_nme_t_nme_t_v). 
-        !destruct abs1;auto;try omega.
-        - inversion heq_nme_t_v;subst.
-          exfalso;apply hneq0;auto.
-        - decomp h_and.
-          specialize size_chunk_pos with nme_chk.
-          intro.
-          omega.
-          
-      }
+        inversion heq_nme_t_v;subst.
+        decomp abs1;auto;try omega. }
   (* Assignment with satisifed range constraint (Range l u) *)
   - rename x into nme.
     rename st into stbl.
@@ -8304,7 +8299,10 @@ Proof.
     exists Events.E0.
     exists locenv.
     decomp (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
-    !! (edestruct (me_stack_complete h_match_env);eauto).
+    !!specialize (me_stack_match_CE h_match_env) as ?. (*as [h_correct h_complete].*)
+    red in h_stk_mtch_CE_s_CE.
+xxx    !! (edestruct (me_stack_match_CE h_match_env);eauto).
+    
     decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _ h_eval_expr_e h_match_env).
       (* transl_type never fails *)
       assert (hex:exists nme_type_t, transl_type stbl nme_type =: nme_type_t).
