@@ -8,24 +8,6 @@ Axiom det_eval_expr: forall g stkptr locenv m e v v',
     -> Cminor.eval_expr g stkptr locenv m e v'
     -> v = v'.
 
-(** [build_loads_ m] returns the expression denoting the mth
-    indirection of the variable of offset Zero (i.e. the pointer to
-    enclosing procedure). This is the way we access to enclosing
-    procedure frame. The type of all Load is ( void * ). *)
-Function build_loads_ base (m:nat) {struct m} : Cminor.expr :=
-  match m with
-    | O => base
-    | S m' => let subloads := build_loads_ base m' in
-              Eload AST.Mint32 subloads
-  end.
-
-(** [build_loads m n] is the expression denoting the address
-    of the variable at offset [n] in the enclosing frame [m] levels
-    above the current frame. This is done by following pointers from
-    frames to frames. (Load^m 0)+n. *)
-Definition build_loads (m:nat) (n:Z) :=
-  let indirections := build_loads_ (Econst (Oaddrstack Ptrofs.zero)) m in
-  Ebinop Oadd indirections (Econst (Ointconst (Integers.Int.repr n))).
 
 (* no permission mean free. *)
 Definition is_free_block := fun m sp_id ofs_id => forall perm, ~ Mem.perm m sp_id ofs_id Cur perm.
@@ -145,10 +127,6 @@ Ltac rename_hyp1 h th :=
     | Maps.PTree.get ?k _ = Some _ => fresh "heq_mget_" k
     | Maps.PTree.get _ _ = Some _ => fresh "heq_mget"
 
-    | build_loads ?n ?z = _ => fresh "heq_build_loads_" n "_" z
-    | build_loads _ _ = _ => fresh "heq_build_loads"
-    | build_loads_ ?n ?z = _ => fresh "heq_build_loads_" n "_" z
-    | build_loads_ _ _ = _ => fresh "heq_build_loads"
 
     | is_free_block ?m ?sp ?ofs => fresh "h_free_blck_" m "_" sp "_" ofs
     | is_free_block ?m ?sp ?ofs => fresh "h_free_blck_" sp "_" ofs
@@ -164,6 +142,117 @@ Ltac rename_hyp2 h th :=
     | _ => (LibHypsNaming.rename_hyp_neg h th)
   end.
 
+Ltac rename_hyp ::= rename_hyp2.
+
+(* Suggested by X. Leroy *)
+Definition Eoffset_ptr (a: expr) (delta: Z) : expr :=
+  if Archi.ptr64 then
+    Ebinop Oaddl a (Econst (Olongconst (Integers.Int64.repr delta)))
+  else Ebinop Oadd a (Econst (Ointconst (Integers.Int.repr delta))).
+
+Lemma eval_Eoffset_ptr:
+  forall ge sp e m a b ofs delta,
+  eval_expr ge sp e m a (Values.Vptr b ofs) ->
+  eval_expr ge sp e m (Eoffset_ptr a delta)
+            (Values.Vptr b (Integers.Ptrofs.add ofs (Integers.Ptrofs.repr delta))).
+Proof.
+  unfold Eoffset_ptr; intros.
+  destruct Archi.ptr64 eqn:PTR64.
+  - econstructor;eauto. 
+    + constructor. reflexivity.
+    + cbn. rewrite PTR64. do 3 f_equal. eauto with ptrofs.
+  - econstructor;eauto. 
+    + constructor. reflexivity.
+    + cbn. rewrite PTR64. do 3 f_equal. eauto with ptrofs.
+Qed.
+
+
+Lemma eval_Eoffset_ptr2:
+  forall ge sp e m a delta b ofs,
+    eval_expr ge sp e m (Eoffset_ptr a delta) (Values.Vptr b ofs) -> 
+    exists ofs',
+      ofs = (Integers.Ptrofs.add ofs' (Integers.Ptrofs.repr delta))
+      /\ eval_expr ge sp e m a (Values.Vptr b ofs').
+Proof.
+  unfold Eoffset_ptr.
+  !intros.
+  !!destruct Archi.ptr64 eqn:?.
+  - !invclear h_CM_eval_expr.
+    cbn in h_eval_binop_Oaddl_v1_v2.
+    !invclear h_eval_binop_Oaddl_v1_v2.
+    !invclear h_CM_eval_expr_v2.
+    cbn in h_eval_constant.
+    !invclear h_eval_constant.
+    destruct v1.
+    Focus 6. (* cannot use discriminate because it would make use of
+                current value of Archi.ptr64 *)
+    { cbn in *.
+      rewrite heq_ptr64 in *|-*.
+      !invclear heq_addl.
+      exists i;split;auto.
+      unfold Ptrofs.add,Ptrofs.of_int64.
+      rewrite Ptrofs.unsigned_repr.
+      - symmetry.
+        repeat apply f_equal.
+        apply  Ptrofs.agree64_repr;assumption.
+      - specialize Int64.unsigned_range_2 with ((Int64.repr delta)).
+        intro hbound.
+        unfold Ptrofs.max_unsigned, Int64.max_unsigned.
+        rewrite Ptrofs.modulus_eq64;auto. }
+    Unfocus.
+    all:clear heq_ptr64 h_CM_eval_expr_a_v1;cbn in heq_addl;discriminate.
+  - !invclear h_CM_eval_expr.
+    cbn in h_eval_binop_Oadd_v1_v2.
+    !invclear h_eval_binop_Oadd_v1_v2.
+    !invclear h_CM_eval_expr_v2.
+    cbn in h_eval_constant.
+    !invclear h_eval_constant.
+    destruct v1.
+    Focus 6.
+    { cbn in *.
+      rewrite heq_ptr64 in *|-*.
+      !invclear h_val_add_v1_v2.
+      exists i;split;auto.
+      unfold Ptrofs.add,Ptrofs.of_int.
+      rewrite Ptrofs.unsigned_repr.
+      - symmetry.
+        repeat apply f_equal.
+        apply  Ptrofs.agree32_repr;assumption.
+      - specialize Int.unsigned_range_2 with ((Int.repr delta)).
+        intro hbound.
+        unfold Ptrofs.max_unsigned, Int.max_unsigned.
+        rewrite Ptrofs.modulus_eq32;auto. }
+    Unfocus.
+    all:clear heq_ptr64 h_CM_eval_expr_a_v1;cbn in h_val_add_v1_v2;discriminate.
+Qed.
+
+(** [build_loads_ m] returns the expression denoting the mth
+    indirection of the variable of offset Zero (i.e. the pointer to
+    enclosing procedure). This is the way we access to enclosing
+    procedure frame. The type of all Load is ( void * ). *)
+Function build_loads_ base (m:nat) {struct m} : Cminor.expr :=
+  match m with
+    | O => base
+    | S m' => let subloads := build_loads_ base m' in
+              Eload AST.Mint32 subloads
+  end.
+
+(** [build_loads m n] is the expression denoting the address
+    of the variable at offset [n] in the enclosing frame [m] levels
+    above the current frame. This is done by following pointers from
+    frames to frames. (Load^m 0)+n. *)
+Definition build_loads (m:nat) (n:Z) :=
+  let indirections := build_loads_ (Econst (Oaddrstack Ptrofs.zero)) m in
+  Eoffset_ptr indirections n.
+
+Ltac rename_hyppp h th :=
+  match th with
+    | build_loads ?n ?z = _ => fresh "heq_build_loads_" n "_" z
+    | build_loads _ _ = _ => fresh "heq_build_loads"
+    | build_loads_ ?n ?z = _ => fresh "heq_build_loads_" n "_" z
+    | build_loads_ _ _ = _ => fresh "heq_build_loads"
+    | _ => rename_hyp2 h th
+  end.
 Ltac rename_hyp ::= rename_hyp2.
 
 (* Sometme inversion unfolds to much things under OK (like Int.repr for instance).
@@ -315,13 +404,13 @@ Proof.
   !induction i₁;!intros.
   - cbn in *.
     destruct i₂;auto.
-    apply occur_build_loads in heq_build_loads_x_O.
+    apply occur_build_loads in heq_build_loads_.
     exfalso;omega.
   - destruct i₂.
-    + unfold build_loads_ in heq_build_loads at 2.
+    + unfold build_loads_ in heq_build_loads_ at 2.
       eapply occur_build_loads;eauto.
     + cbn in *.
-      inversion heq_build_loads.
+      inversion heq_build_loads_.
       f_equal.
       eapply IHi₁;auto.
 Qed.
@@ -342,46 +431,84 @@ Proof.
   contradiction.
 Qed.
 
+Proposition foo : forall i,
+    Integers.Ptrofs.Z_mod_modulus i =
+    if Archi.ptr64 then Int64.Z_mod_modulus i
+    else Int.Z_mod_modulus i.
+Proof.
+  !intros. 
+  destruct Archi.ptr64 eqn:heq.
+  - rewrite Ptrofs.Z_mod_modulus_eq.
+    rewrite Int64.Z_mod_modulus_eq.
+    lazy delta -[two_power_nat Z.modulo].
+    rewrite heq.
+    reflexivity.
+  - rewrite Ptrofs.Z_mod_modulus_eq.
+    rewrite Int.Z_mod_modulus_eq.
+    lazy delta -[two_power_nat Z.modulo].
+    rewrite heq.
+    reflexivity.
+Qed.
+
 Lemma build_loads_inj : forall i₁ i₂ k k' ,
     (* translating the variabe to a Cminor load address *)
     build_loads k i₁ = build_loads k' i₂ ->
-    k = k' /\ Integers.Int.Z_mod_modulus i₁ = Integers.Int.Z_mod_modulus i₂.
+    k = k' /\ Integers.Ptrofs.Z_mod_modulus i₁ = Integers.Ptrofs.Z_mod_modulus i₂.
 Proof.
-  unfold build_loads.
+  unfold build_loads, Eoffset_ptr.
   !intros.
-  inversion heq_Ebinop.
-  split.
-  - eapply build_loads__inj;eauto.
-  - auto. 
+  rewrite (foo i₁).
+  rewrite (foo i₂). 
+
+  destruct Archi.ptr64 eqn:hptr64.
+  - inversion heq.
+    split.
+    + eapply build_loads__inj;eauto.
+    + apply H1.
+  - inversion heq.
+    split.
+    + eapply build_loads__inj;eauto.
+    + apply H1. 
 Qed.
 
 Lemma build_loads_inj_2 : forall i₁ i₂ k k' ,
     (* translating the variabe to a Cminor load address *)
     build_loads k i₁ = build_loads k' i₂ ->
-    k = k' /\ Int.repr i₁ = Int.repr i₂.
+    k = k' /\ Ptrofs.repr i₁ = Ptrofs.repr i₂.
 Proof.
-  unfold build_loads.
+  unfold build_loads, Eoffset_ptr.
   !intros.
-  remember (Int.repr i₁) as rpr1.
-  remember (Int.repr i₂) as rpr2.
-  inversion heq_Ebinop.
-  split.
-  - eapply build_loads__inj;eauto.
-  - auto.
-Qed.
+  destruct Archi.ptr64 eqn:hptr64.
+  - remember (Int64.repr i₁) as rpr1.
+    remember (Int64.repr i₂) as rpr2.
+    inversion heq.
+    split.
+    + eapply build_loads__inj;eauto.
+    + subst. admit.
+  - remember (Int.repr i₁) as rpr1.
+    remember (Int.repr i₂) as rpr2.
+    inversion heq.
+    split.
+    + eapply build_loads__inj;eauto.
+    + subst. auto.
+      admit.
+Admitted.
 
 Lemma build_loads_inj_inv:
   forall (i₁ i₂ : Z) (k k' : nat),
     k = k'  ->
-    Int.repr i₁ = Int.repr i₂ -> 
+    Ptrofs.repr i₁ = Ptrofs.repr i₂ -> 
     build_loads k i₁ = build_loads k' i₂.
 Proof.
-  unfold build_loads.
+  unfold build_loads, Eoffset_ptr .
   !intros.
   subst.
-  rewrite heq_repr.
-  reflexivity.
-Qed.
+  destruct Archi.ptr64 eqn:hptr64.
+  - admit.
+  - admit.
+    (*rewrite heq_repr.
+    reflexivity.*)
+Admitted.
 
 
 
@@ -399,7 +526,7 @@ Proof.
 Qed.
 
 Lemma build_loads_inj_neq2 : forall i₁ i₂ k k' e₁ e₂,
-    Integers.Int.Z_mod_modulus i₁ <> Integers.Int.Z_mod_modulus i₂ ->
+    Ptrofs.Z_mod_modulus i₁ <> Ptrofs.Z_mod_modulus i₂ ->
     build_loads k i₁ = e₁ ->
     build_loads k' i₂ = e₂ ->
     e₁ <> e₂.

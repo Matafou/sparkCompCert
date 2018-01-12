@@ -1252,6 +1252,92 @@ Proof.
   specialize CompilEnv.exact_lvl_level_of_top with (1:=h_exct_lvlG_CE) (2:=heq_CEframeG_id_CE);!intro.
   decomp h_ex.          
   rewrite heq_lvloftop_CE_top in heq_transl_variable.
+  (* painful inversio due to 1) repr being partly in prop + archi.ptr64 *)
+  assert (build_loads (top - s) v=build_loads lvl n).
+  {  unfold build_loads,Eoffset_ptr in heq_transl_variable.
+    !!destruct Archi.ptr64 eqn:?.
+     - !assert (Int64.modulus = Ptrofs.modulus).
+       { unfold Int64.modulus,Int64.wordsize,Wordsize_64.wordsize. 
+         unfold Ptrofs.modulus, Ptrofs.wordsize , Wordsize_Ptrofs.wordsize.
+         rewrite heq_ptr64.
+         reflexivity. }
+       inversion heq_transl_variable.
+       apply build_loads__inj in H0;auto.
+       subst.
+       apply f_equal.
+       (* side condition solved by h_no_overf. *)
+       rewrite Int64.eqm_small_eq with v n;try rewrite heq_modulus;eauto.
+       change (match Int64.repr v with
+          | {| Int64.intval := intval |} => intval
+          end) with (Int64.unsigned(Int64.repr v)) in H1.
+       change (match Int64.repr n with
+               | {| Int64.intval := intval |} => intval
+               end) with (Int64.unsigned(Int64.repr n)) in H1.
+       apply Int64.eqm_trans with (Int64.unsigned (Int64.repr v)).
+       { apply Int64.eqm_unsigned_repr . }
+       apply Int64.eqm_trans with (Int64.unsigned (Int64.repr n)).
+       all:swap 1 2.
+       { apply Int64.eqm_sym.
+         apply Int64.eqm_unsigned_repr . }
+       apply Int64.eqm_refl2;auto.
+     - !assert (Int.modulus = Ptrofs.modulus).
+       { unfold Int.modulus,Int.wordsize,Wordsize_32.wordsize. 
+         unfold Ptrofs.modulus, Ptrofs.wordsize , Wordsize_Ptrofs.wordsize.
+         rewrite heq_ptr64.
+         reflexivity. }
+       inversion heq_transl_variable.
+       apply build_loads__inj in H0;auto.
+       subst.
+       apply f_equal.
+       (* side condition solved by h_no_overf. *)
+       rewrite Int.eqm_small_eq with v n;try rewrite heq_modulus;eauto.
+       change (match Int64.repr v with
+          | {| Int64.intval := intval |} => intval
+          end) with (Int64.unsigned(Int64.repr v)) in H1.
+       change (match Int64.repr n with
+               | {| Int64.intval := intval |} => intval
+               end) with (Int64.unsigned(Int64.repr n)) in H1.
+       apply Int.eqm_trans with (Int.unsigned (Int.repr v)).
+       { apply Int.eqm_unsigned_repr . }
+       apply Int.eqm_trans with (Int.unsigned (Int.repr n)).
+       all:swap 1 2.
+       { apply Int.eqm_sym.
+         apply Int.eqm_unsigned_repr . }
+       apply Int.eqm_refl2;auto. }
+       
+  apply f_equal.
+  Transparent Int.repr.
+  apply build_loads_inj_inv;auto.
+  -
+    (* apply build_loads__inj in H; auto. *)
+    (* subst. *)
+    apply CompilEnv.exact_lvl_lvl_of_top in heq_lvloftop_CE_top;auto.
+    rewrite <- heq_lvloftop_CE_top.
+    !assert (s <= top)%nat.
+    { specialize CompilEnv.exact_levelG_frameG_lt_lgth with (1:=h_exct_lvlG_CE)(2:=heq_CEframeG_id_CE);!intro.
+      omega. }
+    omega.
+  - rewrite Int.eqm_small_eq with v n;eauto.
+    Transparent Int.repr Int.intval.
+    simpl in H1. 
+    Opaque Int.repr Int.intval.
+    red.
+    apply Int.eqmod_trans with (v mod Int.modulus); try now apply Int.eqmod_mod;auto.
+    apply Int.eqmod_trans with (n mod Int.modulus); try (apply Int.eqmod_sym;now apply Int.eqmod_mod;auto).
+    setoid_rewrite Int.Z_mod_modulus_eq in H1.
+    rewrite H1.
+    apply Int.eqmod_refl.
+
+
+
+
+
+
+
+
+(*  *)
+
+  destruct Archi.ptr64.
   inversion heq_transl_variable.
   change (match Int.repr v with
           | {| Int.intval := intval |} => intval
@@ -6064,41 +6150,46 @@ Proof.
 Qed.
 
 (** Consequence of chained structure: build_load returns always a pointeur *)
-Lemma build_loads_Vptr : forall lvl_nme lvl g spb ofs locenv m δ_nme nme_t nme_t_v,
-    Archi.ptr64 = false ->
+Lemma build_loads_Vptr : forall lvl_nme lvl g spb ofs locenv m δ_nme nme_t,
+    (* Archi.ptr64 = false -> *)
     stack_localstack_aligned lvl locenv g m (Values.Vptr spb ofs) ->
     (lvl_nme < lvl)%nat ->
     build_loads lvl_nme δ_nme = nme_t ->
-    Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_v ->
-    ∃ nme_block nme_ofst, nme_t_v = (Values.Vptr nme_block nme_ofst).
+    ∃ nme_block nme_ofst,
+      Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t (Values.Vptr nme_block nme_ofst).
 Proof.
   unfold build_loads.
   !intros; subst.
-  !invclear h_CM_eval_expr_nme_t_nme_t_v.
+(*  !invclear h_CM_eval_expr_nme_t_nme_t_v.
   cbn in h_eval_binop_Oadd_v1_v2.
   !invclear h_eval_binop_Oadd_v1_v2.
-  red in h_aligned_g_m.
+  red in h_aligned_g_m.*)
   !destruct (h_aligned_g_m lvl_nme);try omega.
-  subst_det_addrstack_zero.
-  !invclear h_CM_eval_expr_v2.
-  cbn in *.
-  rewrite heq_ptr64.
-  !invclear h_eval_constant.
-  eauto.
+  exists x.
+  exists (Ptrofs.of_int (Int.repr δ_nme)).
+  econstructor.
+  - eassumption.
+  - econstructor.
+    cbv.
+    reflexivity.
+  -xxx cbn.
+    rewrite heq_ptr64.
+    rewrite Ptrofs.add_zero_l.
+    reflexivity.
 Qed.
 
 
 (** Consequence of chained structure: a variable is always translated into a pointer. *)
-Lemma transl_variable_Vptr : forall g spb ofs locenv m stbl CE astnm nme nme_t nme_t_v,
+Lemma transl_variable_Vptr : forall g spb ofs locenv m stbl CE astnm nme nme_t,
     invariant_compile CE stbl ->
     stack_localstack_aligned (Datatypes.length CE) locenv g m (Values.Vptr spb ofs) ->
     transl_variable stbl CE astnm nme =: nme_t ->
-    Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t nme_t_v ->
-    ∃ nme_block nme_ofst, nme_t_v = (Values.Vptr nme_block nme_ofst).
+    ∃ nme_block nme_ofst,
+      Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t (Values.Vptr nme_block nme_ofst).
 Proof.
   !intros.
   !functional inversion heq_transl_variable.
-  eapply build_loads_Vptr;eauto.
+  eapply build_loads_Vptr. eauto.
   erewrite exact_lvlG_lgth with (lvl:=m').
   + omega.
   + apply h_inv_comp_CE_stbl.
@@ -8299,15 +8390,17 @@ Proof.
     exists Events.E0.
     exists locenv.
     decomp (transl_name_OK_inv _ _ _ _ heq_transl_name);subst.
-    !!specialize (me_stack_match_CE h_match_env) as ?. (*as [h_correct h_complete].*)
-    red in h_stk_mtch_CE_s_CE.
-xxx    !! (edestruct (me_stack_match_CE h_match_env);eauto).
+    (* !! (edestruct (me_stack_complete h_match_env);eauto). *)
+    (*!!specialize (me_stack_match_CE h_match_env) as ?. (*as [h_correct h_complete].*)
+    red in h_stk_mtch_CE_s_CE.    
+    edestruct h_stk_mtch_CE_s_CE;clear h_stk_mtch_CE_s_CE.*)
+
     
     decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e _ _ _ _ _ _ h_eval_expr_e h_match_env).
       (* transl_type never fails *)
       assert (hex:exists nme_type_t, transl_type stbl nme_type =: nme_type_t).
       { simpl in *.
-        assert (type_of_name stbl (Identifier astnum id) = OK nme_type).
+        assert (type_of_name stbl (Identifier astnum id) = Errors.OK nme_type).
         { simpl.
           rewrite heq_fetch_exp_type.
           reflexivity. }
@@ -8316,10 +8409,12 @@ xxx    !! (edestruct (me_stack_match_CE h_match_env);eauto).
       (* make_load does not fail on a translated variable coming from CE *)
       decomp (make_load_no_fail stbl nme_type nme_t nme_type_t heq_transl_type).
       (* Cminor.eval_expr does not fail on a translated variable (invariant?) *)
-      assert (hex: exists vaddr,
-                 Cminor.eval_expr g (Values.Vptr spb ofs) locenv m nme_t vaddr).
+      (* assert (hex: exists vaddr,
+                 Cminor.eval_expr g stkptr locenv m nme_t vaddr).
       { !destruct h_match_env.
         unfold stack_match in h_stk_mtch_s_m.
+        specialize h_stk_mtch_s_m with (1:=heq_transl_name)(4:=heq_transl_type)
+                                       (6:=heq_make_load).
         generalize (h_stk_mtch_s_m (Identifier astnum id) x nme_t load_addr_nme nme_type nme_type_t).
         intro h.
         !destruct h;auto.
@@ -8332,16 +8427,16 @@ xxx    !! (edestruct (me_stack_match_CE h_match_env);eauto).
           !invclear heq_make_load.
           !inversion h_CM_eval_expr_load_addr_nme_x0.
           exists nme_t_v.
-          assumption. }
+          assumption. }*)
       (* A translated variable always results in a Vptr. *)
-      !destruct hex.
-      specialize transl_variable_Vptr with
+      (* !destruct hex. *)
+      (*specialize transl_variable_Vptr with
       (1:=h_inv_comp_CE_stbl)
         (2:=(me_stack_localstack_aligned h_match_env.(me_safe_cm_env)))
         (3:=heq_transl_variable)
         (4:= h_CM_eval_expr_nme_t_nme_t_v).
       intro hex.
-      decomp hex.
+      decomp hex.*)
       (* Adresses of translated variables are always writable (invariant?) *)
       !assert (Mem.valid_access m nme_chk nme_block (Int.unsigned nme_ofst) Writable). {
         apply Mem.valid_access_implies with (p1:=Freeable).
