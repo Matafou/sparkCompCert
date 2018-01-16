@@ -1313,60 +1313,14 @@ Proof.
     (* subst. *)
     apply CompilEnv.exact_lvl_lvl_of_top in heq_lvloftop_CE_top;auto.
     rewrite <- heq_lvloftop_CE_top.
-    !assert (s <= top)%nat.
-    { specialize CompilEnv.exact_levelG_frameG_lt_lgth with (1:=h_exct_lvlG_CE)(2:=heq_CEframeG_id_CE);!intro.
-      omega. }
+    !!specialize build_loads_inj with (1:=H) as ?.
+    decomp h_and0. 
     omega.
-  - rewrite Int.eqm_small_eq with v n;eauto.
-    Transparent Int.repr Int.intval.
-    simpl in H1. 
-    Opaque Int.repr Int.intval.
-    red.
-    apply Int.eqmod_trans with (v mod Int.modulus); try now apply Int.eqmod_mod;auto.
-    apply Int.eqmod_trans with (n mod Int.modulus); try (apply Int.eqmod_sym;now apply Int.eqmod_mod;auto).
-    setoid_rewrite Int.Z_mod_modulus_eq in H1.
-    rewrite H1.
-    apply Int.eqmod_refl.
-
-
-
-
-
-
-
-
-(*  *)
-
-  destruct Archi.ptr64.
-  inversion heq_transl_variable.
-  change (match Int.repr v with
-          | {| Int.intval := intval |} => intval
-          end) with (Int.repr v).(Int.intval) in H1.
-  change (match Int.repr n with
-          | {| Int.intval := intval |} => intval
-          end) with (Int.repr n).(Int.intval) in H1.
-  apply f_equal.
-  Transparent Int.repr.
-  apply build_loads_inj_inv;auto.
-  - apply build_loads__inj in H0;auto.
-    subst.
-    apply CompilEnv.exact_lvl_lvl_of_top in heq_lvloftop_CE_top;auto.
-    rewrite <- heq_lvloftop_CE_top.
-    unfold Int.repr.
-    !assert (s <= top)%nat.
-    { specialize CompilEnv.exact_levelG_frameG_lt_lgth with (1:=h_exct_lvlG_CE)(2:=heq_CEframeG_id_CE);!intro.
-      omega. }
-    omega.
-  - rewrite Int.eqm_small_eq with v n;eauto.
-    Transparent Int.repr Int.intval.
-    simpl in H1. 
-    Opaque Int.repr Int.intval.
-    red.
-    apply Int.eqmod_trans with (v mod Int.modulus); try now apply Int.eqmod_mod;auto.
-    apply Int.eqmod_trans with (n mod Int.modulus); try (apply Int.eqmod_sym;now apply Int.eqmod_mod;auto).
-    setoid_rewrite Int.Z_mod_modulus_eq in H1.
-    rewrite H1.
-    apply Int.eqmod_refl.
+  - 
+    (* rewrite Int.eqm_small_eq with v n;eauto. *)
+    !!specialize build_loads_inj_2 with (1:=H) as ?.
+    decomp h_and0. 
+    assumption.
 Qed.
 
 (* Constant are independent of memory, except Oaddrstack *)
@@ -2688,7 +2642,7 @@ Lemma eval_build_loads_offset: forall lvl g stkptr locenv m δ_lvl δ_id b ofs,
     ofs = Ptrofs.repr δ_id.
 Proof.
   !intros.
-  unfold build_loads in *.
+  unfold build_loads, Eoffset_ptr in *.
   !inversion h_CM_eval_expr.
   !inversion h_CM_eval_expr_v2.
   simpl in *.
@@ -2699,8 +2653,10 @@ Proof.
   { eapply det_eval_expr;eauto. }
   subst.
   cbn  in *.
-  destruct v2;destruct Archi.ptr64;cbn in *;try discriminate.
-  inversion h_eval_binop_Oadd_v1_v2.
+  destruct v2;destruct Archi.ptr64 eqn:heq;cbn in *;try discriminate.
+  rewrite heq in *.
+
+  inversion h_eval_binop.
   inversion h_eval_constant.
   subst.
   rewrite Ptrofs.add_zero_l.
@@ -3304,7 +3260,7 @@ Proof.
       eapply minus_same_neq;eauto.
       eapply increase_order_level_of_top_ge;eauto.
       eapply increase_order_level_of_top_ge;eauto.
-    + repeat rewrite Integers.Int.Z_mod_modulus_eq in *.
+    + repeat rewrite Ptrofs.Z_mod_modulus_eq in *.
       rewrite Coqlib.Zmod_small in *;eauto.
       subst.
       right.
@@ -3359,7 +3315,7 @@ Proof.
     specialize h_bound_addr_CE with (1:=heq_CEfetchG_id₂_CE) as h'.
     decomp h.
     decomp h'.
-    repeat rewrite Int.Z_mod_modulus_eq in *.
+    repeat rewrite Ptrofs.Z_mod_modulus_eq in *.
     rewrite Zmod_small in heq_Z_mod_modulus.
     rewrite Zmod_small in heq_Z_mod_modulus.
     - auto.
@@ -3585,13 +3541,20 @@ Proof.
   !intros.
   rename h_le into h_ofs_non_zero.
   simpl in *.
-  unfold build_loads in *.
-  !invclear h_CM_eval_expr_load_id_load_id_v.
-  econstructor;eauto.
-  Focus 2.
-  { inversion h_CM_eval_expr_v2;econstructor;eauto. }
-  Unfocus.
-  eapply wf_chain_load'3;eauto.
+  unfold build_loads,Eoffset_ptr in *.
+  destruct Archi.ptr64 eqn:heq_archi.
+  - !invclear h_CM_eval_expr_load_id_load_id_v.
+    econstructor;eauto.
+    Focus 2.
+    { inversion h_CM_eval_expr_v2;econstructor;eauto. }
+    Unfocus.
+    eapply wf_chain_load'3;eauto.
+  - !invclear h_CM_eval_expr_load_id_load_id_v.
+    econstructor;eauto.
+    Focus 2.
+    { inversion h_CM_eval_expr_v2;econstructor;eauto. }
+    Unfocus.
+    eapply wf_chain_load'3;eauto.
 Qed.
 
 
@@ -3613,13 +3576,20 @@ Proof.
   !intros.
   rename h_le into h_ofs_non_zero.
   simpl in *.
-  unfold build_loads in *.
-  !invclear h_CM_eval_expr_load_id_load_id_v.
-  econstructor;eauto.
-  Focus 2.
-  { inversion h_CM_eval_expr_v2;econstructor;eauto. }
-  Unfocus.
-  eapply wf_chain_load'2;eauto.
+  unfold build_loads,Eoffset_ptr in *.
+  destruct Archi.ptr64 eqn:heq_archi.
+  - !invclear h_CM_eval_expr_load_id_load_id_v.
+    econstructor;eauto.
+    Focus 2.
+    { inversion h_CM_eval_expr_v2;econstructor;eauto. }
+    Unfocus.
+    eapply wf_chain_load'2;eauto.
+  - !invclear h_CM_eval_expr_load_id_load_id_v.
+    econstructor;eauto.
+    Focus 2.
+    { inversion h_CM_eval_expr_v2;econstructor;eauto. }
+    Unfocus.
+    eapply wf_chain_load'2;eauto.
 Qed.
 
 (* Well-formedness of the chained stack: store never modify the
@@ -5764,8 +5734,15 @@ Lemma transl_variable_cons':
     ∨ (transl_variable st CE a nme =: build_loads (δ_lvl-1) δ_id).
 Proof.
   !intros.
-  !functional inversion heq_transl_variable;clear heq_transl_variable.
-  red in h_bound_addr.
+  Opaque build_loads.
+  symmetry in heq_transl_variable.
+  apply R_transl_variable_correct in heq_transl_variable.
+  simple inversion heq_transl_variable.
+  - inversion H0.
+  - inversion H1.
+  - inversion H2.
+  - injection H2.
+    red in h_bound_addr.
   specialize h_bound_addr with (1:=heq_CEfetchG_nme) as h'.
   decomp h'.
   !assert (Int.Z_mod_modulus δ_nme = Int.Z_mod_modulus δ_id).
