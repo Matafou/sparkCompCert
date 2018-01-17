@@ -512,16 +512,26 @@ Proof.
   !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_n_sp_init.
   decomp h_ex;subst.
   unfold build_loads in h_CM_eval_expr;cbn.
-
-  specialize h_CM_eval_expr as h.
-  unfold Eoffset_ptr in h_CM_eval_expr.
   !invclear h_CM_eval_expr.
-  specialize chain_structure_spec with (g:=g)(e:=e)(1:=h_chain_m_n_sp_init) as hspec.
-  decomp hspec.
-  specialize eval_Eoffset_ptr with (1:=h_CM_eval_expr) (delta :=δ_var) as hofs.
+  !inversion h_CM_eval_expr_v2;subst;cbn in *.
+  !invclear h_eval_binop_Oadd_v1_v2.
+  !invclear h_eval_constant.  
+  replace n with (0+n)%nat in h_CM_eval_expr_v1,h_chain_m_n_sp_init by auto with arith.
+  !!pose proof chain_structure_cut _ _ _ _ h_chain_m_n_sp_init g e.
+  decomp h_ex.
+  replace (0+n)%nat with n in h_CM_eval_expr_v1,h_chain_m_n_sp_init by auto with arith.  
   subst_det_addrstack_zero.
-  inversion H.
-  apply Ptrofs.add_zero_l.
+  !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_O_sp'.
+  decomp h_ex.
+  subst.
+  cbn in h_val_add_v1_v2.
+  rewrite Ptrofs.add_zero_l in h_val_add_v1_v2.
+  destruct Archi.ptr64.
+  - inversion h_val_add_v1_v2.
+  - !inversion h_val_add_v1_v2.
+    unfold Ptrofs.of_int.
+    rewrite Int.unsigned_repr_eq.
+    apply f_equal;auto.
 Qed.
 
 Lemma malloc_distinct_from_chaining_loads : 
@@ -660,59 +670,42 @@ Qed.
 
 Lemma storev_outside_struct_chain_preserves_var_addresses:
   forall sp0 e sp g m lvl,
-    (* chainging addresses are unchanged. *)
-    (forall n,
-        (n < lvl)%nat ->
-        forall b',
-          Cminor.eval_expr g sp e m ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n))
-                           (Values.Vptr b' Ptrofs.zero)
-          -> b' <> sp0) ->
-    forall n,
-      chained_stack_structure m lvl sp ->
-      forall x _v _chk m' δ,
-        Mem.storev _chk m (Values.Vptr sp0 _v) x = Some m' ->
-        (n <= lvl)%nat ->
-        forall v,
-          Cminor.eval_expr g sp e m ((build_loads n δ)) v
-          -> Cminor.eval_expr g sp e m' ((build_loads n δ)) v.
+      (* chainging addresses are unchanged. *)
+      (forall n, (n < lvl)%nat -> forall b' ,
+            Cminor.eval_expr g sp e m 
+                             ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) (Values.Vptr b' Ptrofs.zero)
+            -> b' <> sp0) ->
+      forall n, chained_stack_structure m lvl sp ->
+           forall x _v _chk m' δ, Mem.storev _chk m (Values.Vptr sp0 _v) x = Some m' ->
+                   (n <= lvl)%nat -> forall v,
+                       Cminor.eval_expr g sp e m ((build_loads n δ)) v
+                       -> Cminor.eval_expr g sp e m' ((build_loads n δ)) v.
 Proof.
   !!intros until lvl.
   intros h_eval_sp_lds n.
   !intros.
-  unfold build_loads,Eoffset_ptr in *.
-  destruct Archi.ptr64.
-  - !invclear h_CM_eval_expr_v.
-    econstructor;[ | |eassumption].
-    + eapply storev_outside_struct_chain_preserves_chaining;eauto.
-    + !inversion h_CM_eval_expr_v2.
-      constructor.
-      assumption.
-  - !invclear h_CM_eval_expr_v.
-    econstructor;[ | |eassumption].
-    + eapply storev_outside_struct_chain_preserves_chaining;eauto.
-    + !inversion h_CM_eval_expr_v2.
-      constructor.
-      assumption.
+  unfold build_loads in *.
+  !invclear h_CM_eval_expr_v.
+  econstructor;[ | |eassumption].
+  - eapply storev_outside_struct_chain_preserves_chaining;eauto.
+  - !inversion h_CM_eval_expr_v2.
+    constructor.
+    assumption.
 Qed.
 
 (* The content of variable do not change either (we go one lvl less deep, since we add one ELoad.  *)
 Lemma storev_outside_struct_chain_preserves_var_value:
   forall sp0 e sp g m lvl,
-    (* chainging addresses are unchanged. *)
-    (forall n,
-        (n <= lvl)%nat ->
-        forall b' ,
-          Cminor.eval_expr g sp e m  ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n))
-                           (Values.Vptr b' Ptrofs.zero)
-          -> b' <> sp0) ->
-    forall n,
-      chained_stack_structure m lvl sp ->
-      forall x _v _chk _chk' m' δ,
-        Mem.storev _chk m (Values.Vptr sp0 _v) x = Some m' ->
-        (n <= lvl)%nat ->
-        forall v,
-          Cminor.eval_expr g sp e m (Eload _chk' (build_loads n δ)) v ->
-          Cminor.eval_expr g sp e m' (Eload _chk' (build_loads n δ)) v.
+      (* chainging addresses are unchanged. *)
+      (forall n, (n <= lvl)%nat -> forall b' ,
+            Cminor.eval_expr g sp e m 
+                             ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) (Values.Vptr b' Ptrofs.zero)
+            -> b' <> sp0) ->
+      forall n, chained_stack_structure m lvl sp ->
+           forall x _v _chk _chk' m' δ, Mem.storev _chk m (Values.Vptr sp0 _v) x = Some m' ->
+                   (n <= lvl)%nat -> forall v,
+                       Cminor.eval_expr g sp e m (Eload _chk' (build_loads n δ)) v
+                       -> Cminor.eval_expr g sp e m' (Eload _chk' (build_loads n δ)) v.
 Proof.
   !!intros * h_unch **.  
   !inversion h_CM_eval_expr_v.
@@ -724,19 +717,15 @@ Proof.
     eapply h_unch with (n:=n0).
     - omega.
     - assumption. }
-  specialize storev_outside_struct_chain_preserves_var_addresses
-    with (1:=h_unch') (2:=h_chain_m_lvl_sp) (3:=heq_storev_x_m') (4:=h_le_n_lvl)
-         (5:=h_CM_eval_expr_vaddr) as h.
+  !!pose proof storev_outside_struct_chain_preserves_var_addresses _ _ _ _ _ _ h_unch' _ h_chain_m_lvl_sp _ _ _ _ _ heq_storev_x_m' h_le_n_lvl _ h_CM_eval_expr_vaddr.
   econstructor;eauto.
-  !invclear h_CM_eval_expr_v.
-  unfold build_loads, Eoffset_ptr in h_CM_eval_expr_vaddr, h_CM_eval_expr_vaddr0.
+  unfold build_loads in h_CM_eval_expr_vaddr, h_CM_eval_expr_vaddr0.
   !invclear h_CM_eval_expr_vaddr.
   !invclear h_CM_eval_expr_vaddr0.
-  (* in my current seting Archi is 32, but I don't want to use it. *)
-  destruct vaddr; try now (destruct Archi.ptr64 ;try (clear heq_ptr64; discriminate)). 
-  pose proof Mem.load_store_other _ _ _ _ _ _ heq_storev_x_m' _chk' b (Ptrofs.unsigned i) as h'.
+  destruct vaddr;try discriminate.
+  pose proof Mem.load_store_other _ _ _ _ _ _ heq_storev_x_m' _chk' b (Ptrofs.unsigned i) as h.
   unfold Mem.loadv in *.
-  rewrite h'.
+  rewrite h.
   - assumption.
   - left.
     !assert (v1=(Values.Vptr b Ptrofs.zero)).
@@ -746,36 +735,12 @@ Proof.
       !!assert (n <= lvl) by omega.
       specialize (h_aligned_g_m _ h_le_n_lvl0).
       decomp h_aligned_g_m.
-      repeat subst_det_addrstack_zero.
+      subst_det_addrstack_zero.
       f_equal.
       cbn in *.
-      !!destruct Archi.ptr64 eqn:?;subst.
-      + destruct vaddr0;
-          (* discriminate uses the fact that Archi.ptr64 = false, so I avoid using it. *)
-          try match goal with
-                H:None = Some _ |- _ => inversion H
-              end.
-        !inversion h_eval_binop.
-        rewrite heq_ptr64 in heq_Vptr.
-        destruct v3;
-          try match goal with
-              | H:Values.Vundef = _ |- _ => inversion H;fail
-              end.
-        inversion heq_Vptr.
-        reflexivity.
-      + destruct vaddr0;
-          (* discriminate uses the fact that Archi.ptr64 = false, so I avoid using it. *)
-          try match goal with
-                H:None = Some _ |- _ => inversion H
-              end.
-        !inversion h_eval_binop.
-        rewrite heq_ptr64 in heq_Vptr.
-        destruct v3;
-          try match goal with
-              | H:Values.Vundef = _ |- _ => inversion H;fail
-              end.
-        inversion heq_Vptr.
-        reflexivity. }
+      destruct v2;try discriminate.
+      inversion h_eval_binop_Oadd_v1_v2.
+      destruct Archi.ptr64;auto. }
     subst.
     eapply h_unch;eauto.
 Qed.

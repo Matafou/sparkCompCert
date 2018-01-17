@@ -36,6 +36,8 @@ Open Scope error_monad_scope.
 Open Scope Z_scope.
 
 
+
+
 (** The [base_type] of a type is the corresponding concrete type. *)
 Inductive base_type: Type :=
 | BBoolean
@@ -140,7 +142,6 @@ Definition fetch_var_type id st :=
                 [MSG "fetch_var_type: not found :"; CTX (transl_num id)]
     | Some (_,t) => OK t (* reduce_type st t max_recursivity *)
   end.
-
 
 (** A stack-like compile environment.
   The compile environment is a stack of mappings from variables names (idnum) to
