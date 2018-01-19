@@ -8352,7 +8352,7 @@ Proof.
         !intros.
         !invclear heq_Int.
         eapply eval_expr_overf;eauto.
-      * admit. (* TODO *)
+      * subst;eapply assignment_preserve_chained_stack_structure;eauto.
       * admit. (* TODO *)
       * up_type.
         eapply Mem.store_unchanged_on;eauto.
@@ -8368,20 +8368,27 @@ Proof.
         destruct abs1.
         -- apply H. reflexivity.
         -- omega.
-xxxx      
   (* If statement --> true *)
-  - rename x1 into b_then.
-    rename x2 into b_else.
+  - rename x0 into b_then.
+    rename x1 into b_else.
     rename_all_hyps.
     + decomp (transl_expr_ok _ _ _ e_t heq_tr_expr_e locenv g m _ _
-                             (Values.Vptr spb ofs) h_eval_expr_e h_match_env).
-      decomp (IHh_eval_stmt s' eq_refl CE b_then h_inv_comp_CE_st heq_transl_stmt_stmt_b_then spb ofs f
-                            locenv g m h_match_env).
+                             stkptr h_eval_expr_e h_match_env).
+      specialize IHh_eval_stmt with (1:=eq_refl)(2:=h_wf_st_st)
+                                    (3:=h_inv_comp_CE_st)
+                                    (4:=heq_transl_stmt_stmt_b_then)
+                                    (5:=eq_refl)
+                                    (6:=h_chain_m)
+                                    (7:=h_match_env)
+                                    (f:=f).
+      decomp IHh_eval_stmt.
       exists tr.
       exists locenv'.
       exists m'.
-      decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e locenv g m s _ (Values.Vptr spb ofs) h_eval_expr_e h_match_env).
-      assert (exec_stmt g f (Values.Vptr spb ofs) locenv m
+      specialize transl_expr_ok with (1:=heq_tr_expr_e)(2:=h_eval_expr_e)
+                                     (3:=h_match_env) as h.
+      decomp h.
+      assert (exec_stmt g f stkptr locenv m
                         (Sifthenelse (Ebinop (Ocmp Cne) e_t (Econst (Ointconst Int.zero)))
                                      b_then b_else) tr locenv' m' Out_normal).
       { econstructor;eauto.
@@ -8396,22 +8403,32 @@ xxxx
           econstructor.
         * rewrite  Int.eq_false;eauto.
           apply Int.one_not_zero. }
-      split.
+      split;[|split;[|split;[|split]]].
       * assumption.
       * assumption.
+      * assumption.
+      * admit.
+      * apply H3.
   (* If statement --> false *)
-  - rename x1 into b_then.
-    rename x2 into b_else.
+  - rename x0 into b_then.
+    rename x1 into b_else.
     rename_all_hyps.
     + decomp (transl_expr_ok _ _ _ e_t heq_tr_expr_e locenv g m _ _
-                             (Values.Vptr spb ofs) h_eval_expr_e h_match_env).
-      decomp (IHh_eval_stmt s' eq_refl CE b_else h_inv_comp_CE_st heq_transl_stmt_stmt_b_else spb ofs f
-                            locenv g m h_match_env).
+                             stkptr h_eval_expr_e h_match_env).
+
+      specialize IHh_eval_stmt with (1:=eq_refl)(2:=h_wf_st_st)
+                                    (3:=h_inv_comp_CE_st)
+                                    (4:=heq_transl_stmt_stmt_b_else)
+                                    (5:=eq_refl)
+                                    (6:=h_chain_m)
+                                    (7:=h_match_env)
+                                    (f:=f).
+      decomp IHh_eval_stmt.
       exists tr.
       exists locenv'.
       exists m'.
-      decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e locenv g m s _ (Values.Vptr spb ofs) h_eval_expr_e h_match_env).
-      assert (exec_stmt g f (Values.Vptr spb ofs) locenv m
+      decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e locenv g m s _ stkptr h_eval_expr_e h_match_env).
+      assert (exec_stmt g f stkptr locenv m
                         (Sifthenelse (Ebinop (Ocmp Cne) e_t (Econst (Ointconst Int.zero)))
                                      b_then b_else) tr locenv' m' Out_normal).
       { econstructor;eauto.
@@ -8427,24 +8444,28 @@ xxxx
         * rewrite Int.eq_true.
           simpl.
           assumption. }
-      split.
+      split;[|split;[|split;[|split]]].
       * assumption.
       * assumption.
+      * assumption.
+      * admit.
+      * apply H3.
   (* Procedure call *)
-  - rename x1 into chaining_expr.
+  - xxx understand how to rename H1.
+    (* rename x1 into chaining_expr. *)
     subst current_lvl.
     rename f0 into func.
     rename locals_section into f1'_l.
     rename params_section into f1'_p.
-    specialize (IHh_eval_stmt ((n, f1'_l ++ f1'_p) :: s3) eq_refl).
+    specialize IHh_eval_stmt with (1:=eq_refl).
     rewrite <- transl_stmt_ok in heq_transl_stmt_stm'.
     !functional inversion heq_transl_stmt_stm';subst;eq_same_clear; clear heq_transl_stmt_stm'.
     rename s1 into suffix_s .
     rename s3 into suffix_s'.
     rename y0 into lvl_p.
-    rename x1 into args_t.
+    rename x into args_t.
     rename x0 into p_sign.
-    subst x3.
+    (* subst x3. *)
     subst current_lvl.
     rename n into pb_lvl.
     eq_same_clear.
@@ -8469,21 +8490,27 @@ xxxx
     simpl in *.
     rename heq_transl_proc_pb into h_tr_proc. (* displays better with a short name. *)
 
+    destruct  (build_compilenv st CE_sufx pb_lvl procedure_parameter_profile
+                 procedure_declarative_part)  as  [ [CE''_bld stcksize]|] eqn:heq_bldCE; simpl in h_tr_proc; try discriminate.
     repeat match type of h_tr_proc with
-           | (bind2 ?x _) = _  => destruct x as  [ [CE''_bld stcksize]|] eqn:heq_bldCE; simpl in h_tr_proc; try discriminate
-           | context [ ?x <=? ?y ]  => let heqq := fresh "heq" in destruct (Z.leb x y) eqn:heqq; try discriminate
+           | (bind2 ?x _) = _  => destruct x as  [ [CE''_bld stcksize]|] eqn:heq_bldCE
+                                 ; simpl in h_tr_proc; try discriminate
+           | context [ ?x <=? ?y ]  =>
+             let heqq := fresh "heq" in destruct (Z.leb x y) eqn:heqq; try discriminate
            | (bind ?y ?x) = _ =>
-             let heqq := fresh "heq" in !destruct y !eqn:heqq; [ 
-                                          match type of heqq with
-                                          | transl_stmt _ _ _ = OK ?x => rename x into s_pbdy                   
-                                          | init_locals _ _ _ = OK ?x => rename x into s_locvarinit
-                                          | store_params _ _ _ = OK ?x => rename x into s_parms
-                                          | copy_out_params _ _ _ = OK ?x => rename x into s_copyout
-                                          | transl_lparameter_specification_to_procsig _ _ _ = OK ?x => rename x into p_sig
-                                          | _ => idtac
-                                          end
-                                          ; autorename heqq; simpl in h_tr_proc
-                                        | discriminate]
+             let heqq := fresh "heq" in
+             !destruct y !eqn:heqq;
+                 [ 
+                   match type of heqq with
+                   | transl_stmt _ _ _ = Errors.OK ?x => rename x into s_pbdy
+                   | init_locals _ _ _ = Errors.OK ?x => rename x into s_locvarinit
+                   | store_params _ _ _ = Errors.OK ?x => rename x into s_parms
+                   | copy_out_params _ _ _ = Errors.OK ?x => rename x into s_copyout
+                   | transl_lparameter_specification_to_procsig _ _ _ = Errors.OK ?x => rename x into p_sig
+                   | _ => idtac
+                   end
+                   ; autorename heqq; simpl in h_tr_proc
+                 | discriminate]
            end.
     up_type.
     !inversion h_tr_proc;clear h_tr_proc.
@@ -8507,7 +8534,7 @@ xxxx
       - eapply CompilEnv.cut_until_spec1;eassumption. (* Lemma todo *)
       - rewrite h_CE.
         assumption. }
-    specialize (IHh_eval_stmt h_inv_CE''_bld eq_refl).
+    specialize (IHh_eval_stmt h_wf_st_st h_inv_CE''_bld eq_refl).
 
     unfold transl_params in heq_transl_params_p_x.
     unfold symboltable.fetch_proc in h_fetch_proc_p.
@@ -8525,7 +8552,8 @@ xxxx
     assert (hnodup_arg:NoDupA eq_param_name procedure_parameter_profile) by admit. (* spark typing *)
     assert (hnodup_decl:NoDupA eq (decl_to_lident st procedure_declarative_part)) by admit. (* spark typing *)
     assert (heq_lgth_CE_sufx:Datatypes.length CE_sufx = pb_lvl).
-    { erewrite (cut_until_CompilEnv.exact_levelG _ _ _ _ _ _ h_CEcut_CE_pb_lvl).
+    { specialize CompilEnv.cut_until_exact_levelG with (3:=h_CEcut_CE_n0).
+      erewrite (cut_until_CompilEnv.exact_levelG _ _ _ _ _ _ h_CEcut_CE_pb_lvl).
       reflexivity. }
     rewrite heq_lgth_CE_sufx in heq.
     !invclear heq.
