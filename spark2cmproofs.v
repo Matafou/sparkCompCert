@@ -8451,22 +8451,19 @@ Proof.
       * admit.
       * apply H3.
   (* Procedure call *)
-  - xxx understand how to rename H1.
-    (* rename x1 into chaining_expr. *)
+  - (* rename x1 into chaining_expr. *)
     subst current_lvl.
     rename f0 into func.
     rename locals_section into f1'_l.
     rename params_section into f1'_p.
     specialize IHh_eval_stmt with (1:=eq_refl).
-    rewrite <- transl_stmt_ok in heq_transl_stmt_stm'.
-    !functional inversion heq_transl_stmt_stm';subst;eq_same_clear; clear heq_transl_stmt_stm'.
     rename s1 into suffix_s .
     rename s3 into suffix_s'.
-    rename y0 into lvl_p.
+    rename y into lvl_p.
     rename x into args_t.
     rename x0 into p_sign.
     (* subst x3. *)
-    subst current_lvl.
+    (* subst current_lvl. *)
     rename n into pb_lvl.
     eq_same_clear.
     up_type.
@@ -8552,24 +8549,28 @@ Proof.
     assert (hnodup_arg:NoDupA eq_param_name procedure_parameter_profile) by admit. (* spark typing *)
     assert (hnodup_decl:NoDupA eq (decl_to_lident st procedure_declarative_part)) by admit. (* spark typing *)
     assert (heq_lgth_CE_sufx:Datatypes.length CE_sufx = pb_lvl).
-    { specialize CompilEnv.cut_until_exact_levelG with (3:=h_CEcut_CE_n0).
-      erewrite (cut_until_CompilEnv.exact_levelG _ _ _ _ _ _ h_CEcut_CE_pb_lvl).
+    {
+      erewrite (CompilEnv.cut_until_exact_levelG _ _ _ _ _ _ h_CEcut_CE_pb_lvl).
       reflexivity. }
-    rewrite heq_lgth_CE_sufx in heq.
-    !invclear heq.
+    rewrite heq_lgth_CE_sufx in heq_pair.
+    !invclear heq_pair.
     
     unfold newFrame in h_copy_in.
     !destruct f.
     destruct (copy_in_lvl _ _ _ _ _ _ _ h_copy_in) as [f h_pair].
     !inversion h_pair.
-    !!destruct (copy_in_spec _ _ _ _ _ _ _ _ _ _ _ _ _ _
-                             h_match_env heq_transl_params_p_x h_copy_in) as [args_t_v ?].
-    assert (h_ex:exists chaining_expr_from_caller_v,Cminor.eval_expr g (Values.Vptr spb ofs) locenv m chaining_expr chaining_expr_from_caller_v).
+
+    !assert (chained_stack_structure m (Datatypes.length CE - 1) stkptr).
+    { eapply chained_stack_structure_le;eauto;omega. }
+    specialize copy_in_spec with (1:=h_chain_m) (2:=h_inv_comp_CE_st)(3:=h_match_env)(4:=heq_transl_params_p_x) (5:=h_copy_in) as h.
+    destruct h as [args_t_v ?].
+    assert (h_ex:exists chaining_expr_from_caller_v,Cminor.eval_expr g stkptr locenv m addr_enclosing_frame chaining_expr_from_caller_v).
     { admit. (* invariant to add: The chaining parameter is always evaluable to a value (an address). *) }
     destruct h_ex as [chaining_expr_from_caller_v h_chaining_expr_from_caller_v].
     destruct (Mem.alloc m 0 (fn_stackspace the_proc)) as [m_proc_pre_init spb_proc] eqn:h_alloc.
     up_type.
     (* locenv_init is the local env filled by CMinor, but the variables are not yet copied into the local stack *)
+    
     remember (set_locals (fn_vars the_proc) (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc))) as locenv_init.
 
     (* Painfuly paraphrasing eval_funcall: should find another way...
@@ -8600,44 +8601,60 @@ Proof.
     eq_same_clear. up_type.
     enough (h_ex:exists m_postfree trace_postfree v,
                eval_funcall g m (AST.Internal the_proc) (chaining_expr_from_caller_v :: args_t_v) trace_postfree m_postfree v
-               /\ match_env st s' CE (Values.Vptr spb ofs) locenv g m_postfree).
-    { destruct h_ex as [m_postfree [trace_postfree [ vres [h_decl_ok_exec h_decl_ok_matchenv]]]].
-      exists trace_postfree locenv m_postfree.
-      split.
-      econstructor;eauto.
+               /\ match_env st s' CE stkptr locenv g m_postfree
+               ∧ chained_stack_structure m_postfree (Datatypes.length CE) stkptr
+               ∧ (∀ astnum : astnum,
+                     unchange_forbidden st CE g astnum locenv locenv stkptr m m_postfree
+                     ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postfree)
+           ).
+    { decomp h_ex.
+      (* destruct h_ex as [m_postfree [trace_postfree [ vres [h_decl_ok_exec h_decl_ok_matchenv]]]]. *)
+      exists trace_postfree, locenv, m_postfree.
+      split;[|split;[|split]].
       - econstructor;eauto.
-      - cbn.
-        unfold transl_procsig in *.        
-        rewrite  h_fetch_proc_p in heq_transl_procsig_p.
-        rewrite heq_pb in heq_transl_procsig_p.
-        cbn in heq_transl_procsig_p.
-        rewrite heq_transl_lprm_spec_procedure_parameter_profile_p_sig in heq_transl_procsig_p.
-        cbn in heq_transl_procsig_p.
-        inversion heq_transl_procsig_p.
-        reflexivity.
+        + econstructor;eauto.
+        + cbn.
+          unfold transl_procsig in *.        
+          rewrite  h_fetch_proc_p in heq_transl_procsig_p.
+          rewrite heq_pb in heq_transl_procsig_p.
+          cbn in heq_transl_procsig_p.
+          rewrite heq_transl_lprm_spec_procedure_parameter_profile_p_sig in heq_transl_procsig_p.
+          cbn in heq_transl_procsig_p.
+          inversion heq_transl_procsig_p.
+          reflexivity.
+      - assumption.
+      - assumption.
       - assumption. }
 
+    (* Same as above but starting from m_proc_pre_init and expliciting the free operation *)
     enough (h_ex:exists locenv_postcpout m_postcpout trace_postcpout,
-               exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) locenv_init m_proc_pre_init
+               exec_stmt g the_proc (Values.Vptr spb_proc Ptrofs.zero) locenv_init m_proc_pre_init
                          (fn_body the_proc) trace_postcpout locenv_postcpout m_postcpout Out_normal
                /\ exists m_postfree, Mem.free m_postcpout spb_proc 0 sto_sz = Some m_postfree
-               /\ match_env st s' CE (Values.Vptr spb ofs) locenv g m_postfree).
-    { destruct h_ex as [locenv_postcpout [m_postcpout [trace_postcpout [h_exec_ok [m_postfree [h_free_ok h_matchenv_ok]]]]]].
-      exists m_postfree trace_postcpout Values.Vundef.
-      split.
+               /\ match_env st s' CE stkptr locenv g m_postfree
+               ∧ chained_stack_structure m_postfree (Datatypes.length CE) stkptr
+               ∧ (∀ astnum : astnum,
+                     unchange_forbidden st CE g astnum locenv locenv stkptr m m_postfree
+                     ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postfree
+                 )).
+    { decomp h_ex.
+      exists m_postfree, trace_postcpout, Values.Vundef.
+      split;[|split;[|split]].
       - econstructor;eauto.
         + rewrite <- Heqlocenv_init. eassumption.
         + cbn. reflexivity.
         + cbn. assumption.
+      - assumption.
+      - assumption.
       - assumption. }
 
     (* Same as above but just before the free performed at the end of funcall *)
     enough (h_ex:exists locenv_postcpout m_postcpout trace_postcpout,
-               exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) locenv_init m_proc_pre_init
+               exec_stmt g the_proc (Values.Vptr spb_proc Ptrofs.zero) locenv_init m_proc_pre_init
                          (fn_body the_proc) trace_postcpout locenv_postcpout m_postcpout Out_normal
-               /\ match_env st s' CE (Values.Vptr spb ofs) locenv g m_postcpout).
+               /\ match_env st s' CE stkptr locenv g m_postcpout).
     { destruct h_ex as [locenv_postcpout [m_postcpout [trace_postcpout [h_exec_ok h_matchenv_ok]]]].
-      exists locenv_postcpout m_postcpout trace_postcpout.
+      exists locenv_postcpout, m_postcpout, trace_postcpout.
       split.
       - assumption.
       - destruct (Mem.free m_postcpout spb_proc 0 sto_sz) eqn:heq_free.
