@@ -8158,7 +8158,7 @@ Lemma transl_stmt_normal_OK : forall stbl (stm:stmt) s norms',
           /\ match_env stbl s' CE stkptr locenv' g m'
           /\ chained_stack_structure m' lvl stkptr
           /\ forall astnum, unchange_forbidden stbl CE g astnum locenv locenv' stkptr m m'
-                            /\ Mem.unchanged_on (forbidden stbl CE g astnum locenv stkptr m m) m m'.
+                      /\ Mem.unchanged_on (forbidden stbl CE g astnum locenv stkptr m m) m m'.
 Proof.
   !!intros until 1.
   Opaque transl_stmt.
@@ -8652,14 +8652,23 @@ Proof.
     enough (h_ex:exists locenv_postcpout m_postcpout trace_postcpout,
                exec_stmt g the_proc (Values.Vptr spb_proc Ptrofs.zero) locenv_init m_proc_pre_init
                          (fn_body the_proc) trace_postcpout locenv_postcpout m_postcpout Out_normal
-               /\ match_env st s' CE stkptr locenv g m_postcpout).
-    { destruct h_ex as [locenv_postcpout [m_postcpout [trace_postcpout [h_exec_ok h_matchenv_ok]]]].
-      exists locenv_postcpout, m_postcpout, trace_postcpout.
-      split.
-      - assumption.
-      - destruct (Mem.free m_postcpout spb_proc 0 sto_sz) eqn:heq_free.
-        + exists m0;split;auto.
-          admit. (* no variable of CE and st are in m_postcpout, so the free maintains match_env. *)
+               /\ match_env st s' CE stkptr locenv g m_postcpout
+               ∧ chained_stack_structure m_postcpout (Datatypes.length CE) stkptr
+               ∧ (∀ astnum : astnum,
+                     unchange_forbidden st CE g astnum locenv locenv stkptr m m_postcpout
+                     ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postcpout)).
+    { decomp h_ex.
+      destruct (Mem.free m_postcpout spb_proc 0 sto_sz) as [m_postfree|m_postfree] eqn:heq_free.
+      all:swap 1 2.
+      - edestruct Mem.range_perm_free eqn:heq.
+        erewrite e in heq_free.
+        discriminate.
+      - exists locenv_postcpout, m_postcpout, trace_postcpout.
+        split;[|exists m_postfree;split;[|split;[|split]]].
+        + assumption.
+        + auto.
+        + admit. (* no variable of CE and st are in m_postcpout, so the free maintains match_env. *)
+        + admit. (* no variable of CE and st are in m_postcpout, chained_stack_structure. *)
         + admit. (* free is always possible on a stackframe (should be in the invariant). *)
     }
 
