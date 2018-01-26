@@ -8599,6 +8599,7 @@ Proof.
      *)
 
     eq_same_clear. up_type.
+    (* expliciting the funcall and that m' = m_postfree. *)
     enough (h_ex:exists m_postfree trace_postfree v,
                eval_funcall g m (AST.Internal the_proc) (chaining_expr_from_caller_v :: args_t_v) trace_postfree m_postfree v
                /\ match_env st s' CE stkptr locenv g m_postfree
@@ -8626,16 +8627,17 @@ Proof.
       - assumption.
       - assumption. }
 
-    (* Same as above but starting from m_proc_pre_init and expliciting the free operation *)
-    enough (h_ex:exists locenv_postcpout m_postcpout trace_postcpout,
+    (* Stating the similariy between the last state of the procedure
+    in spark(after copyout) and cminor (after cpout). *)
+xx check last part    enough (h_ex:exists locenv_postcpout m_postcpout trace_postcpout,
                exec_stmt g the_proc (Values.Vptr spb_proc Ptrofs.zero) locenv_init m_proc_pre_init
                          (fn_body the_proc) trace_postcpout locenv_postcpout m_postcpout Out_normal
-               /\ exists m_postfree, Mem.free m_postcpout spb_proc 0 sto_sz = Some m_postfree
-               /\ match_env st s' CE stkptr locenv g m_postfree
-               ∧ chained_stack_structure m_postfree (Datatypes.length CE) stkptr
+               (* /\ exists m_postfree, Mem.free m_postcpout spb_proc 0 sto_sz = Some m_postfree *)
+               /\ match_env st ((pb_lvl, f1'_p) :: intact_s ++ suffix_s')  CE stkptr locenv g m_postcpout
+               ∧ chained_stack_structure m_postcpout (Datatypes.length CE) stkptr
                ∧ (∀ astnum : astnum,
-                     unchange_forbidden st CE g astnum locenv locenv stkptr m m_postfree
-                     ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postfree
+                     unchange_forbidden st CE g astnum locenv locenv stkptr m_proc_pre_init m_postcpout
+                     ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m_proc_pre_init m_postcpout
                  )).
     { decomp h_ex.
       exists m_postfree, trace_postcpout, Values.Vundef.
@@ -8648,7 +8650,7 @@ Proof.
       - assumption.
       - assumption. }
 
-    (* Same as above but just before the free performed at the end of funcall *)
+    (* Same as above but arriving just before the free performed at the end of funcall *)
     enough (h_ex:exists locenv_postcpout m_postcpout trace_postcpout,
                exec_stmt g the_proc (Values.Vptr spb_proc Ptrofs.zero) locenv_init m_proc_pre_init
                          (fn_body the_proc) trace_postcpout locenv_postcpout m_postcpout Out_normal
@@ -8673,26 +8675,28 @@ Proof.
     }
 
     enough (h_ex:exists locenv_postbdy m_postbdy trace_postbdy,
-               exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) locenv_init m_proc_pre_init
-                         (Sseq (Sseq (Sstore AST.Mint32 (Econst (Oaddrstack Int.zero)) (Evar chaining_param))
+               exec_stmt g the_proc (Values.Vptr spb_proc Ptrofs.zero) locenv_init m_proc_pre_init
+                         (Sseq (Sseq (Sstore AST.Mint32 (Econst (Oaddrstack Ptrofs.zero)) (Evar chaining_param))
                                      (Sseq s_parms (Sseq s_locvarinit Sskip))) s_pbdy)
                          trace_postbdy locenv_postbdy m_postbdy Out_normal
                /\ forall locenv_caller,
-                 match_env st (intact_s ++ suffix_s') CE (Values.Vptr spb ofs) locenv_caller g m_postbdy).
+                 match_env st (intact_s ++ suffix_s') CE stkptr locenv_caller g m_postbdy).
     { destruct h_ex as [locenv_postbdy [m_postbdy [trace_postbdy [h_exec_ok h_matchenv_ok]]]].
       !assert ( ∃ (locenv_postcpout : env) (m_postcpout : mem) (trace_postcpout : Events.trace),
-                  exec_stmt g the_proc (Values.Vptr spb_proc Int.zero) locenv_postbdy m_postbdy
+                  exec_stmt g the_proc (Values.Vptr spb_proc Ptrofs.zero) locenv_postbdy m_postbdy
                             s_copyout trace_postcpout locenv_postcpout m_postcpout Out_normal).
       { admit. (* exec_stmt s_copyout does not raise any error *) }
       destruct h_ex as[locenv_postcpout [m_postcpout [trace_postcpout h_exec_ok2]]].
-      exists locenv_postcpout m_postcpout (Events.Eapp trace_postbdy trace_postcpout).      
-      split.
+      exists locenv_postcpout, m_postcpout, (Events.Eapp trace_postbdy trace_postcpout).      
+      split;[|split;[|split;[|split]]].
       - unfold the_proc at 2;cbn.
         apply exec_stmt_assoc.
         apply exec_stmt_assoc.
         econstructor;eauto.
+      - admit.
       - 
-        (* temporary patch before switching to strong_match: *)
+
+(* temporary patch before switching to strong_match: *)
         match goal with
         | H: context P [(match_env st (intact_s ++ suffix_s'))] |- _
           => let x := context P [(strong_match_env st (intact_s ++ suffix_s'))] in
