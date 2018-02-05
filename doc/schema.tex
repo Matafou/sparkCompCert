@@ -122,7 +122,7 @@
 
 \newcommand{\baseCminor}{
   \tab{2,1,1,1,0,0,0,0,0};
-  \node (stkptr) at (-3.5\cellw,13\cellh) {{\scriptsize\texttt{stkptr}}};
+  \node (stkptr) at (-3.5\cellw,12\cellh) {{\scriptsize\texttt{stkptr}}};
   \node (hautgauche) at (-3\cellw,12\cellh) {};
   \node (basgauche) at (-3\cellw,-45\cellh) {};
   \node (cmcentre) at (-1\cellw,0mm) {};
@@ -169,38 +169,49 @@
   \begin{scope}[xshift=4\cellw]
     \begin{scope}[xshift=6\cellw,yshift=-15\cellh]
       \tab{1,1,1,1,0,0,0,0,0};
+      \node[yshift=15\cellh](hautgauche1) at (hautgauche) {};
       \node (branchnewlvl3) at (0,0) {};
       \node (newcentre) at (-1.5\cellw,12\cellh) {};
       \node (spbproc) at (-3.5\cellw,14\cellh) {\scriptsize\texttt{spb\_proc}};
-      \draw[->,gray,outer sep=0mm] (spbproc) to[out=-90,in=180] (branchnewlvl3.south);
+      \draw[->,gray,outer sep=0mm] (spbproc) to[out=-90,in=180] (branchnewlvl3);
       \draw[->,ultra thick,gray,outer sep=0mm] (hautgauche-|branchlvl4.west)
-      to[out=20,in=160] node[above]{\color{black}\scriptsize \texttt{malloc~+set\_locals}} (newcentre|-hautgauche);
+      to[out=20,in=160] node[above](mid1){\color{black}\scriptsize \texttt{malloc~+set\_locals}} (newcentre|-hautgauche);
+      \node (mlocenv_init) at (newcentre|-hautgauche1){\texttt{m,locenv\_init}};
     \end{scope}
     % step 4
-    \node (m) at (cmcentre|-hautgauche){\texttt{m}};
-    \draw[-,dashed](0,18\cellh)to(0,-45\cellh);
+    \node (m) at (cmcentre|-hautgauche1){\texttt{m,locenv}};
+    \draw[-,dashed](mid1|-hautgauche1)to(0,-45\cellh);
     \begin{scope}[xshift=13\cellw,thick]
       \baseCminor
-      \begin{scope}[xshift=7\cellw,yshift=-15\cellh]
+      \begin{scope}[xshift=8\cellw,yshift=-15\cellh]
         \tab{2,1,1,1,0,0,0,0,0};
         \node (branchnewlvl3postchain) at (0,0) {};
-        \node (newcentre2) at (0,13\cellh) {};
-        \node (spbproc) at (-3.5\cellw,15\cellh) {\scriptsize\texttt{spb\_proc}};
+        \node (haut2) at (hautgauche-|branchlvl4) {};
         \draw[->,ultra thick,gray,outer sep=0mm] (newcentre|-hautgauche)
-        to[out=20,in=160] node[above]{\color{black}\scriptsize \texttt{exec\_stmt (Sstore ... chainping\_aram)}}(hautgauche-|branchlvl4) ;
-        \node[yshift=-2mm] (mprocpreinit) at (newcentre|-hautgauche) {\texttt{m\_proc\_pre\_init}};
-      \draw[->,gray,outer sep=0mm] (spbproc) to[out=-90,in=180] (branchnewlvl3postchain);
-      \end{scope}          
+        to[out=20,in=160] node[above](mid2){\color{black}\scriptsize \texttt{(Sstore \dots chaining\_aram)}}(haut2) ;
+        \node (newcentre2) at (-12\cellw,13\cellh) {};
+        \node (mprocpreinit) at (branchlvl2|-hautgauche1) {
+          \begin{minipage}{5\cellw}
+            \texttt{m\_proc\_pre\_init, locenv\_init}
+          \end{minipage}};
+        \node (spbproc) at (-3.5\cellw,15\cellh) {\scriptsize\texttt{spb\_proc}};
+        \draw[->,gray,outer sep=0mm] (spbproc) to[out=-90,in=180] (branchnewlvl3postchain);
+        \draw[-,dashed](mid2|-hautgauche1) to (mid2|-basgauche);
+      \end{scope}
       \draw[->,gray,outer sep=0mm] (branchnewlvl3postchain) to[out=-120,in=0] (branchlvl2);
       % step 4
-      \begin{scope}[xshift=25\cellw,thick]
+      \begin{scope}[xshift=23\cellw,thick]
         \baseCminor
         \begin{scope}[xshift=7\cellw,yshift=-15\cellh]
           \tab{2,1,1,1,0,0,0,0,0};
+          \node (haut3) at (hautgauche-|branchlvl4) {};
           \node (branchnewlvl3prebdy) at (0,0) {};
           \draw[->,gray,outer sep=0mm] (branchnewlvl3prebdy) to[out=-120,in=0] (branchlvl2);
-          \draw[->,ultra thick,gray,outer sep=0mm,shorten >=4\cellw,shorten <=4\cellw] (branchnewlvl3postchain)
-          to[out=20,in=160] node[above]{\color{black}\scriptsize exec\_stmt (Sseq s\_parms s\_locvarinit)} (branchlvl3);
+          \begin{pgfonlayer}{background}[thick,shorten >=0mm,shorten <=0mm]
+            \draw[->,ultra thick,gray,outer sep=0mm] (haut2)
+            to[out=20,in=160] node[below=3\cellh](mid3){\color{black}\scriptsize \texttt{(Sseq s\_parms s\_locvarinit)}} (hautgauche);
+          \end{pgfonlayer}
+          \draw[-,dashed,thick](mid3|-hautgauche1) to (mid3|-basgauche);
           \node (spbproc) at (-3.5\cellw,15\cellh) {\scriptsize\texttt{spb\_proc}};
           \draw[->,gray,outer sep=0mm] (spbproc) to[out=-90,in=180] (branchnewlvl3prebdy);
         \end{scope}          
@@ -208,14 +219,36 @@
           \baseCminor
           \begin{scope}[xshift=7\cellw,yshift=-15\cellh]
             \tab{2,1,1,1,0,0,0,0,0};
+            \node (haut4) at (hautgauche-|branchlvl4) {};
             \node (branchnewlvl3postbdy) at (0,0) {};
             \draw[->,gray,outer sep=0mm] (branchnewlvl3postbdy) to[out=-120,in=0] (branchlvl2);
             \node (spbproc) at (-3.5\cellw,15\cellh) {\scriptsize\texttt{spb\_proc}};
             \draw[->,gray,outer sep=0mm] (spbproc) to[out=-90,in=180] (branchnewlvl3postbdy);
           \end{scope}
+          \begin{pgfonlayer}{background}[thick,shorten >=0mm,shorten <=0mm]
+            \draw[->,ultra thick,gray,outer sep=0mm] (haut3)
+            to[out=20,in=160] node[below=3\cellh](mid4){\color{black}\scriptsize \texttt{s\_pbdy}} (hautgauche);
+          \end{pgfonlayer}
+          \draw[-,dashed,thick](mid4|-hautgauche1) to (mid4|-basgauche);
+          % \draw[->,ultra thick,gray,outer sep=0mm,shorten >=4\cellw,shorten <=4\cellw] (branchnewlvl3prebdy)
+          % to[out=20,in=160] node[above]{\color{black}\scriptsize exec\_stmt s\_pbdy} (branchlvl3);
+          \begin{scope}[xshift=20\cellw,thick]
+            \baseCminor
+            \begin{scope}[xshift=7\cellw,yshift=-15\cellh]
+              \tab{2,1,1,1,0,0,0,0,0};
+              \node (haut5) at (hautgauche-|branchlvl4) {};
+              \node (branchnewlvl3postbdy) at (0,0) {};
+              \draw[->,gray,outer sep=0mm] (branchnewlvl3postbdy) to[out=-120,in=0] (branchlvl2);
+              \node (spbproc) at (-3.5\cellw,15\cellh) {\scriptsize\texttt{spb\_proc}};
+              \draw[->,gray,outer sep=0mm] (spbproc) to[out=-90,in=180] (branchnewlvl3postbdy);
+            \end{scope}
+            \begin{pgfonlayer}{background}[thick,shorten >=0mm,shorten <=0mm]
+              \draw[->,ultra thick,gray,outer sep=0mm] (haut4)
+              to[out=20,in=160] node[below=3\cellh](mid5){\color{black}\scriptsize \texttt{s\_copyout}} (hautgauche);
+            \end{pgfonlayer}
+            \draw[-,dashed,thick](mid5|-hautgauche1) to (mid5|-basgauche);
+          \end{scope}
         \end{scope}
-        \draw[->,ultra thick,gray,outer sep=0mm,shorten >=4\cellw,shorten <=4\cellw] (branchnewlvl3prebdy)
-        to[out=20,in=160] node[above]{\color{black}\scriptsize exec\_stmt s\_pbdy} (branchlvl3);
       \end{scope}
     \end{scope}
   \end{scope}
