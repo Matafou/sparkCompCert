@@ -154,18 +154,48 @@
     width=\pilew,minimum height=\pileh,inner sep=0mm] at (0,.5\pileh-1pt) {};
   \end{pgfonlayer}
 
-
   %\draw[-](-.5\pilew,\pileh) to (.5\pilew,\pileh){};
   %\draw[-](-.5\pilew,0) to (-.5\pilew,\pileh){};
   %\draw[-](.5\pilew,0) to (.5\pilew,\pileh){};
   %\draw[-](-.5\pilew,0) to (.5\pilew,0){};
 }
 
+\pagestyle{empty}
 \begin{document}
 
 \begin{tikzpicture}[thick,shorten >=0mm,shorten <=0mm,draw=black]
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  %%%%%% step 1 Cminor
   \baseCminor
-  % step 2
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+  % step 1 spark
+  \begin{scope}[yshift=-70\cellh]
+    \tabspark{1,1,1,0,0,0,0,0,0}; \node (branchlvl4) at (0,0) {};
+    \node[yshift=15\cellh](hautgauche1) at (hautgauche) {};
+    \draw [decorate,decoration={brace,amplitude=10pt},xshift=-4pt,yshift=0pt]
+    (-\cellw,-16\cellh) -- (-\cellw,13\cellh) node [black,midway,xshift=-1cm]
+    {\scriptsize \verb!intact_s!};
+    \begin{scope}[yshift=-15\cellh]
+      \tabspark{1,1,1,0,0,0,0,0,0}; \node (branchlvl3) at (0,0) {};
+      \begin{scope}[yshift=-15\cellh]
+        \tabspark{1,1,1,0,0,0,0,0,0}; \node (branchlvl2) at (0,0) {};
+        \draw [decorate,decoration={brace,amplitude=10pt},xshift=-4pt,yshift=0pt]
+        (-\cellw,-16\cellh) -- (-\cellw,13\cellh) node [black,midway,xshift=-1cm] 
+        {\scriptsize \verb!suffix_s!};
+        \begin{scope}[yshift=-15\cellh]
+          \tabspark{1,1,1,0,0,0,0,0,0}; \node (branchlvl1) at (0,0) {};
+          \node (sprkbas) at (sprkframe.south) {};
+          \begin{scope}[yshift=-1\cellh]
+            \pileSpark{4}
+          \end{scope}
+        \end{scope}
+      \end{scope}
+    \end{scope}
+  \end{scope}
+  \draw[-,dashed](cmframe.east|-hautgauche1) to (cmframe.east|-sprkbas);
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  %%%%%% step 2 Cminor
   \begin{scope}[xshift=4\cellw]
     \begin{scope}[xshift=6\cellw,yshift=-15\cellh]
       \tab{1,1,1,1,0,0,0,0,0};
@@ -178,12 +208,17 @@
       to[out=20,in=160] node[above](mid1){\color{black}\scriptsize \texttt{malloc~+set\_locals}} (newcentre|-hautgauche);
       \node (mlocenv_init) at (newcentre|-hautgauche1){\texttt{m,locenv\_init}};
     \end{scope}
-    % step 4
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+    %%%%%% step 2 spark
+    %% No spark state corresponds to step 2
+
+
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+    %%%%%% step 3 Cminor
     \node (m) at (cmcentre|-hautgauche1){\texttt{m,locenv}};
-    \draw[-,dashed](mid1|-hautgauche1)to(0,-45\cellh);
     \begin{scope}[xshift=13\cellw,thick]
       \baseCminor
-      \begin{scope}[xshift=8\cellw,yshift=-15\cellh]
+      \begin{scope}[xshift=7\cellw,yshift=-15\cellh]
         \tab{2,1,1,1,0,0,0,0,0};
         \node (branchnewlvl3postchain) at (0,0) {};
         \node (haut2) at (hautgauche-|branchlvl4) {};
@@ -199,83 +234,10 @@
         \draw[-,dashed](mid2|-hautgauche1) to (mid2|-basgauche);
       \end{scope}
       \draw[->,gray,outer sep=0mm] (branchnewlvl3postchain) to[out=-120,in=0] (branchlvl2);
-      % step 4
-      \begin{scope}[xshift=23\cellw,thick]
-        \baseCminor
-        \begin{scope}[xshift=7\cellw,yshift=-15\cellh]
-          \tab{2,1,1,1,0,0,0,0,0};
-          \node (haut3) at (hautgauche-|branchlvl4) {};
-          \node (branchnewlvl3prebdy) at (0,0) {};
-          \draw[->,gray,outer sep=0mm] (branchnewlvl3prebdy) to[out=-120,in=0] (branchlvl2);
-          \begin{pgfonlayer}{background}[thick,shorten >=0mm,shorten <=0mm]
-            \draw[->,ultra thick,gray,outer sep=0mm] (haut2)
-            to[out=20,in=160] node[below=3\cellh](mid3){\color{black}\scriptsize \texttt{(Sseq s\_parms s\_locvarinit)}} (hautgauche);
-          \end{pgfonlayer}
-          \draw[-,dashed,thick](mid3|-hautgauche1) to (mid3|-basgauche);
-          \node (spbproc) at (-3.5\cellw,15\cellh) {\scriptsize\texttt{spb\_proc}};
-          \draw[->,gray,outer sep=0mm] (spbproc) to[out=-90,in=180] (branchnewlvl3prebdy);
-        \end{scope}          
-        \begin{scope}[xshift=20\cellw,thick]
-          \baseCminor
-          \begin{scope}[xshift=7\cellw,yshift=-15\cellh]
-            \tab{2,1,1,1,0,0,0,0,0};
-            \node (haut4) at (hautgauche-|branchlvl4) {};
-            \node (branchnewlvl3postbdy) at (0,0) {};
-            \draw[->,gray,outer sep=0mm] (branchnewlvl3postbdy) to[out=-120,in=0] (branchlvl2);
-            \node (spbproc) at (-3.5\cellw,15\cellh) {\scriptsize\texttt{spb\_proc}};
-            \draw[->,gray,outer sep=0mm] (spbproc) to[out=-90,in=180] (branchnewlvl3postbdy);
-          \end{scope}
-          \begin{pgfonlayer}{background}[thick,shorten >=0mm,shorten <=0mm]
-            \draw[->,ultra thick,gray,outer sep=0mm] (haut3)
-            to[out=20,in=160] node[below=3\cellh](mid4){\color{black}\scriptsize \texttt{s\_pbdy}} (hautgauche);
-          \end{pgfonlayer}
-          \draw[-,dashed,thick](mid4|-hautgauche1) to (mid4|-basgauche);
-          % \draw[->,ultra thick,gray,outer sep=0mm,shorten >=4\cellw,shorten <=4\cellw] (branchnewlvl3prebdy)
-          % to[out=20,in=160] node[above]{\color{black}\scriptsize exec\_stmt s\_pbdy} (branchlvl3);
-          \begin{scope}[xshift=20\cellw,thick]
-            \baseCminor
-            \begin{scope}[xshift=7\cellw,yshift=-15\cellh]
-              \tab{2,1,1,1,0,0,0,0,0};
-              \node (haut5) at (hautgauche-|branchlvl4) {};
-              \node (branchnewlvl3postbdy) at (0,0) {};
-              \draw[->,gray,outer sep=0mm] (branchnewlvl3postbdy) to[out=-120,in=0] (branchlvl2);
-              \node (spbproc) at (-3.5\cellw,15\cellh) {\scriptsize\texttt{spb\_proc}};
-              \draw[->,gray,outer sep=0mm] (spbproc) to[out=-90,in=180] (branchnewlvl3postbdy);
-            \end{scope}
-            \begin{pgfonlayer}{background}[thick,shorten >=0mm,shorten <=0mm]
-              \draw[->,ultra thick,gray,outer sep=0mm] (haut4)
-              to[out=20,in=160] node[below=3\cellh](mid5){\color{black}\scriptsize \texttt{s\_copyout}} (hautgauche);
-            \end{pgfonlayer}
-            \draw[-,dashed,thick](mid5|-hautgauche1) to (mid5|-basgauche);
-          \end{scope}
-        \end{scope}
-      \end{scope}
-    \end{scope}
-  \end{scope}
-  %%%%%%%%%%%%%%%%%%%%% SPARK LINE: %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  % step 1
-  \begin{scope}[yshift=-20\cellw]
-    \tabspark{1,1,1,0,0,0,0,0,0}; \node (branchlvl4) at (0,0) {};
-    \draw [decorate,decoration={brace,amplitude=10pt},xshift=-4pt,yshift=0pt]
-    (-\cellw,-16\cellh) -- (-\cellw,13\cellh) node [black,midway,xshift=-1cm]
-    {\scriptsize \verb!intact_s!};
-    \begin{scope}[yshift=-15\cellh]
-      \tabspark{1,1,1,0,0,0,0,0,0}; \node (branchlvl3) at (0,0) {};
-      \begin{scope}[yshift=-15\cellh]
-        \tabspark{1,1,1,0,0,0,0,0,0}; \node (branchlvl2) at (0,0) {};
-        \draw [decorate,decoration={brace,amplitude=10pt},xshift=-4pt,yshift=0pt]
-        (-\cellw,-16\cellh) -- (-\cellw,13\cellh) node [black,midway,xshift=-1cm] 
-        {\scriptsize \verb!suffix_s!};
-        \begin{scope}[yshift=-15\cellh]
-          \tabspark{1,1,1,0,0,0,0,0,0}; \node (branchlvl1) at (0,0) {};
-          \begin{scope}[yshift=-1\cellh]
-            \pileSpark{4}
-          \end{scope}
-        \end{scope}
-      \end{scope}
-    \end{scope}
-    \begin{scope}[xshift=30\cellw]
-      \begin{scope}[yshift=-15\cellh]
+      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+      %%%%%% step 3 spark
+      %% No spark state corresponds to step 2
+      \begin{scope}[yshift=-85\cellh]
         \tabspark{1,1,1,0,0,0,0,0,0};
         \node (newframe) at (0,0) {};
         \draw [decorate,decoration={brace,amplitude=10pt},xshift=-4pt,yshift=0pt]
@@ -283,20 +245,39 @@
             {\scriptsize \verb!f!};
         \node (xxx) [above=1.5cm]% right is relative to previous node
         {\scriptsize copyIn};
-      \end{scope}
-      % step 3
-      \begin{scope}[xshift=6\cellw]
-        \begin{scope}[yshift=-15\cellh]
+        \begin{scope}[xshift=6\cellw]
           \tabspark{1,1,1,0,0,0,0,0,0};
           \node (newframe) at (0,0) {};
-        \draw [decorate,decoration={brace,amplitude=10pt},xshift=-4pt,yshift=0pt]
-        (sprkframe.south west) -- (sprkframe.north west) node [black,midway,xshift=-.5cm] 
-            {\scriptsize \verb!f1!};
+          \draw [decorate,decoration={brace,amplitude=10pt},xshift=-4pt,yshift=0pt]
+          (sprkframe.south west) -- (sprkframe.north west) node [black,midway,xshift=-.5cm] 
+          {\scriptsize \verb!f1!};
           \node (xxx) [above=1.5cm]% right is relative to previous node
           {\scriptsize evalDecl};
         \end{scope}
-        % step 4
-        \begin{scope}[xshift=10\cellw]
+      \end{scope}
+
+
+      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+      %%%%%% step 4 Cminor
+      \draw[-,dashed,thick](cmframe.east|-hautgauche1) to (cmframe.east|-basgauche);
+      \begin{scope}[xshift=15\cellw,thick]
+        \baseCminor
+        \begin{scope}[xshift=7\cellw,yshift=-15\cellh]
+          \tab{2,1,1,1,0,0,0,0,0};
+          \node (haut3) at (hautgauche-|branchlvl4) {};
+          \node (branchnewlvl3prebdy) at (0,0) {};
+          \draw[->,gray,outer sep=0mm] (branchnewlvl3prebdy) to[out=-120,in=0] (branchlvl2);
+          \begin{pgfonlayer}{background}[thick]
+            \draw[->,ultra thick,gray,outer sep=0mm] (haut2)
+            to[out=10,in=170] node[above](mid3){\color{black}\scriptsize \texttt{(Sseq s\_parms s\_locvarinit)}} (hautgauche);
+          \end{pgfonlayer}
+          \node (spbproc) at (-3.5\cellw,15\cellh) {\scriptsize\texttt{spb\_proc}};
+          \draw[->,gray,outer sep=0mm] (spbproc) to[out=-90,in=180] (branchnewlvl3prebdy);
+          \draw[-,dashed](cmframe.east|-hautgauche1) to (cmframe.east|-sprkbas);
+        \end{scope}          
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+        %%%%%% step 4 spark
+        \begin{scope}[yshift=-70\cellh]
           \begin{pgfonlayer}{background}[thick,shorten >=0mm,shorten <=0mm]
             \begin{scope}[xshift=-1.7\cellw,yshift=-2mm,thick,draw=gray]
               \tabspark{3,3,3,0,0,0,0,0,0};
@@ -309,7 +290,7 @@
           \end{pgfonlayer}
           \begin{scope}[yshift=-15\cellh,thick]
             \tabspark{1,1,1,0,0,0,0,0,0};
-            \node (branchlvl4prebdy) at (0,0) {};
+            \node (branchlvl4prebdy) at (sprkframe.north) {};
             \draw [decorate,decoration={brace,amplitude=10pt},xshift=-4pt,yshift=0pt]
             (\pilew,\pileh-\cellh) -- (\pilew,-\cellh) node [black,midway,xshift=.5cm] 
             {\scriptsize \verb!f1!};
@@ -325,51 +306,129 @@
               \end{scope}
             \end{scope}
           \end{scope}
-          \begin{scope}[xshift=8\cellw]
-            \begin{scope}[xshift=10\cellw]
-              \begin{pgfonlayer}{background}[thick,shorten >=0mm,shorten <=0mm]
-                \begin{scope}[xshift=-1.7\cellw,yshift=-2mm,thick,draw=gray]
+        \end{scope}
+
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+        %%%%%% step 5
+        \begin{scope}[xshift=15\cellw,thick]
+          \baseCminor
+          \begin{scope}[xshift=7\cellw,yshift=-15\cellh]
+            \tab{2,1,1,1,0,0,0,0,0};
+            \node (haut4) at (hautgauche-|branchlvl4) {};
+            \node (branchnewlvl3postbdy) at (0,0) {};
+            \draw[->,gray,outer sep=0mm] (branchnewlvl3postbdy) to[out=-120,in=0] (branchlvl2);
+            \node (spbproc) at (-3.5\cellw,15\cellh) {\scriptsize\texttt{spb\_proc}};
+            \draw[->,gray,outer sep=0mm] (spbproc) to[out=-90,in=180] (branchnewlvl3postbdy);
+          \end{scope}
+          \begin{pgfonlayer}{background}[thick,shorten >=0mm,shorten <=0mm]
+            \draw[->,ultra thick,gray,outer sep=0mm] (haut3)
+            to[out=10,in=170] node[above](mid4){\color{black}\scriptsize \texttt{s\_pbdy}} (hautgauche);
+          \end{pgfonlayer}
+          % \draw[->,ultra thick,gray,outer sep=0mm,shorten >=4\cellw,shorten <=4\cellw] (branchnewlvl3prebdy)
+          % to[out=20,in=160] node[above]{\color{black}\scriptsize exec\_stmt s\_pbdy} (branchlvl3);
+          \draw[-,dashed](cmframe.east|-hautgauche1) to (cmframe.east|-sprkbas);
+          \node[xshift=1ex] (mpostbdy) at (branchlvl4|-hautgauche1) {\texttt{m\_postbdy, locenv\_postbdy}};
+
+          %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+          %%%%% step 5 spark
+          \begin{scope}[yshift=-70\cellh]
+            \begin{pgfonlayer}{background}[thick,shorten >=0mm,shorten <=0mm]
+              \begin{scope}[xshift=-1.7\cellw,yshift=-2mm,thick,draw=gray]
+                \tabspark{3,3,3,0,0,0,0,0,0};
+                \node (branchlvl4) at (0,0) {};
+                \begin{scope}[yshift=-15\cellh]
                   \tabspark{3,3,3,0,0,0,0,0,0};
-                  \node (branchlvl4) at (0,0) {};
-                  \begin{scope}[yshift=-15\cellh]
-                    \tabspark{3,3,3,0,0,0,0,0,0};
-                    \node (branchlvl3postbdy) at (0,0) {};
-                  \end{scope}
+                  \node (branchlvl3postbdy) at (0,0) {};
                 \end{scope}
-              \end{pgfonlayer}
-              \begin{scope}[yshift=-15\cellh,thick]
+              \end{scope}
+            \end{pgfonlayer}
+            \begin{scope}[yshift=-15\cellh,thick]
+              \tabspark{1,1,1,0,0,0,0,0,0};
+              \node (branchlvl4postbdy) at (sprkframe.north) {};
+              \draw[decorate,decoration={brace,amplitude=10pt},xshift=-4pt,yshift=0pt]
+              (\pilew,\pileh-\cellh) -- (\pilew,-\cellh) node [black,midway,xshift=1.2cm] 
+              {
+                \begin{minipage}{1.5cm}
+                  \scriptsize \verb!f1'_l! \verb!++ f1'_p!
+                \end{minipage}
+              };
+              \draw[->,ultra thick,gray,outer sep=0mm,shorten >=3\cellw,shorten <=3\cellw] (branchlvl4prebdy.north)
+              to[out=10,in=170] node[above]{\color{black}\scriptsize \texttt{procedure\_statements}} (branchlvl4postbdy);
+              \begin{scope}[yshift=-15\cellh]
                 \tabspark{1,1,1,0,0,0,0,0,0};
-                \node (branchlvl4postbdy) at (0,0) {};
-                \draw[decorate,decoration={brace,amplitude=10pt},xshift=-4pt,yshift=0pt]
-                (\pilew,\pileh-\cellh) -- (\pilew,-\cellh) node [black,midway,xshift=1.2cm] 
-                {
-                  \begin{minipage}{1.5cm}
-                    \scriptsize \verb!f1'_l! \verb!++ f1'_p!
-                  \end{minipage}
-};
-                \draw[->,ultra thick,gray,outer sep=0mm,shorten >=3\cellw,shorten <=3\cellw] (branchlvl4prebdy.north)
-                to[out=30,in=150] node[above]{\color{black}\scriptsize exec\_stmt procedure\_statements} (branchlvl4postbdy);
+                \node (branchlvl2) at (0,0) {};
+                \draw [decorate,decoration={brace,amplitude=10pt},xshift=-4pt,yshift=0pt]
+                (-\cellw,-16\cellh) -- (-\cellw,13\cellh) node [black,midway,xshift=-1.2cm] 
+                {\scriptsize \verb!suffix_s'!};
                 \begin{scope}[yshift=-15\cellh]
                   \tabspark{1,1,1,0,0,0,0,0,0};
-                  \node (branchlvl2) at (0,0) {};
-                  \draw [decorate,decoration={brace,amplitude=10pt},xshift=-4pt,yshift=0pt]
-                  (-\cellw,-16\cellh) -- (-\cellw,13\cellh) node [black,midway,xshift=-1.2cm] 
-                  {\scriptsize \verb!suffix_s'!};
-                  \begin{scope}[yshift=-15\cellh]
-                    \tabspark{1,1,1,0,0,0,0,0,0};
-                    \node (branchlvl1) at (0,0) {};
-                    \begin{scope}[yshift=-1\cellh]
-                      \pileSpark{3}
-                    \end{scope}
+                  \node (branchlvl1) at (0,0) {};
+                  \begin{scope}[yshift=-1\cellh]
+                    \pileSpark{3}
                   \end{scope}
                 \end{scope}
               \end{scope}
             \end{scope}
-          \end{scope}
-        \end{scope}
-      \end{scope}
-    \end{scope}      
-  \end{scope}
+          \end{scope} % step 5 spark
+
+          %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+          %%%%%% step 6 Cminor
+          \begin{scope}[xshift=15\cellw,thick]
+            \baseCminor
+            \begin{scope}[xshift=7\cellw,yshift=-15\cellh]
+              \tab{2,1,1,1,0,0,0,0,0};
+              \node (haut5) at (hautgauche-|branchlvl4) {};
+              \node (branchnewlvl3postbdy) at (0,0) {};
+              \draw[->,gray,outer sep=0mm] (branchnewlvl3postbdy) to[out=-120,in=0] (branchlvl2);
+              \node (spbproc) at (-3.5\cellw,15\cellh) {\scriptsize\texttt{spb\_proc}};
+              \draw[->,gray,outer sep=0mm] (spbproc) to[out=-90,in=180] (branchnewlvl3postbdy);
+            \end{scope}
+            \begin{pgfonlayer}{background}[thick,shorten >=0mm,shorten <=0mm]
+              \draw[->,ultra thick,gray,outer sep=0mm] (haut4)
+              to[out=10,in=170] node[above](mid5){\color{black}\scriptsize \texttt{s\_copyout}} (hautgauche);
+            \end{pgfonlayer}
+            \node (mpostcpout) at (branchlvl2|-hautgauche1) {\texttt{m\_postcpout, locenv\_postcpout}};
+
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+            %%%%%% step 6 spark
+            \begin{scope}[yshift=-70\cellh]
+              \tabspark{1,1,1,0,0,0,0,0,0};
+              \node (branchlvl4) at (0,0) {};
+              \node (branchlvl4postcpout) at (sprkframe.west|-branchlvl4) {};
+              \node[yshift=15\cellh](hautgauche1) at (hautgauche) {};
+              %\draw[decorate,decoration={brace,amplitude=10pt},xshift=-4pt,yshift=0pt]
+              %(-\cellw,-16\cellh) -- (-\cellw,13\cellh) node [black,midway,xshift=-1cm]
+              %{\scriptsize \verb!intact_s!};
+              \begin{scope}[yshift=-15\cellh]
+                \tabspark{1,1,1,0,0,0,0,0,0}; \node (branchlvl3) at (0,0) {};
+                \begin{scope}[yshift=-15\cellh]
+                  \tabspark{1,1,1,0,0,0,0,0,0}; \node (branchlvl2) at (0,0) {};
+                  \draw [decorate,decoration={brace,amplitude=10pt},xshift=-4pt,yshift=0pt]
+                  (-\cellw,-16\cellh) -- (-\cellw,44\cellh) node [black,midway,xshift=-1cm] 
+                  {\scriptsize \verb!s'!};
+                  \begin{scope}[yshift=-15\cellh]
+                    \tabspark{1,1,1,0,0,0,0,0,0}; \node (branchlvl1) at (0,0) {};
+                    \node (sprkbas) at (sprkframe.south) {};
+                    \begin{scope}[yshift=-1\cellh]
+                      \pileSpark{4}
+                    \end{scope}
+                  \end{scope}
+                \end{scope}
+              \end{scope}
+            \end{scope} % step 6 spark
+            \draw[->,ultra thick,gray,outer sep=0mm,shorten >=\cellw,shorten <=\cellw] (branchlvl4postbdy.north)
+            to[out=10,in=170] node[above]
+            {\begin{minipage}{10\cellw}
+                \color{black}\scriptsize \texttt{copy\_out (intact\_s
+                  ++ suffix\_s') f1'\_p proc\_params\_prof args}
+              \end{minipage}}
+            (branchlvl4postcpout);
+          \end{scope}  % step 6 cminor
+        \end{scope} % step 5 cminor
+      \end{scope} % step 4 cminor
+    \end{scope} % step 3 cminor
+  \end{scope}% step 2 cminor
 
 \end{tikzpicture}
 

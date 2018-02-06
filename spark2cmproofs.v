@@ -8718,6 +8718,42 @@ Proof.
         apply neg_h_free_blck_m_spb_proc_i.
         red.
         eapply fresh_block_alloc_perm;eauto. }
+    
+    enough (h_ex:exists locenv_postinit m_postinit trace_postinit,
+               exec_stmt g the_proc (Values.Vptr spb_proc Ptrofs.zero) locenv_init m_proc_pre_init
+                         (Sseq (Sstore AST.Mint32 (Econst (Oaddrstack Ptrofs.zero)) (Evar chaining_param))
+                               (Sseq s_parms (Sseq s_locvarinit Sskip)))
+                         trace_postinit locenv_postinit m_postinit Out_normal
+               ∧ match_env st (f1 :: suffix_s) ((pb_lvl, sto) :: CE_sufx) (Values.Vptr spb_proc Ptrofs.zero) locenv_postinit g m_postinit
+               ∧ chained_stack_structure m_postinit (Datatypes.length ((pb_lvl, sto) :: CE_sufx)) (Values.Vptr spb_proc Ptrofs.zero)
+               ∧ (∀ astnum : astnum, 
+                     unchange_forbidden st CE g astnum locenv locenv_postinit stkptr m_proc_pre_init m_postinit
+                     ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m_proc_pre_init m_postinit)).
+    { decomp h_ex.
+      specialize IHh_eval_stmt with (1:=eq_refl) (2:=h_chain_m_postinit) (3:=h_match_env0) (f:=the_proc).
+      destruct IHh_eval_stmt as [tr_postbdy [locenv_postbdy [m_postbdy IHh_eval_stmt]]].
+      decomp IHh_eval_stmt.
+      exists locenv_postbdy, m_postbdy.
+      eexists.
+      split.
+      - unfold the_proc at 2.
+        simpl.
+        apply exec_stmt_assoc.
+        econstructor;eauto.
+        + econstructor;eauto.
+          (* TODO copyout *) admit.
+      - assert (h_ex:∃ m_postfree : mem, 
+                   Mem.free m_postbdy spb_proc 0 sto_sz = Some m_postfree).
+        { admit. (* TODO, needs maybe a bit more that stack_freeable because chaining param is not a variable *)
+        }
+        decomp h_ex. 
+        exists m_postfree;split;auto.
+        XXXX.
+
+admit. (* TODO: property of the initial part of a procedure. + subtle stuff about unchanged on caller's view *) }
+
+    decomp h_ex.
+    specialize IHh_eval_stmt with (1:=eq_refl) (2:=h_chain_m_postinit) (3:=h_match_env0) (f:=the_proc).
 
 
     (* Is invariant true at this point? *)
