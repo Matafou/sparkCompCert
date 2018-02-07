@@ -4650,7 +4650,101 @@ Ltac rename_hyp_forbid_unch h th :=
   end.
 Ltac rename_sparkprf ::= rename_hyp_forbid_unch.
 
-(* The forbidden *addresses* remain the same when storing values of
+Lemma store_preserves_structure :
+  forall stbl astnum locenv id CE m lvl stkptr g nme_t nme_chk nme_ofst nme_block nme_t_v e_t_v m',
+    CompilEnv.exact_levelG CE ->
+    stack_no_null_offset CE ->
+    all_addr_no_overflow CE ->
+    chained_stack_structure m lvl stkptr ->
+    stack_localstack_aligned (Datatypes.length CE) locenv g m stkptr ->
+    transl_variable stbl CE astnum id =: nme_t ->
+    eval_expr g stkptr locenv m nme_t nme_t_v ->
+    nme_t_v = Values.Vptr nme_block nme_ofst -> 
+    Mem.store nme_chk m nme_block (Ptrofs.unsigned nme_ofst) e_t_v = Some m' -> 
+    unchange_forbidden stbl CE g astnum locenv locenv stkptr m m'.
+Proof.
+  !intros.
+  red.
+  !intros.
+  split;!intros.
+  + unfold forbidden.
+    !destruct h_forbid_m_m_sp_id_ofs_id.
+    split.
+    * red;!intros.
+      red in h_invis_stkptr__m_sp_id_ofs_id.
+      specialize h_invis_stkptr__m_sp_id_ofs_id with (1:=heq_transl_variable0) (2:=heq_compute_chnk_id).
+xxxx
+
+      specialize (h_invis_stkptr__m_sp_id_ofs_id
+                    id id_t id_chk spb_id ofs_id0 heq_transl_variable heq_compute_chnk_id).
+      set (val_id_t:=(Values.Vptr spb_id ofs_id0)) in *;up_type.
+      !assert (Cminor.eval_expr g sp e_mid m id_t val_id_t).
+      { unfold Mem.storev in heq_storev_v_m_mid.
+        destruct x1_v; try discriminate.
+        eapply eval_expr_transl_variable_inv_locenv with (locenv:=e_chain');eauto.
+        eapply wf_chain_load_var'.
+        - eassumption.
+        - cbn. eapply heq_storev_v_m_mid.
+        - assumption.
+        - eapply eval_build_loads_offset_non_null_var.
+          + eassumption.
+          + eassumption.
+          + eassumption.
+          + exact h_aligned_g_m. (*xxx instantiate correctly. shelve.*)
+          + cbn in heq_transl_name.
+            eapply heq_transl_name.
+          + eassumption.
+        - eassumption.
+        - eapply eval_expr_transl_variable_inv_locenv ; eauto. }
+      specialize (h_invis_sp__m_sp_id_ofs_id h_CM_eval_expr_id_t_val_id_t).
+      assumption.
+    * unfold is_free_block in *.
+      intro abs.
+      apply neg_h_free_blck_m_sp_id_ofs_id.
+      intros perm. 
+      intro abs2.
+      unfold Mem.storev in heq_storev_v_m_mid.
+      destruct x1_v; try discriminate.
+      eapply Mem.perm_store_1 in abs2;eauto.
+      eapply abs;eassumption.
+  + unfold forbidden.
+    !destruct h_forbid_m_mid_m_mid_sp_id_ofs_id.
+    split.
+    * red;!intros.
+      red in h_invis_sp__m_mid_sp_id_ofs_id.
+      specialize (h_invis_sp__m_mid_sp_id_ofs_id
+                    id id_t id_chk spb_id ofs_id0 heq_transl_variable heq_compute_chnk_id).
+      set (val_id_t:=(Values.Vptr spb_id ofs_id0)) in *;up_type.
+      !assert (Cminor.eval_expr g sp e_mid m_mid id_t val_id_t).
+      { unfold Mem.storev in heq_storev_v_m_mid.
+        destruct x1_v; try discriminate.
+        eapply eval_expr_transl_variable_inv_locenv with (locenv:=e_mid);eauto.
+        eapply wf_chain_load_var.
+        5:eauto.
+        2:eauto.
+        all:eauto.
+        eapply eval_build_loads_offset_non_null_var.
+        + eassumption.
+        + eassumption.
+        + eassumption.
+        + exact h_aligned_g_m. (*xxx instantiate correctly. shelve.*)
+        + cbn in heq_transl_name.
+          eapply heq_transl_name.
+        + eassumption. }
+      specialize (h_invis_sp__m_mid_sp_id_ofs_id h_CM_eval_expr_id_t_val_id_t).
+      assumption.
+    * unfold is_free_block in *.
+      intro abs.
+      apply neg_h_free_blck_m_mid_sp_id_ofs_id.
+      intros perm. 
+      intro abs2.
+      unfold Mem.storev in heq_storev_v_m_mid.
+      destruct x1_v; try discriminate.
+      eapply Mem.perm_store_2 in abs2;eauto.
+      eapply abs;eassumption.
+Admitted.  
+*)
+  (* The forbidden *addresses* remain the same when storing values of
    parameters in the local stack. + chained_structure preserved.  *)
 Lemma exec_store_params_preserve_forbidden_subproof:
   forall lparams st CE initparams,
@@ -4679,7 +4773,7 @@ Proof.
        want to make the induction by hand. *)
   - specialize (IHr _ h_exct_lvlG_CE h_nonul_ofs_CE h_bound_addr_CE heq_store_params).
     !invclear h_exec_stmt_initparams_Out_normal; eq_same_clear.
-    specialize (fun h_chain h_align => IHr astnum _ _ _ _ _ _ _ _ _ heq_length h_chain h_align h_exec_stmt_x0_Out_normal).
+    specialize IHr with (astnum:=astnum)(1:=heq_length)(4:=h_exec_stmt_x0_Out_normal).
     rename m1 into m_mid.
     rename e1 into e_mid.
     !invclear h_exec_stmt.
@@ -8279,19 +8373,23 @@ Proof.
          specialize h_bound_addr_CE with (1:=H0).
          apply Z.mod_small.
          assumption.
-    * admit.
-    * { destruct nme_t_v;try discriminate. 
-        up_type.
-        eapply Mem.store_unchanged_on;eauto.
-        !intros.
-        intros [abs1 abs2].
-        red in abs1.
-        !functional inversion heq_transl_name;subst.
-        simpl in heq_compute_chnk_nme.
-        rewrite <- transl_variable_astnum with (a:=astnum0) (1:=heq_transl_variable) in heq_transl_variable.
-        specialize (abs1 id _ nme_chk b i heq_transl_variable heq_compute_chnk_nme h_CM_eval_expr_nme_t_nme_t_v). 
-        inversion heq_nme_t_v;subst.
-        decomp abs1;auto;try omega. }
+    * xxxx      .
+      Proof.
+        #
+      Qed.      
+      admit.
+    * destruct nme_t_v;try discriminate. 
+      up_type.
+      eapply Mem.store_unchanged_on;eauto.
+      !intros.
+      intros [abs1 abs2].
+      red in abs1.
+      !functional inversion heq_transl_name;subst.
+      simpl in heq_compute_chnk_nme.
+      rewrite <- transl_variable_astnum with (a:=astnum0) (1:=heq_transl_variable) in heq_transl_variable.
+      specialize (abs1 id _ nme_chk b i heq_transl_variable heq_compute_chnk_nme h_CM_eval_expr_nme_t_nme_t_v). 
+      inversion heq_nme_t_v;subst.
+      decomp abs1;auto;try omega.
   (* Assignment with satisifed range constraint (Range l u) *)
   - rename x into nme.
     rename st into stbl.
@@ -8609,6 +8707,7 @@ Proof.
      *)
 
     eq_same_clear. up_type.
+    set (stkptr_proc:=(Values.Vptr spb_proc Ptrofs.zero)) in *.
     (* expliciting the funcall and that m' = m_postfree. *)
     enough (h_ex:exists m_postfree trace_postfree v,
                eval_funcall g m (AST.Internal the_proc) (chaining_expr_from_caller_v :: args_t_v) trace_postfree m_postfree v
@@ -8650,7 +8749,7 @@ Proof.
        prior to free. Proving this needs to show that freeing
        something that was also free in m does not change forbiddent. *)
     enough (h_ex:exists locenv_postcpout m_postcpout trace_postcpout,
-               exec_stmt g the_proc (Values.Vptr spb_proc Ptrofs.zero) locenv_init m_proc_pre_init
+               exec_stmt g the_proc stkptr_proc locenv_init m_proc_pre_init
                          (fn_body the_proc) trace_postcpout locenv_postcpout m_postcpout Out_normal
                ∧ exists m_postfree, Mem.free m_postcpout spb_proc 0 sto_sz = Some m_postfree
                ∧ match_env st s'  CE stkptr locenv g m_postfree
@@ -8679,7 +8778,7 @@ Proof.
        needs to show that freeing something that was also free in m
        does not change forbidden. *)
     enough (h_ex:exists locenv_postcpout m_postcpout trace_postcpout,
-               exec_stmt g the_proc (Values.Vptr spb_proc Ptrofs.zero) locenv_init m_proc_pre_init
+               exec_stmt g the_proc stkptr_proc locenv_init m_proc_pre_init
                          (fn_body the_proc) trace_postcpout locenv_postcpout m_postcpout Out_normal
                ∧ exists m_postfree, Mem.free m_postcpout spb_proc 0 sto_sz = Some m_postfree
                ∧ match_env st s'  CE stkptr locenv g m_postfree
@@ -8720,12 +8819,12 @@ Proof.
         eapply fresh_block_alloc_perm;eauto. }
     
     enough (h_ex:exists locenv_postinit m_postinit trace_postinit,
-               exec_stmt g the_proc (Values.Vptr spb_proc Ptrofs.zero) locenv_init m_proc_pre_init
+               exec_stmt g the_proc stkptr_proc locenv_init m_proc_pre_init
                          (Sseq (Sstore AST.Mint32 (Econst (Oaddrstack Ptrofs.zero)) (Evar chaining_param))
                                (Sseq s_parms (Sseq s_locvarinit Sskip)))
                          trace_postinit locenv_postinit m_postinit Out_normal
-               ∧ match_env st (f1 :: suffix_s) ((pb_lvl, sto) :: CE_sufx) (Values.Vptr spb_proc Ptrofs.zero) locenv_postinit g m_postinit
-               ∧ chained_stack_structure m_postinit (Datatypes.length ((pb_lvl, sto) :: CE_sufx)) (Values.Vptr spb_proc Ptrofs.zero)
+               ∧ match_env st (f1 :: suffix_s) ((pb_lvl, sto) :: CE_sufx) stkptr_proc locenv_postinit g m_postinit
+               ∧ chained_stack_structure m_postinit (Datatypes.length ((pb_lvl, sto) :: CE_sufx)) stkptr_proc
                ∧ (∀ astnum : astnum, 
                      unchange_forbidden st CE g astnum locenv locenv_postinit stkptr m_proc_pre_init m_postinit
                      ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m_proc_pre_init m_postinit)).
@@ -8748,10 +8847,55 @@ Proof.
         }
         decomp h_ex. 
         exists m_postfree;split;auto.
-        XXXX.
+        admit. (* TODO *)
+    }
 
-admit. (* TODO: property of the initial part of a procedure. + subtle stuff about unchanged on caller's view *) }
+    
 
+
+
+    admit. (* TODO: property of the initial part of a procedure. + subtle stuff about unchanged on caller's view *) 
+
+  -   (* Sequence *)
+    simpl in *.
+    specialize IHh_eval_stmt1 with (1:=eq_refl) (2:=h_wf_st_st) (3:=h_inv_comp_CE_st) (4:=heq_transl_stmt0)
+    (5:=eq_refl) (6:=h_chain_m_lvl_stkptr) (7:=h_match_env) (f:=f).
+    decomp IHh_eval_stmt1.
+    match goal with
+    | H:forall _, _ ∧ _ |- _ => let nme := fresh "h_unchange" in rename H into nme
+    end.
+    specialize IHh_eval_stmt2 with (m:=m') (1:=eq_refl)(2:=h_wf_st_st)(3:=h_inv_comp_CE_st) (4:=heq_transl_stmt)
+                                   (5:=eq_refl) (6:=h_chain_m') (7:=h_match_env0)(f:=f).
+
+    decomp IHh_eval_stmt2.
+    match goal with
+    | H:forall _, _ ∧ _ |- _ => let nme := fresh "h_unchange" in rename H into nme
+    end.
+    eexists.
+    exists locenv'0.
+    exists m'0.
+    split;[|split;[|split]].
+    + econstructor;eauto.
+    + assumption.
+    + assumption.
+    + !intros.
+      specialize h_unchange with (astnum:=astnum).
+      specialize h_unchange0 with (astnum:=astnum).
+      decomp h_unchange.
+      decomp h_unchange0.
+      split.
+      * eapply unchange_forbidden_trans ;eauto.
+      * eapply Mem.unchanged_on_trans with m';auto.
+        red in h_unch_forbid_m_m', h_unch_forbid_m'_m'0.
+        eapply (unchanged_on_iff );eauto.
+        -- do 2 red.
+           intros; subst.
+           eapply h_unch_forbid_m_m'.
+(* lots of shelved.  *)
+Admitted.
+
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+old stuff
     decomp h_ex.
     specialize IHh_eval_stmt with (1:=eq_refl) (2:=h_chain_m_postinit) (3:=h_match_env0) (f:=the_proc).
 
@@ -8765,7 +8909,7 @@ admit. (* TODO: property of the initial part of a procedure. + subtle stuff abou
 
     (* Same as above but arriving just before the free performed at the end of funcall *)
     enough (h_ex:exists locenv_postcpout m_postcpout trace_postcpout,
-               exec_stmt g the_proc (Values.Vptr spb_proc Ptrofs.zero) locenv_init m_proc_pre_init
+               exec_stmt g the_proc stkptr_proc locenv_init m_proc_pre_init
                          (fn_body the_proc) trace_postcpout locenv_postcpout m_postcpout Out_normal
                /\ match_env st s' CE stkptr locenv g m_postcpout
                ∧ chained_stack_structure m_postcpout (Datatypes.length CE) stkptr
@@ -8788,7 +8932,7 @@ admit. (* TODO: property of the initial part of a procedure. + subtle stuff abou
     }
 
     enough (h_ex:exists locenv_postbdy m_postbdy trace_postbdy,
-               exec_stmt g the_proc (Values.Vptr spb_proc Ptrofs.zero) locenv_init m_proc_pre_init
+               exec_stmt g the_proc stkptr_proc locenv_init m_proc_pre_init
                          (Sseq (Sseq (Sstore AST.Mint32 (Econst (Oaddrstack Ptrofs.zero)) (Evar chaining_param))
                                      (Sseq s_parms (Sseq s_locvarinit Sskip))) s_pbdy)
                          trace_postbdy locenv_postbdy m_postbdy Out_normal
