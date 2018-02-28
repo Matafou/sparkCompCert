@@ -4672,78 +4672,63 @@ Proof.
     split.
     * red;!intros.
       red in h_invis_stkptr__m_sp_id_ofs_id.
-      specialize h_invis_stkptr__m_sp_id_ofs_id with (1:=heq_transl_variable0) (2:=heq_compute_chnk_id).
-xxxx
-
-      specialize (h_invis_stkptr__m_sp_id_ofs_id
-                    id id_t id_chk spb_id ofs_id0 heq_transl_variable heq_compute_chnk_id).
-      set (val_id_t:=(Values.Vptr spb_id ofs_id0)) in *;up_type.
-      !assert (Cminor.eval_expr g sp e_mid m id_t val_id_t).
-      { unfold Mem.storev in heq_storev_v_m_mid.
-        destruct x1_v; try discriminate.
-        eapply eval_expr_transl_variable_inv_locenv with (locenv:=e_chain');eauto.
-        eapply wf_chain_load_var'.
-        - eassumption.
-        - cbn. eapply heq_storev_v_m_mid.
-        - assumption.
-        - eapply eval_build_loads_offset_non_null_var.
-          + eassumption.
-          + eassumption.
-          + eassumption.
-          + exact h_aligned_g_m. (*xxx instantiate correctly. shelve.*)
-          + cbn in heq_transl_name.
-            eapply heq_transl_name.
-          + eassumption.
-        - eassumption.
-        - eapply eval_expr_transl_variable_inv_locenv ; eauto. }
-      specialize (h_invis_sp__m_sp_id_ofs_id h_CM_eval_expr_id_t_val_id_t).
-      assumption.
+      eapply h_invis_stkptr__m_sp_id_ofs_id;eauto.      
+      eapply wf_chain_load_var';eauto.
+      subst.
+      functional inversion heq_transl_variable.
+      !assert (4 <= n).
+      { eapply h_nonul_ofs_CE;eauto. }
+      !assert (n < Ptrofs.modulus).
+      { eapply h_bound_addr_CE;eauto. }
+      subst.
+      specialize eval_build_loads_offset
+        with (2:=h_aligned_g_m) (4:=h_CM_eval_expr_nme_t_nme_t_v) as h.
+      rewrite h.
+      -- rewrite Ptrofs.unsigned_repr;auto.
+         unfold Ptrofs.max_unsigned.
+         omega.
+      -- apply Zmod_small ;omega.
+      -- rewrite (exact_lvlG_lgth CE m'0);auto;omega.
     * unfold is_free_block in *.
       intro abs.
       apply neg_h_free_blck_m_sp_id_ofs_id.
       intros perm. 
       intro abs2.
-      unfold Mem.storev in heq_storev_v_m_mid.
-      destruct x1_v; try discriminate.
       eapply Mem.perm_store_1 in abs2;eauto.
       eapply abs;eassumption.
   + unfold forbidden.
-    !destruct h_forbid_m_mid_m_mid_sp_id_ofs_id.
+    !destruct h_forbid_m'_m'_sp_id_ofs_id.
     split.
     * red;!intros.
-      red in h_invis_sp__m_mid_sp_id_ofs_id.
-      specialize (h_invis_sp__m_mid_sp_id_ofs_id
-                    id id_t id_chk spb_id ofs_id0 heq_transl_variable heq_compute_chnk_id).
-      set (val_id_t:=(Values.Vptr spb_id ofs_id0)) in *;up_type.
-      !assert (Cminor.eval_expr g sp e_mid m_mid id_t val_id_t).
-      { unfold Mem.storev in heq_storev_v_m_mid.
-        destruct x1_v; try discriminate.
-        eapply eval_expr_transl_variable_inv_locenv with (locenv:=e_mid);eauto.
-        eapply wf_chain_load_var.
-        5:eauto.
-        2:eauto.
-        all:eauto.
-        eapply eval_build_loads_offset_non_null_var.
-        + eassumption.
-        + eassumption.
-        + eassumption.
-        + exact h_aligned_g_m. (*xxx instantiate correctly. shelve.*)
-        + cbn in heq_transl_name.
-          eapply heq_transl_name.
-        + eassumption. }
-      specialize (h_invis_sp__m_mid_sp_id_ofs_id h_CM_eval_expr_id_t_val_id_t).
-      assumption.
+      red in h_invis_stkptr__m'_sp_id_ofs_id.
+      eapply h_invis_stkptr__m'_sp_id_ofs_id;eauto.
+      !assert (4 <= Ptrofs.unsigned nme_ofst).
+      { subst.
+        functional inversion heq_transl_variable.
+        !assert (4 <= n).
+        { eapply h_nonul_ofs_CE;eauto. }
+        !assert (n < Ptrofs.modulus).
+        { eapply h_bound_addr_CE;eauto. }
+        subst.
+        specialize eval_build_loads_offset
+          with (2:=h_aligned_g_m) (4:=h_CM_eval_expr_nme_t_nme_t_v) as h.
+        rewrite h.
+        -- rewrite Ptrofs.unsigned_repr;auto.
+           unfold Ptrofs.max_unsigned.
+           omega.
+        -- apply Zmod_small ;omega.
+        -- rewrite (exact_lvlG_lgth CE m'0);auto;omega. }
+      eapply wf_chain_load_var;eauto.
+      eapply wf_chain_load_aligned;eauto.
     * unfold is_free_block in *.
       intro abs.
-      apply neg_h_free_blck_m_mid_sp_id_ofs_id.
+      apply neg_h_free_blck_m'_sp_id_ofs_id.
       intros perm. 
       intro abs2.
-      unfold Mem.storev in heq_storev_v_m_mid.
-      destruct x1_v; try discriminate.
       eapply Mem.perm_store_2 in abs2;eauto.
       eapply abs;eassumption.
-Admitted.  
-*)
+Qed.
+
   (* The forbidden *addresses* remain the same when storing values of
    parameters in the local stack. + chained_structure preserved.  *)
 Lemma exec_store_params_preserve_forbidden_subproof:
@@ -8373,11 +8358,8 @@ Proof.
          specialize h_bound_addr_CE with (1:=H0).
          apply Z.mod_small.
          assumption.
-    * xxxx      .
-      Proof.
-        #
-      Qed.      
-      admit.
+    * eapply store_preserves_structure;eauto.
+      erewrite transl_variable_astnum;eauto.
     * destruct nme_t_v;try discriminate. 
       up_type.
       eapply Mem.store_unchanged_on;eauto.
@@ -8451,7 +8433,8 @@ Proof.
         !invclear heq_Int.
         eapply eval_expr_overf;eauto.
       * subst;eapply assignment_preserve_chained_stack_structure;eauto.
-      * admit. (* TODO *)
+      * eapply store_preserves_structure;eauto.
+        erewrite transl_variable_astnum;eauto.
       * up_type.
         eapply Mem.store_unchanged_on;eauto.
         !intros.
@@ -8505,7 +8488,7 @@ Proof.
       * assumption.
       * assumption.
       * assumption.
-      * admit.
+      * apply H3.
       * apply H3.
   (* If statement --> false *)
   - rename x0 into b_then.
@@ -8546,7 +8529,7 @@ Proof.
       * assumption.
       * assumption.
       * assumption.
-      * admit.
+      * apply H3.
       * apply H3.
   (* Procedure call *)
   - (* rename x1 into chaining_expr. *)
