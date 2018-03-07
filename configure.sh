@@ -93,7 +93,7 @@ ls -1 *.v >> _CoqProject
 # find $resourcedir/sparktests -name "*svn*" -prune -o -name "language_template\.v" -prune -o \( -name "*\.v" -print \) >>  ./_CoqProject
 
 # Generate the Makefile from _CoqProject + add a coqtags target
-coq_makefile -no-install -f _CoqProject -o Makefile 
+coq_makefile -install none -f _CoqProject -o Makefile 
 # clean would clean Compcert, let us rename the target
 # no more compcert target now:
 # sed --posix -e "s/clean:/superclean:/" ./Makefile | sponge ./Makefile
