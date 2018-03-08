@@ -7625,6 +7625,7 @@ Lemma transl_procsig_match_env_succeeds:
     Globalenvs.Genv.find_funct g proc_addr = Some (AST.Internal f0) -> 
     ∃ CE_prfx CE_sufx pbdy X lotherproc,
       CompilEnv.cut_until CE proc_lvl CE_prfx CE_sufx /\
+      fetch_proc pnum st = Some (proc_lvl,pbdy) /\
       transl_procedure st CE_sufx proc_lvl pbdy (* prov_lvl+1? *)
       = Errors.OK ((X, AST.Gfun (AST.Internal f0))::lotherproc) /\
       ∀ i : AST.ident,
@@ -7648,8 +7649,9 @@ Proof.
 simpl in heq_transl_procsig_pnum.
 !invclear heq_transl_procsig_pnum.
 exists p, pnum0, lglobdef.
-split;[ | split].
+split;[ | split;[ | split]].
 + assumption.
++ reflexivity.
 + subst_det_addrstack_zero.
   rewrite heq_find_func_proc_addr in heq_find_func_paddr_fction.
   !invclear heq_find_func_paddr_fction.
@@ -7725,7 +7727,7 @@ Proof.
     + (* internal function *)
       !!specialize transl_procsig_match_env_succeeds with (1:=h_wf_st_st) (2:=h_match_env) (3:=heq_transl_procsig_pnum) (4:=h_CM_eval_expr_a_a_v) (5:=heq_find_func_a_v_fd) as ?.
       decomp h_ex;up_type.
-      rename H2 into h_pbdy_chainarg_noclash.
+      rename H3 into h_pbdy_chainarg_noclash.
       rewrite transl_procedure_ok in heq_transl_proc_pbdy.
       !functional inversion heq_transl_proc_pbdy;up_type.
       rewrite <- transl_procedure_ok in *.
@@ -8722,6 +8724,141 @@ Proof.
       - assumption.
       - assumption. }
 
+    !assert (exists locenv_postchainarg m_postchainarg trace_postchainarg,
+                exec_stmt g the_proc stkptr_proc locenv_init m_proc_pre_init
+                         (Sstore AST.Mint32 (Econst (Oaddrstack Ptrofs.zero)) (Evar chaining_param))
+                          trace_postchainarg locenv_postchainarg m_postchainarg Out_normal
+                ∧ chained_stack_structure m_postchainarg (Datatypes.length CE) stkptr).
+    { exists locenv_init.
+      subst.
+      !!destruct (Mem.valid_access_store m_proc_pre_init AST.Mint32 spb_proc 0 chaining_expr_from_caller_v)
+        as [m_postchainarg ?].
+      { admit. }
+      exists m_postchainarg.
+      eexists.
+      split.
+      - econstructor.
+        + econstructor.
+          reflexivity.
+        + econstructor.
+          lazy beta delta[the_proc fn_vars fn_params set_params] iota.
+          fold set_params.
+          rewrite map_get_set_locals_diff.
+          * apply Maps.PTree.gss.
+          * (*  no variable collides with the chainging param. *)
+            intro abs.
+            specialize transl_procsig_match_env_succeeds
+              with (pnum:=p) (proc_lvl:=lvl_p) (1:=h_wf_st_st) (2:=h_match_env)
+                   (5:=heq_find_func_paddr_fction)
+              as h.
+            !assert (p_sign=funsig (AST.Internal the_proc)).
+            { simpl.
+              !assert (Errors.OK p_sign = Errors.OK p_sig).
+              { rewrite <- heq_transl_lprm_spec_procedure_parameter_profile_p_sig.
+
+                (* Definition xxx := Eval cbv beta delta [bind transl_procsig] in transl_procsig. *)
+                Function transl_procsig' (stbl : symboltable) (pnum : procnum) :=
+                  match fetch_proc pnum stbl with
+                  | Some (lvl, pdecl) =>
+                    match transl_lparameter_specification_to_procsig stbl lvl (procedure_parameter_profile pdecl) with
+                    | Errors.OK x => Errors.OK (x, lvl)
+                    | Error msg => Error msg
+                    end
+                  | None => Error (msg "Unkonwn procedure")
+                  end.
+
+
+                Lemma transl_procsig_ok: forall stbl pnum, transl_procsig' stbl pnum = transl_procsig stbl pnum.
+                Proof.
+                  reflexivity.
+                Qed.
+
+                rewrite <- transl_procsig_ok in heq_transl_procsig_p.
+                !functional inversion heq_transl_procsig_p.
+                rewrite transl_procsig_ok in *.
+                subst.
+                rewrite <- heq_transl_lprm_spec.
+                rewrite heq_fetch_proc in h_fetch_proc_p.
+                inversion h_fetch_proc_p.
+                reflexivity. }
+              inversion heq_OK.
+              reflexivity. }
+            subst.
+            specialize h with (1:=heq_transl_procsig_p) (2:=h_CM_eval_expr_paddr).
+            decomp h.
+            eelim (H3 chaining_param);eauto.
+            rewrite <- transl_procsig_ok in heq_transl_procsig_p.
+            !functional inversion heq_transl_procsig_p.
+            rewrite transl_procsig_ok in *.
+            subst.
+            rewrite heq_fetch_proc in h_fetch_proc_p.
+            inversion h_fetch_proc_p.
+            subst.
+            simpl.
+            assumption.
+        + simpl.
+          rewrite Ptrofs.add_zero_l.
+          rewrite Ptrofs.unsigned_zero.
+          assumption.
+      - destruct CE.
+        + constructor.
+        + eapply assignment_preserve_chained_stack_structure;eauto.
+          simpl;auto.
+          * admit.
+          * specialize (me_stack_no_null_offset(me_safe_cm_env h_match_env)) as h.
+            eapply build_compilenv_stack_no_null_offset with (CE:=CE_sufx);eauto.
+            -- eapply exact_lvlG_cut_until;eauto.
+               admit.
+            -- eapply no_overflow_NoDup_G_cut with (CE:= f0 :: CE);eauto.
+               
+               admit.
+            -- eapply no_null_offset_NoDup_G_cut.
+            eapply no_null_offset_NoDup_G_cons;eauto.
+            all:swap 1 2.
+            red.
+            
+            apply h_inv_CE''_bld.
+            
+          econstructor;eauto.
+          
+
+
+          Focus 2.
+          eapply e.
+          eassumption.
+          unfold Mem.store.
+
+
+            subst.
+
+            apply H2 with (1:=abs).
+              admit. (* only internal functions *) }
+            decomp h_ex.
+            subst p_sign.
+            specialize h with (1:=heq_transl_procsig_p).
+            eapply transl_procsig_match_env_succeeds in abs ;eauto.
+          assert ().
+          cbn.
+          reflexivity.
+      
+
+
+    assert (∀ astnum addr ofs, (forbidden st CE g astnum locenv stkptr m m addr ofs)
+            -> (forbidden st CE g astnum locenv stkptr m_postchainarg m_postchainarg addr ofs)).
+    { 
+
+    (* Once chain_arg is set, forbidden mpostchain is included in forbidden m *)
+    assert (∃ (m_postchainarg : mem) (trace_postchainarg : Events.trace),
+               exec_stmt g the_proc stkptr_proc locenv_init m
+                         (Sstore AST.Mint32 (Econst (Oaddrstack Ptrofs.zero)) (Evar chaining_param))
+                          trace_postchainarg locenv_init m_postchainarg Out_normal ∧
+               ∀ astnum : astnum,
+                 unchange_forbidden st CE g astnum locenv locenv stkptr m m_postchainarg
+                 ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postchainarg).
+    {
+
+
+
     (* set_locals initiates local varaibles to undefined and arguments
        to there dynamic values. But until args are copied to local
        stack it is not sync with spark. declarative parts is
@@ -8756,7 +8893,7 @@ Proof.
       - assumption.
       - assumption. }
 
-
+    
     (* unchange_forbidden on the state prior to free. Proving this
        needs to show that freeing something that was also free in m
        does not change forbidden. *)
@@ -8783,6 +8920,11 @@ Proof.
         !intros.
         (* !!inversion h_chain_m_postfree. *)
         transitivity (forbidden st CE g a locenv stkptr m_postcpout m_postcpout sp_id ofs_id);eauto.
+        Lemma free_unforbidden_nochange:
+          forall m  m' m'' spb_proc sto_sz sp_id ofs_id sp_id ofs_id,
+                 Mem.free m' spb_proc 0 sto_sz = Some m'' ->
+                 forbidden st CE g a locenv stkptr m_postcpout mm' sp_id ofs_id <->
+                 forbidden st CE g a locenv stkptr m'' m'' sp_id ofs_id
         unfold forbidden.
         split;intro h; decomp h.
         + destruct (Pos.eq_dec sp_id spb_proc).
@@ -8876,6 +9018,8 @@ Proof.
            eapply h_unch_forbid_m_m'.
 (* lots of shelved.  *)
 Admitted.
+
+
 
 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 old stuff
