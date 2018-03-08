@@ -8728,12 +8728,15 @@ Proof.
                 exec_stmt g the_proc stkptr_proc locenv_init m_proc_pre_init
                          (Sstore AST.Mint32 (Econst (Oaddrstack Ptrofs.zero)) (Evar chaining_param))
                           trace_postchainarg locenv_postchainarg m_postchainarg Out_normal
-                ∧ chained_stack_structure m_postchainarg (Datatypes.length CE) stkptr).
+                ∧ chained_stack_structure m_postchainarg (S (Datatypes.length CE_sufx)) stkptr_proc).
     { exists locenv_init.
       subst.
       !!destruct (Mem.valid_access_store m_proc_pre_init AST.Mint32 spb_proc 0 chaining_expr_from_caller_v)
         as [m_postchainarg ?].
       { admit. }
+      !assert (Mem.storev AST.Mint32 m_proc_pre_init (Values.Vptr spb_proc Ptrofs.zero) chaining_expr_from_caller_v = Some m_postchainarg).
+      { simpl.
+        assumption. }
       exists m_postchainarg.
       eexists.
       split.
@@ -8786,12 +8789,12 @@ Proof.
             subst.
             specialize h with (1:=heq_transl_procsig_p) (2:=h_CM_eval_expr_paddr).
             decomp h.
-            eelim (H3 chaining_param);eauto.
+            eelim (H4 chaining_param);eauto.
             rewrite <- transl_procsig_ok in heq_transl_procsig_p.
             !functional inversion heq_transl_procsig_p.
             rewrite transl_procsig_ok in *.
             subst.
-            rewrite heq_fetch_proc in h_fetch_proc_p.
+            rewrite heq_fetch_proc in *.
             inversion h_fetch_proc_p.
             subst.
             simpl.
@@ -8800,9 +8803,36 @@ Proof.
           rewrite Ptrofs.add_zero_l.
           rewrite Ptrofs.unsigned_zero.
           assumption.
-      - destruct CE.
+      - (* TODO: replace b' by the address of the enclosing frame (<> the caller's frame.) *)
+        (* prove the chaining_expr_from_caller_v is a pointer, then use its address for b' below *)
+        xxx
+        eapply chained_S with (b':=chaining_expr_from_caller_v) (b:=spb_proc).
+        + eapply storev_outside_struct_chain_preserves_chained_structure with (m:=m_proc_pre_init).
+          all:swap 1 3.
+          * eassumption.
+          * eapply malloc_preserves_chained_structure with (1:=h_alloc);eauto.
+          * !intros.
+            admit. (* the new frame cannot be accessed via build_load from the callers stkptr *)
+        + simpl.
+          rewrite Ptrofs.unsigned_zero.
+          erewrite Mem.load_store_same;eauto.
+          subst addr_enclosing_frame.
+          simpl in h_chaining_expr_from_caller_v.
+  with (1:=heq_store_chaining_expr_from_caller_v_m_postchainarg) as h.
+          
+        
+        
+        eapply assignment_preserve_chained_stack_structure with (9:=heq_storev_chaining_expr_from_caller_v_m_postchainarg);eauto.
+        + apply malloc_preserves_chained_structure.
+        + 
+          simpl.
+          rewrite <- (CompilEnv.cut_until_spec1 _ _ _ _ h_CEcut_CE_pb_lvl).
+          rewrite app_length.
+
+destruct CE.
         + constructor.
-        + eapply assignment_preserve_chained_stack_structure;eauto.
+        + 
+          
           simpl;auto.
           * admit.
           * specialize (me_stack_no_null_offset(me_safe_cm_env h_match_env)) as h.
