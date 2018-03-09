@@ -8755,24 +8755,6 @@ Proof.
             { simpl.
               !assert (Errors.OK p_sign = Errors.OK p_sig).
               { rewrite <- heq_transl_lprm_spec_procedure_parameter_profile_p_sig.
-
-                (* Definition xxx := Eval cbv beta delta [bind transl_procsig] in transl_procsig. *)
-                Function transl_procsig' (stbl : symboltable) (pnum : procnum) :=
-                  match fetch_proc pnum stbl with
-                  | Some (lvl, pdecl) =>
-                    match transl_lparameter_specification_to_procsig stbl lvl (procedure_parameter_profile pdecl) with
-                    | Errors.OK x => Errors.OK (x, lvl)
-                    | Error msg => Error msg
-                    end
-                  | None => Error (msg "Unkonwn procedure")
-                  end.
-
-
-                Lemma transl_procsig_ok: forall stbl pnum, transl_procsig' stbl pnum = transl_procsig stbl pnum.
-                Proof.
-                  reflexivity.
-                Qed.
-
                 rewrite <- transl_procsig_ok in heq_transl_procsig_p.
                 !functional inversion heq_transl_procsig_p.
                 rewrite transl_procsig_ok in *.

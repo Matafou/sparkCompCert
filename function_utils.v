@@ -5,6 +5,7 @@ Require Import Memory Errors.
 Require Import Cminor.
 Require Import sparkfrontend.spark2Cminor.
 Require Import sparkfrontend.compcert_utils.
+Import Symbol_Table_Module.
 
 
 Open Scope Z_scope.
@@ -731,6 +732,26 @@ Lemma transl_procedure_ok : spark2Cminor.transl_procedure = transl_procedure.
 Proof.
   reflexivity.
 Qed.
+
+
+(* Definition xxx := Eval cbv beta delta [bind transl_procsig] in transl_procsig. *)
+Function transl_procsig (stbl : Symbol_Table_Module.symboltable) (pnum : procnum) :=
+  match fetch_proc pnum stbl with
+  | Some (lvl, pdecl) =>
+    match transl_lparameter_specification_to_procsig stbl lvl (procedure_parameter_profile pdecl) with
+    | Errors.OK x => Errors.OK (x, lvl)
+    | Error msg => Error msg
+    end
+  | None => Error (msg "Unkonwn procedure")
+  end.
+
+
+Lemma transl_procsig_ok: forall stbl pnum, transl_procsig stbl pnum = spark2Cminor.transl_procsig stbl pnum.
+Proof.
+  reflexivity.
+Qed.
+
+
 
 (* Definition copy_out_params:= Eval lazy beta iota delta [copy_out_params bind] in copy_out_params. *)
 Function copy_out_params  (stbl : Symbol_Table_Module.symboltable) (CE : compilenv)
