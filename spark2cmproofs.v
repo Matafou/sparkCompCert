@@ -10,6 +10,8 @@ Import Symbol_Table_Module.
 Open Scope error_monad_scope.
 Open Scope Z_scope.
 
+Hint Resolve Z.divide_refl Z.divide_0_r Z.divide_factor_l Z.divide_factor_r.
+
 (* stdlib unicode binders are not boxed correctly imho. *)
 Notation "∀ x .. y , P" := (forall x, .. (forall y, P) ..)
   (at level 200, x binder, y binder, right associativity,
@@ -910,6 +912,7 @@ Proof.
   destruct e_v;simpl in *;auto.
   eapply eval_expr_overf;eauto.
 Qed.
+
 
 Hint Resolve evalExp_overf2.
 
@@ -8256,6 +8259,7 @@ Proof.
       try match type of heq_stkptr with
           | _ = ?x => subst stkptr; (set (stkptr:=x) in * )
           end.
+  all: swap 6 7. (* putting fun call at the end. *)
   (* Skip *)
   - eexists. eexists. eexists.
     repeat (apply conj;!!intros).
@@ -8533,6 +8537,42 @@ Proof.
       * assumption.
       * apply H3.
       * apply H3.
+  - (* Sequence *)
+    simpl in *.
+    specialize IHh_eval_stmt1 with (1:=eq_refl) (2:=h_wf_st_st) (3:=h_inv_comp_CE_st) (4:=heq_transl_stmt0)
+                                   (5:=eq_refl) (6:=h_chain_m_lvl_stkptr) (7:=h_match_env) (f:=f).
+    decomp IHh_eval_stmt1.
+    match goal with
+    | H:forall _, _ ∧ _ |- _ => let nme := fresh "h_unchange" in rename H into nme
+    end.
+    specialize IHh_eval_stmt2 with (m:=m') (1:=eq_refl)(2:=h_wf_st_st)(3:=h_inv_comp_CE_st) (4:=heq_transl_stmt)
+                                   (5:=eq_refl) (6:=h_chain_m') (7:=h_match_env0)(f:=f).
+
+    decomp IHh_eval_stmt2.
+    match goal with
+    | H:forall _, _ ∧ _ |- _ => let nme := fresh "h_unchange" in rename H into nme
+    end.
+    eexists.
+    exists locenv'0.
+    exists m'0.
+    split;[|split;[|split]].
+    + econstructor;eauto.
+    + assumption.
+    + assumption.
+    + !intros.
+      specialize h_unchange with (astnum:=astnum).
+      specialize h_unchange0 with (astnum:=astnum).
+      decomp h_unchange.
+      decomp h_unchange0.
+      split.
+      * eapply unchange_forbidden_trans ;eauto.
+      * eapply Mem.unchanged_on_trans with m';auto.
+        red in h_unch_forbid_m_m', h_unch_forbid_m'_m'0.
+        eapply (unchanged_on_iff );eauto.
+        -- do 2 red.
+           intros; subst.
+           eapply h_unch_forbid_m_m'.
+
   (* Procedure call *)
   - (* rename x1 into chaining_expr. *)
     subst current_lvl.
@@ -8724,6 +8764,9 @@ Proof.
       - assumption.
       - assumption. }
 
+    (* After assigning the chaining arg, chained_stack_structure is
+    true again with depth of the enclosing procedure +1. Warning:
+    enclosing proc is not eh calling proc. *)
     !assert (exists locenv_postchainarg m_postchainarg trace_postchainarg,
                 exec_stmt g the_proc stkptr_proc locenv_init m_proc_pre_init
                          (Sstore AST.Mint32 (Econst (Oaddrstack Ptrofs.zero)) (Evar chaining_param))
@@ -8731,10 +8774,21 @@ Proof.
                 ∧ chained_stack_structure m_postchainarg (S (Datatypes.length CE_sufx)) stkptr_proc).
     { exists locenv_init.
       subst.
-      !!destruct (Mem.valid_access_store m_proc_pre_init AST.Mint32 spb_proc 0 chaining_expr_from_caller_v)
+      !!destruct (Mem.valid_access_store m_proc_pre_init AST.Mint32 spb_proc 0
+                                         chaining_expr_from_caller_v)
         as [m_postchainarg ?].
-      { admit. }
-      !assert (Mem.storev AST.Mint32 m_proc_pre_init (Values.Vptr spb_proc Ptrofs.zero) chaining_expr_from_caller_v = Some m_postchainarg).
+      { eapply Mem.valid_access_freeable_any.
+        eapply Mem.valid_access_alloc_same;eauto.
+        - auto with zarith.
+        - simpl.
+          transitivity (snd fr_prm).
+          + eapply build_frame_lparams_mon_sz in heq_bld_frm_procedure_parameter_profile.
+            simpl in heq_bld_frm_procedure_parameter_profile.
+            assumption.
+          + eapply build_frame_decl_mon_sz in heq_build_frame_decl.
+            assumption. }
+      !assert (Mem.storev AST.Mint32 m_proc_pre_init (Values.Vptr spb_proc Ptrofs.zero)
+                          chaining_expr_from_caller_v = Some m_postchainarg).
       { simpl.
         assumption. }
       exists m_postchainarg.
@@ -8771,7 +8825,7 @@ Proof.
             subst.
             specialize h with (1:=heq_transl_procsig_p) (2:=h_CM_eval_expr_paddr).
             decomp h.
-            eelim (H4 chaining_param);eauto.
+            eelim (H3 chaining_param);eauto.
             rewrite <- transl_procsig_ok in heq_transl_procsig_p.
             !functional inversion heq_transl_procsig_p.
             rewrite transl_procsig_ok in *.
@@ -8787,77 +8841,91 @@ Proof.
           assumption.
       - (* TODO: replace b' by the address of the enclosing frame (<> the caller's frame.) *)
         (* prove the chaining_expr_from_caller_v is a pointer, then use its address for b' below *)
-        xxx
-        eapply chained_S with (b':=chaining_expr_from_caller_v) (b:=spb_proc).
-        + eapply storev_outside_struct_chain_preserves_chained_structure with (m:=m_proc_pre_init).
+        !assert (Datatypes.length CE = Datatypes.length CE_sufx + Datatypes.length CE_prefx)%nat.
+        { erewrite <- CompilEnv.cut_until_spec1 at 1;eauto.
+          rewrite app_length.
+          auto with arith. }
+        rewrite heq_length0 in h_chain_m_lvl_stkptr.
+        specialize chain_structure_cut with (1:=h_chain_m_lvl_stkptr) (g:=g) (e:=locenv) as h.
+        decomp h.
+        assert (heq_lgth_CE_sufx:Datatypes.length CE_sufx = lvl_p).
+        { rewrite <- transl_procsig_ok in heq_transl_procsig_p.
+          !functional inversion heq_transl_procsig_p.
+          rewrite transl_procsig_ok in *.
+          subst.
+          rewrite heq_fetch_proc in *.
+          inversion h_fetch_proc_p;auto. }
+        subst lvl_p.
+        !assert (sp' = chaining_expr_from_caller_v).
+        { unfold addr_enclosing_frame in h_chaining_expr_from_caller_v.
+          eapply det_eval_expr;eauto.
+          !assert (Datatypes.length CE_prefx = Datatypes.length CE - Datatypes.length CE_sufx)%nat.
+          { omega. }
+          rewrite heq_length1;auto. }
+        subst sp'.  
+        !assert (exists cm_addr_enclosing_frame,
+                   chaining_expr_from_caller_v = Values.Vptr cm_addr_enclosing_frame Ptrofs.zero).
+        { eapply chained_stack_struct_inv_sp_zero;eauto. }
+        decomp h_ex.
+        subst.
+        eapply chained_S with (b':=cm_addr_enclosing_frame) (b:=spb_proc).
+        + eapply storev_outside_struct_chain_preserves_chained_structure with (m:=m_proc_pre_init)(e:=locenv)(g:=g).
           all:swap 1 3.
           * eassumption.
           * eapply malloc_preserves_chained_structure with (1:=h_alloc);eauto.
-          * !intros.
-            admit. (* the new frame cannot be accessed via build_load from the callers stkptr *)
+          * !intros.  (* the new frame cannot be accessed via build_load from the callers stkptr *)
+            eapply malloc_distinct_from_chaining_loads;eauto.
+            eapply malloc_preserves_chaining_loads_2;eauto.
+            eapply chained_stack_structure_le;eauto with arith.
         + simpl.
           rewrite Ptrofs.unsigned_zero.
           erewrite Mem.load_store_same;eauto.
           subst addr_enclosing_frame.
-          simpl in h_chaining_expr_from_caller_v.
-  with (1:=heq_store_chaining_expr_from_caller_v_m_postchainarg) as h.
-          
-        
-        
-        eapply assignment_preserve_chained_stack_structure with (9:=heq_storev_chaining_expr_from_caller_v_m_postchainarg);eauto.
-        + apply malloc_preserves_chained_structure.
-        + 
           simpl.
-          rewrite <- (CompilEnv.cut_until_spec1 _ _ _ _ h_CEcut_CE_pb_lvl).
-          rewrite app_length.
-
-destruct CE.
-        + constructor.
-        + 
-          
-          simpl;auto.
-          * admit.
-          * specialize (me_stack_no_null_offset(me_safe_cm_env h_match_env)) as h.
-            eapply build_compilenv_stack_no_null_offset with (CE:=CE_sufx);eauto.
-            -- eapply exact_lvlG_cut_until;eauto.
-               admit.
-            -- eapply no_overflow_NoDup_G_cut with (CE:= f0 :: CE);eauto.
-               
-               admit.
-            -- eapply no_null_offset_NoDup_G_cut.
-            eapply no_null_offset_NoDup_G_cons;eauto.
-            all:swap 1 2.
-            red.
-            
-            apply h_inv_CE''_bld.
-            
-          econstructor;eauto.
-          
-
-
-          Focus 2.
-          eapply e.
-          eassumption.
-          unfold Mem.store.
-
-
-            subst.
-
-            apply H2 with (1:=abs).
-              admit. (* only internal functions *) }
-            decomp h_ex.
-            subst p_sign.
-            specialize h with (1:=heq_transl_procsig_p).
-            eapply transl_procsig_match_env_succeeds in abs ;eauto.
-          assert ().
-          cbn.
-          reflexivity.
-      
-
-
+          reflexivity. (* This uses Archi.ptr64 = false *) }
+    decomp h_ex.
+    
+    assert (∀ astnum addr ofs, (forbidden st CE g astnum locenv stkptr m m addr ofs)
+            -> (forbidden st ((pb_lvl, sto) :: CE_sufx) g astnum locenv stkptr m_proc_pre_init m_proc_pre_init addr ofs)).
+    { unfold forbidden.
+      !intros.
+      decomp h_and.
+      (* rename H0 into hneg_perm. *)
+      split.
+      all:swap 1 2.
+      - intro abs.
+        apply neg_h_free_blck_m_addr_ofs.
+        unfold is_free_block in *.
+        intro.
+        intro abs2.
+        apply abs with perm.
+        eapply Mem.perm_alloc_1;eauto.
+      - unfold invisible_cminor_addr.
+        !intros.
+        xxxx
+}
     assert (∀ astnum addr ofs, (forbidden st CE g astnum locenv stkptr m m addr ofs)
             -> (forbidden st CE g astnum locenv stkptr m_postchainarg m_postchainarg addr ofs)).
-    { 
+    { unfold forbidden.
+      !intros.
+      decomp h_and.
+      (* rename H0 into hneg_perm. *)
+      split.
+      all:swap 1 2.
+      - intro abs.
+        apply neg_h_free_blck_m_addr_ofs.
+        unfold is_free_block in *.
+        intro.
+        intro abs2.
+        apply abs with perm.
+        eapply Mem.perm_alloc_1;eauto.
+        
+        apply hneg_perm.
+        !intros.
+        specialize fresh_block_alloc_perm with (1:=h_alloc) as h.
+        intro abs2.
+        apply (abs perm).
+        
 
     (* Once chain_arg is set, forbidden mpostchain is included in forbidden m *)
     assert (∃ (m_postchainarg : mem) (trace_postchainarg : Events.trace),
@@ -8993,41 +9061,6 @@ destruct CE.
 
     admit. (* TODO: property of the initial part of a procedure. + subtle stuff about unchanged on caller's view *) 
 
-  -   (* Sequence *)
-    simpl in *.
-    specialize IHh_eval_stmt1 with (1:=eq_refl) (2:=h_wf_st_st) (3:=h_inv_comp_CE_st) (4:=heq_transl_stmt0)
-    (5:=eq_refl) (6:=h_chain_m_lvl_stkptr) (7:=h_match_env) (f:=f).
-    decomp IHh_eval_stmt1.
-    match goal with
-    | H:forall _, _ ∧ _ |- _ => let nme := fresh "h_unchange" in rename H into nme
-    end.
-    specialize IHh_eval_stmt2 with (m:=m') (1:=eq_refl)(2:=h_wf_st_st)(3:=h_inv_comp_CE_st) (4:=heq_transl_stmt)
-                                   (5:=eq_refl) (6:=h_chain_m') (7:=h_match_env0)(f:=f).
-
-    decomp IHh_eval_stmt2.
-    match goal with
-    | H:forall _, _ ∧ _ |- _ => let nme := fresh "h_unchange" in rename H into nme
-    end.
-    eexists.
-    exists locenv'0.
-    exists m'0.
-    split;[|split;[|split]].
-    + econstructor;eauto.
-    + assumption.
-    + assumption.
-    + !intros.
-      specialize h_unchange with (astnum:=astnum).
-      specialize h_unchange0 with (astnum:=astnum).
-      decomp h_unchange.
-      decomp h_unchange0.
-      split.
-      * eapply unchange_forbidden_trans ;eauto.
-      * eapply Mem.unchanged_on_trans with m';auto.
-        red in h_unch_forbid_m_m', h_unch_forbid_m'_m'0.
-        eapply (unchanged_on_iff );eauto.
-        -- do 2 red.
-           intros; subst.
-           eapply h_unch_forbid_m_m'.
 (* lots of shelved.  *)
 Admitted.
 
