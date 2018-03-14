@@ -7384,124 +7384,6 @@ Proof.
     assumption.
 Qed.
 
-Lemma malloc_preserves_chained_structure : 
-  ∀ lvl m sp b ofs  m' new_sp,
-    Mem.alloc m b ofs = (m', new_sp) ->
-    chained_stack_structure m lvl sp ->
-    chained_stack_structure m' lvl sp.
-Proof.
-  intro lvl.
-  !induction lvl;!intros.
-  - !inversion h_chain_m_O_sp.
-    constructor.
-  - !inversion h_chain_m.
-    cbn in *.
-    econstructor.
-    + eapply IHlvl;eauto.
-    + cbn.
-      eapply Mem.load_alloc_other;eauto.
-Qed.
-
-
-
-
-Lemma malloc_preserves_chaining_loads : 
-  ∀ m lvl sp sz m' new_sp,
-    Mem.alloc m 0 sz = (m', new_sp) ->
-    ∀ n, (n <= lvl)%nat ->
-         chained_stack_structure m lvl sp ->
-         ∀ e g sp',
-           Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) sp'
-           -> Cminor.eval_expr g sp e m' (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) sp'.
-Proof.
-  !!intros until n.
-  induction n;!intros.
-  - cbn in *.
-    !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_lvl_sp.
-    decomp h_ex.
-    subst.
-    subst_det_addrstack_zero.
-    apply cm_eval_addrstack_zero.
-  - !!assert (n <= lvl)%nat by omega.
-    specialize (IHn h_le_n_lvl h_chain_m_lvl_sp).
-    cbn -[Mem.storev] in *.
-    !inversion h_CM_eval_expr_sp'.
-    specialize (IHn _ _ _ h_CM_eval_expr_vaddr).
-    econstructor.
-    + eassumption.
-    + cbn in *.
-      rewrite <- h_loadv_vaddr_sp'.
-      destruct vaddr; try discriminate.
-      cbn in *.
-      eapply Mem.load_alloc_unchanged;eauto.
-      eapply Mem.valid_access_valid_block.
-      apply Mem.load_valid_access in h_loadv_vaddr_sp'.
-      eapply Mem.valid_access_implies with (1:=h_loadv_vaddr_sp').
-      constructor.
-Qed.
-
-
-Lemma malloc_preserves_chaining_loads_2 : 
-  ∀ m lvl sp sz m' new_sp,
-    Mem.alloc m 0 sz = (m', new_sp) ->
-    ∀ n, (n <= lvl)%nat ->
-         chained_stack_structure m lvl sp ->
-         ∀ e g sp',
-           Cminor.eval_expr g sp e m' (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) sp'
-           -> Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) sp'.
-Proof.
-  !!intros until n.
-  induction n;!intros.
-  - cbn in *.
-    !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_lvl_sp.
-    decomp h_ex.
-    subst.
-    subst_det_addrstack_zero.
-    apply cm_eval_addrstack_zero.
-  - !!assert (n <= lvl)%nat by omega.
-    specialize (IHn h_le_n_lvl h_chain_m_lvl_sp).
-    cbn -[Mem.storev] in *.
-    !inversion h_CM_eval_expr_sp'.
-    specialize (IHn _ _ _ h_CM_eval_expr_vaddr).
-    econstructor.
-    + eassumption.
-    + cbn in *.
-      rewrite <- h_loadv_vaddr_sp'.
-      destruct vaddr; try discriminate.
-      cbn in *.
-      symmetry.
-      eapply Mem.load_alloc_unchanged;eauto.
-      destruct (Mem.valid_block_alloc_inv _ _ _ _ _ h_malloc_m_m' b).
-      * eapply Mem.valid_access_valid_block.
-        apply Mem.load_valid_access in h_loadv_vaddr_sp'.
-        eapply Mem.valid_access_implies with (1:=h_loadv_vaddr_sp').
-        constructor.
-      * exfalso.
-        subst.
-        !!assert ((lvl-n) + n = lvl)%nat by omega.
-        rewrite <- heq_add in h_chain_m_lvl_sp.
-        !!pose proof (chain_structure_cut _ _ _ _ h_chain_m_lvl_sp) g e.
-        decomp h_ex.
-        rewrite heq_add in h_CM_eval_expr_v.
-        subst_det_addrstack_zero.
-        destruct (lvl - n)%nat eqn:heq'.
-        -- exfalso; omega.
-        -- cbn in h_CM_eval_expr_v0.
-           eapply chained_stack_structure_decomp_S_2 in h_CM_eval_expr_v0.
-           ++ decomp h_CM_eval_expr_v0.
-              !inversion h_CM_eval_expr_sp'0.
-              subst_det_addrstack_zero.
-              absurd (Mem.valid_block m new_sp).
-              ** eapply Mem.fresh_block_alloc;eauto.
-              ** unfold Mem.loadv in h_loadv_vaddr_sp'0.
-                 eapply  Mem.load_valid_access in h_loadv_vaddr_sp'0.
-                 eapply Mem.valid_access_valid_block.
-                 eapply Mem.valid_access_implies;eauto.
-                 constructor.
-           ++ assumption.
-      * assumption.
-Qed.
-
 
 
 
@@ -8764,14 +8646,21 @@ Proof.
       - assumption.
       - assumption. }
 
+    (* the chained structure from stkptr (callers stack pointer) is still true. *)
+    !assert (chained_stack_structure m_proc_pre_init (Datatypes.length CE)%nat stkptr).
+    { eapply malloc_preserves_chained_structure;eauto. }
+
+
     (* After assigning the chaining arg, chained_stack_structure is
     true again with depth of the enclosing procedure +1. Warning:
-    enclosing proc is not eh calling proc. *)
+    enclosing proc is not the calling proc. *)
     !assert (exists locenv_postchainarg m_postchainarg trace_postchainarg,
                 exec_stmt g the_proc stkptr_proc locenv_init m_proc_pre_init
                          (Sstore AST.Mint32 (Econst (Oaddrstack Ptrofs.zero)) (Evar chaining_param))
                           trace_postchainarg locenv_postchainarg m_postchainarg Out_normal
-                ∧ chained_stack_structure m_postchainarg (S (Datatypes.length CE_sufx)) stkptr_proc).
+                ∧ chained_stack_structure m_postchainarg (S (Datatypes.length CE_sufx)) stkptr_proc
+                ∧ eval_expr g stkptr_proc locenv_postchainarg m_postchainarg (Eload AST.Mint32 (Econst (Oaddrstack Ptrofs.zero))) chaining_expr_from_caller_v
+                ∧ eval_expr g stkptr locenv m_postchainarg (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (Datatypes.length CE_prefx)) chaining_expr_from_caller_v).
     { exists locenv_init.
       subst.
       !!destruct (Mem.valid_access_store m_proc_pre_init AST.Mint32 spb_proc 0
@@ -8792,9 +8681,13 @@ Proof.
       { simpl.
         assumption. }
       exists m_postchainarg.
-      eexists.
-      split.
-      - econstructor.
+      (* the first part will be usefull to prove the other parts, let us prove it first. *)
+      !assert (∃ trace_postchainarg : Events.trace, 
+  exec_stmt g the_proc stkptr_proc (set_locals (fn_vars the_proc) (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc))) m_proc_pre_init
+    (Sstore AST.Mint32 (Econst (Oaddrstack Ptrofs.zero)) (Evar chaining_param)) trace_postchainarg
+    (set_locals (fn_vars the_proc) (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc))) m_postchainarg Out_normal).
+      { eexists.
+        econstructor.
         + econstructor.
           reflexivity.
         + econstructor.
@@ -8838,10 +8731,13 @@ Proof.
         + simpl.
           rewrite Ptrofs.add_zero_l.
           rewrite Ptrofs.unsigned_zero.
-          assumption.
-      - (* TODO: replace b' by the address of the enclosing frame (<> the caller's frame.) *)
-        (* prove the chaining_expr_from_caller_v is a pointer, then use its address for b' below *)
-        !assert (Datatypes.length CE = Datatypes.length CE_sufx + Datatypes.length CE_prefx)%nat.
+          assumption. }
+      decomp h_ex.
+
+      exists trace_postchainarg.
+      split.
+      - auto.
+      - !assert (Datatypes.length CE = Datatypes.length CE_sufx + Datatypes.length CE_prefx)%nat.
         { erewrite <- CompilEnv.cut_until_spec1 at 1;eauto.
           rewrite app_length.
           auto with arith. }
@@ -8868,25 +8764,122 @@ Proof.
         { eapply chained_stack_struct_inv_sp_zero;eauto. }
         decomp h_ex.
         subst.
-        eapply chained_S with (b':=cm_addr_enclosing_frame) (b:=spb_proc).
-        + eapply storev_outside_struct_chain_preserves_chained_structure with (m:=m_proc_pre_init)(e:=locenv)(g:=g).
-          all:swap 1 3.
-          * eassumption.
-          * eapply malloc_preserves_chained_structure with (1:=h_alloc);eauto.
-          * !intros.  (* the new frame cannot be accessed via build_load from the callers stkptr *)
-            eapply malloc_distinct_from_chaining_loads;eauto.
-            eapply malloc_preserves_chaining_loads_2;eauto.
-            eapply chained_stack_structure_le;eauto with arith.
-        + simpl.
-          rewrite Ptrofs.unsigned_zero.
-          erewrite Mem.load_store_same;eauto.
-          subst addr_enclosing_frame.
-          simpl.
-          reflexivity. (* This uses Archi.ptr64 = false *) }
+        { split;[|split].
+          - eapply chained_S with (b':=cm_addr_enclosing_frame) (b:=spb_proc).
+            + eapply storev_outside_struct_chain_preserves_chained_structure with (m:=m_proc_pre_init)(e:=locenv)(g:=g).
+              all:swap 1 3.
+              * eassumption.
+              * eapply malloc_preserves_chained_structure with (1:=h_alloc);eauto.
+              * !intros.  (* the new frame cannot be accessed via build_load from the callers stkptr *)
+                eapply malloc_distinct_from_chaining_loads;eauto.
+                eapply malloc_preserves_chaining_loads_2;eauto.
+                eapply chained_stack_structure_le;eauto with arith.
+            + simpl.
+              rewrite Ptrofs.unsigned_zero.
+              erewrite Mem.load_store_same;eauto.
+              subst addr_enclosing_frame.
+              simpl.
+              reflexivity. (* This uses Archi.ptr64 = false *)
+          - econstructor.
+            + econstructor.
+              simpl.
+              rewrite Ptrofs.add_zero_l.
+              reflexivity.
+            + 
+              unfold Mem.storev in heq_storev_chaining_expr_from_caller_v_m_postchainarg.
+              unfold Mem.loadv.
+              erewrite Mem.load_store_same;eauto.
+              simpl.
+              reflexivity. (* This uses Archi.ptr64 = false *)
+          - eapply storev_outside_struct_chain_preserves_chaining with (3:=heq_storev_chaining_expr_from_caller_v_m_postchainarg).
+            all:swap 1 2.
+            all:swap 2 3.
+            + eassumption.
+            + omega.
+            + !intros.
+              eapply malloc_distinct_from_chaining_loads_2 with (1:=h_chain_m_lvl_stkptr) (2:=h_alloc) (n:=n).
+              * omega.
+              * eassumption.
+            +
+              eapply malloc_preserves_chaining_loads;eauto.
+              * eapply chained_stack_structure_le with (1:=h_chain_m_lvl_stkptr);eauto.
+                omega. }
+    }
+xxx
+
+
+              eapply malloc_preserves_chained_structure;eauto.
+              +
+          - !intros.
+            (* spb_proc was free in m, and b'0 must be non free in m, so they are different *)
+            (* b'0 exists in m: *)
+            match type of h_CM_eval_expr with
+            | context c [m_proc_pre_init] => let t := context c[m] in !assert t
+            end.
+            { eapply malloc_preserves_chaining_loads_2;eauto.
+              eapply chained_stack_structure_le with (n:=(Datatypes.length CE));eauto.
+              omega. }
+            eapply malloc_distinct_from_chaining_loads with (1:=h_chain_m_lvl_stkptr)(2:=h_alloc);eauto. }
+        
+            
+              eapply malloc_preserves_chaining_loads_2.
+        }
+        }
     decomp h_ex.
+    (* variables of CE_sufx are accessible both from stkptr_proc and stkptr. *)
+
     
+    (* the chained structure from stkptr (callers stack pointer) is still true. *)
+    !assert (chained_stack_structure m_postchainarg (Datatypes.length CE)%nat stkptr).
+    { !inversion h_exec_stmt.
+      !inversion h_CM_eval_expr_vaddr.
+      simpl in h_eval_constant.
+      !inversion h_eval_constant.
+      eapply storev_outside_struct_chain_preserves_chained_structure
+        with (m:=m_proc_pre_init) (e:=locenv_postchainarg)(g:=g).
+      all:swap 1 3.
+      - eauto.
+      - eapply malloc_preserves_chained_structure;eauto.
+      - !intros.
+        (* spb_proc was free in m, and b'0 must be non free in m, so they are different *)
+        (* b'0 exists in m: *)
+        match type of h_CM_eval_expr with
+        | context c [m_proc_pre_init] => let t := context c[m] in !assert t
+        end.
+        { eapply malloc_preserves_chaining_loads_2;eauto.
+          eapply chained_stack_structure_le with (n:=(Datatypes.length CE));eauto.
+          omega. }
+        eapply malloc_distinct_from_chaining_loads with (1:=h_chain_m_lvl_stkptr)(2:=h_alloc);eauto. }
+
+    assert(
+        forall astnum id δlvl n id_v,
+          transl_variable st ((pb_lvl, sto) :: CE_sufx) astnum id =: (build_loads (S δlvl) n)
+          -> eval_expr g stkptr_proc locenv_postchainarg m_postchainarg (build_loads (S δlvl) n) id_v
+          -> eval_expr g stkptr locenv_postchainarg m_postchainarg (build_loads (Datatypes.length CE_prefx+δlvl) n) id_v
+          ). {
+      !intros.
+      up_type.
+      !assert (Datatypes.length CE = Datatypes.length CE_sufx + Datatypes.length CE_prefx)%nat.
+      { erewrite <- CompilEnv.cut_until_spec1 at 1;eauto.
+        rewrite app_length.
+        auto with arith. }
+      assert (δlvl <= Datatypes.length CE_sufx)%nat.
+      { admit. }
+      !assert (chained_stack_structure m_postchainarg (Datatypes.length CE_prefx + δlvl)%nat stkptr).
+      { eapply chained_stack_structure_le;eauto.
+        omega. }
+      rewrite heq_length0 in h_chain_m_lvl_stkptr.
+      specialize chain_structure_cut with (1:= h_chain_m_lvl_stkptr)(g:=g) (e:=locenv_postchainarg).
+      !intros.
+      decomp h_ex.
+      unfold build_loads.
+      rewrite build_loads_compos_comm.
+
+    }
+
     assert (∀ astnum addr ofs, (forbidden st CE g astnum locenv stkptr m m addr ofs)
-            -> (forbidden st ((pb_lvl, sto) :: CE_sufx) g astnum locenv stkptr m_proc_pre_init m_proc_pre_init addr ofs)).
+            -> (forbidden st ((pb_lvl, sto) :: CE_sufx)
+                          g astnum locenv_postchainarg stkptr_proc m_postchainarg m_postchainarg addr ofs)).
     { unfold forbidden.
       !intros.
       decomp h_and.
@@ -8899,9 +8892,29 @@ Proof.
         intro.
         intro abs2.
         apply abs with perm.
-        eapply Mem.perm_alloc_1;eauto.
+        !inversion h_exec_stmt.
+        !inversion h_CM_eval_expr_vaddr.
+        simpl in h_eval_constant.
+        inversion h_eval_constant.
+        subst.
+        eapply Mem.perm_store_1.
+        all:swap 1 2.
+         + eapply Mem.perm_alloc_1;eauto.
+         + simpl in heq_storev_v_m_postchainarg.
+           eapply heq_storev_v_m_postchainarg.
       - unfold invisible_cminor_addr.
         !intros.
+        !functional inversion heq_transl_variable.
+        subst id_t.
+        unfold invisible_cminor_addr in h_invis_stkptr__m_addr_ofs.
+
+
+xxxx
+        assert (
+            (Values.Vptr spb_id ofs_id)
+            ∨ exists n,eval_expr g stkptr locenv_init m_proc_pre_init (build_loads (n+(m' - lvl_id)) δ_id) (Values.Vptr spb_id ofs_id)). {
+          (* (m' - lvl_id) *)
+        }
         xxxx
 }
     assert (∀ astnum addr ofs, (forbidden st CE g astnum locenv stkptr m m addr ofs)
