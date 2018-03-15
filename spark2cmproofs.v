@@ -1903,6 +1903,24 @@ Proof.
     omega.
 Qed.
 
+Lemma transl_variable_exact_lvl_le_toplvl:
+  forall st astnum id CE δlvl n,
+    CompilEnv.exact_levelG CE ->          
+    transl_variable st CE astnum id = Errors.OK (build_loads δlvl n) ->
+    (δlvl < (Datatypes.length CE))%nat.
+Proof.
+  !intros.
+  !functional inversion heq_transl_variable.
+  !!specialize CompilEnv.exact_lvl_level_of_top with (1:=h_exct_lvlG_CE)(2:=heq_CEframeG_id_CE) as h.
+  decomp h_ex.
+  rewrite heq_lvloftop_CE_m' in heq_lvloftop_CE_top.
+  !invclear heq_lvloftop_CE_top.
+  apply CompilEnv.exact_lvl_lvl_of_top in heq_lvloftop_CE_m';eauto.
+  rewrite <- heq_lvloftop_CE_m' in *.
+  !!specialize build_loads__inj with (1:=heq_build_loads) as ?.
+  subst.
+  omega.
+Qed.
 
 
 Lemma no_overflow_NoDup_G__app: forall CE CE',  CompilEnv.NoDup_G (CE++ CE') -> 
@@ -8646,7 +8664,8 @@ Proof.
       - assumption.
       - assumption. }
 
-    (* the chained structure from stkptr (callers stack pointer) is still true. *)
+    (* the chained structure from the initial stkptr
+       (callers stack pointer) is still true after malloc *)
     !assert (chained_stack_structure m_proc_pre_init (Datatypes.length CE)%nat stkptr).
     { eapply malloc_preserves_chained_structure;eauto. }
 
@@ -8805,32 +8824,11 @@ Proof.
               * eapply chained_stack_structure_le with (1:=h_chain_m_lvl_stkptr);eauto.
                 omega. }
     }
-xxx
-
-
-              eapply malloc_preserves_chained_structure;eauto.
-              +
-          - !intros.
-            (* spb_proc was free in m, and b'0 must be non free in m, so they are different *)
-            (* b'0 exists in m: *)
-            match type of h_CM_eval_expr with
-            | context c [m_proc_pre_init] => let t := context c[m] in !assert t
-            end.
-            { eapply malloc_preserves_chaining_loads_2;eauto.
-              eapply chained_stack_structure_le with (n:=(Datatypes.length CE));eauto.
-              omega. }
-            eapply malloc_distinct_from_chaining_loads with (1:=h_chain_m_lvl_stkptr)(2:=h_alloc);eauto. }
-        
-            
-              eapply malloc_preserves_chaining_loads_2.
-        }
-        }
     decomp h_ex.
-    (* variables of CE_sufx are accessible both from stkptr_proc and stkptr. *)
 
-    
-    (* the chained structure from stkptr (callers stack pointer) is still true. *)
-    !assert (chained_stack_structure m_postchainarg (Datatypes.length CE)%nat stkptr).
+    (* the chained structure from the initial stkptr
+       (callers stack pointer) is still true after malloc + chain_arg *)
+   !assert (chained_stack_structure m_postchainarg (Datatypes.length CE)%nat stkptr).
     { !inversion h_exec_stmt.
       !inversion h_CM_eval_expr_vaddr.
       simpl in h_eval_constant.
@@ -8839,7 +8837,7 @@ xxx
         with (m:=m_proc_pre_init) (e:=locenv_postchainarg)(g:=g).
       all:swap 1 3.
       - eauto.
-      - eapply malloc_preserves_chained_structure;eauto.
+      - assumption.
       - !intros.
         (* spb_proc was free in m, and b'0 must be non free in m, so they are different *)
         (* b'0 exists in m: *)
@@ -8851,6 +8849,7 @@ xxx
           omega. }
         eapply malloc_distinct_from_chaining_loads with (1:=h_chain_m_lvl_stkptr)(2:=h_alloc);eauto. }
 
+    (* variables of CE_sufx are accessible both from stkptr_proc and stkptr. *)
     assert(
         forall astnum id δlvl n id_v,
           transl_variable st ((pb_lvl, sto) :: CE_sufx) astnum id =: (build_loads (S δlvl) n)
@@ -8863,18 +8862,33 @@ xxx
       { erewrite <- CompilEnv.cut_until_spec1 at 1;eauto.
         rewrite app_length.
         auto with arith. }
-      assert (δlvl <= Datatypes.length CE_sufx)%nat.
-      { admit. }
+
+      
+      assert (δlvl < (Datatypes.length CE_sufx))%nat. {
+        !assert (CompilEnv.exact_levelG ((pb_lvl, sto) :: CE_sufx)). {
+          apply h_inv_CE''_bld. }
+        specialize transl_variable_exact_lvl_le_toplvl with (1:=h_exct_lvlG)(2:=heq_transl_variable) as h.
+        simpl in h.
+        omega. }
       !assert (chained_stack_structure m_postchainarg (Datatypes.length CE_prefx + δlvl)%nat stkptr).
       { eapply chained_stack_structure_le;eauto.
         omega. }
       rewrite heq_length0 in h_chain_m_lvl_stkptr.
-      specialize chain_structure_cut with (1:= h_chain_m_lvl_stkptr)(g:=g) (e:=locenv_postchainarg).
+      econstructor.
+      all:swap 1 2.
+      - econstructor.
+        simpl.
+        reflexivity.
+      - 
+      unfold build_loads.
+      rewrite build_loads_compos.
+
+
+      specialize chain_structure_cut with (1:= h_chain_m_postchainarg1)(g:=g) (e:=locenv_postchainarg).
       !intros.
       decomp h_ex.
       unfold build_loads.
       rewrite build_loads_compos_comm.
-
     }
 
     assert (∀ astnum addr ofs, (forbidden st CE g astnum locenv stkptr m m addr ofs)

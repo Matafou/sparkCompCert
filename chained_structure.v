@@ -453,7 +453,27 @@ Proof.
   rewrite Nat.add_comm.
   assumption.
 Qed.
-
+xxx
+Lemma chained_stack_structure_decomp_add: forall n1 n2 m sp,
+    chained_stack_structure m (n1 + n2) sp ->
+    forall g e v base,
+      Cminor.eval_expr g sp e m (build_loads_ base (n1 + n2)) v
+      exists sp',
+        Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n1) sp' /\
+        Cminor.eval_expr g sp' e m (build_loads_ base n) v.
+Proof.
+  !intros.
+  unfold base in h_CM_eval_expr_v.
+  rewrite <- build_loads_compos in h_CM_eval_expr_v.
+  cbn [plus] in h_CM_eval_expr_v.
+  !!pose proof chained_stack_structure_decomp_S_2 _ _ _ h_chain_m g e v h_CM_eval_expr_v.
+  decomp h_ex.
+  exists sp';split;eauto.
+  unfold base.
+  rewrite <- build_loads_compos_comm.
+  rewrite Nat.add_comm.
+  assumption.
+Qed.
 
 Lemma chain_repeat_loadv_2: forall (m : mem) (n : nat) (sp : Values.val),
     chained_stack_structure m n sp
@@ -650,6 +670,8 @@ Proof.
            ++ assumption.
       * assumption.
 Qed.
+
+
 
 
 Lemma malloc_distinct_from_chaining_loads : 
