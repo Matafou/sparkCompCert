@@ -8862,9 +8862,7 @@ Proof.
       { erewrite <- CompilEnv.cut_until_spec1 at 1;eauto.
         rewrite app_length.
         auto with arith. }
-
-      
-      assert (δlvl < (Datatypes.length CE_sufx))%nat. {
+      !assert (δlvl < (Datatypes.length CE_sufx))%nat. {
         !assert (CompilEnv.exact_levelG ((pb_lvl, sto) :: CE_sufx)). {
           apply h_inv_CE''_bld. }
         specialize transl_variable_exact_lvl_le_toplvl with (1:=h_exct_lvlG)(2:=heq_transl_variable) as h.
@@ -8874,23 +8872,34 @@ Proof.
       { eapply chained_stack_structure_le;eauto.
         omega. }
       rewrite heq_length0 in h_chain_m_lvl_stkptr.
+      !!assert ((δlvl < S (Datatypes.length CE_sufx))%nat) by omega.
+      unfold build_loads in h_CM_eval_expr_id_v.
+      Opaque build_loads_.
+      !inversion h_CM_eval_expr_id_v.
+      Transparent build_loads_.
+      unfold build_loads.
+      !inversion h_CM_eval_expr_v2.
+      simpl in h_eval_constant|- *.
+      !invclear h_eval_constant.
       econstructor.
-      all:swap 1 2.
-      - econstructor.
+      all: cycle 1.
+      - econstructor;eauto.
         simpl.
         reflexivity.
+      - eassumption.
       - 
-      unfold build_loads.
-      rewrite build_loads_compos.
-
-
-      specialize chain_structure_cut with (1:= h_chain_m_postchainarg1)(g:=g) (e:=locenv_postchainarg).
-      !intros.
-      decomp h_ex.
-      unfold build_loads.
-      rewrite build_loads_compos_comm.
-    }
-
+        rewrite Nat.add_comm.
+        eapply chained_stack_structure_decomp_add';eauto.
+        all:cycle 1.
+        + eapply eval_expr_build_load_const_inv_locenv ;eauto.
+        + !!specialize chained_stack_structure_decomp_S
+            with (1:=h_chain_m_postchainarg)(2:=h_lt_δlvl0)(3:=h_CM_eval_expr_v1) as ?.
+          decomp h_ex.
+          subst_det_addrstack_zero.
+          assumption.
+        + eapply chained_stack_structure_le;eauto.
+          omega. }
+xxx
     assert (∀ astnum addr ofs, (forbidden st CE g astnum locenv stkptr m m addr ofs)
             -> (forbidden st ((pb_lvl, sto) :: CE_sufx)
                           g astnum locenv_postchainarg stkptr_proc m_postchainarg m_postchainarg addr ofs)).

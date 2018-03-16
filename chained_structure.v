@@ -62,14 +62,14 @@ Lemma chained_stack_structure_le m sp : forall n,
     forall n', (n' <= n)%nat -> 
                chained_stack_structure m n' sp.
 Proof.
-  intros n H.
-  !induction H;!intros.
+  !!intros ? ?.
+  !induction h_chain_m_n_sp;!intros.
   - assert (n'=0)%nat by omega;subst.
     constructor.
   - destruct n'.
     * constructor.
     * econstructor;eauto.
-      apply IHchained_stack_structure;eauto;omega.
+      apply IHh_chain_m_n_sp;eauto;omega.
 Qed.
 
 Lemma chained_stack_struct_inv_sp_zero: forall m n sp,
@@ -165,12 +165,17 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma chained_stack_structure_decomp_S: forall m b0 g e b, 
-    Cminor.eval_expr g (Values.Vptr b0 Ptrofs.zero) e m (Eload AST.Mint32 (Econst (Oaddrstack Ptrofs.zero))) (Values.Vptr b Ptrofs.zero) ->
-    forall n v, Cminor.eval_expr g (Values.Vptr b0 Ptrofs.zero) e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (S n)) v ->
-         exists sp',
-           Cminor.eval_expr g (Values.Vptr b0 Ptrofs.zero) e m (Eload AST.Mint32 (Econst (Oaddrstack Ptrofs.zero))) sp' /\
-           Cminor.eval_expr g sp' e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) v.
+Lemma build_loads__decomp_S: forall m b0 g e b, 
+    Cminor.eval_expr g (Values.Vptr b0 Ptrofs.zero) e m 
+                     (Eload AST.Mint32 (Econst (Oaddrstack Ptrofs.zero)))
+                     (Values.Vptr b Ptrofs.zero) ->
+    forall n v,
+      Cminor.eval_expr g (Values.Vptr b0 Ptrofs.zero) e m
+                       (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (S n)) v ->
+      exists sp',
+        Cminor.eval_expr g (Values.Vptr b0 Ptrofs.zero) e m
+                         (Eload AST.Mint32 (Econst (Oaddrstack Ptrofs.zero))) sp'
+        /\ Cminor.eval_expr g sp' e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) v.
 Proof.
   !intros until n.
   revert v b H h_CM_eval_expr_v.
@@ -194,26 +199,63 @@ Proof.
     econstructor;eauto.
 Qed.
 
+Lemma chained_stack_structure_decomp_S: forall m max sp g e, 
+    forall n v, chained_stack_structure m max sp ->
+      n < max ->
+      Cminor.eval_expr g sp e m
+                       (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (S n))
+                       v ->
+         exists sp',
+           Cminor.eval_expr g sp e m (Eload AST.Mint32 (Econst (Oaddrstack Ptrofs.zero))) sp' /\
+           Cminor.eval_expr g sp' e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) v.
+Proof.
+  !!intros until n.
+  !induction n.
+  - !intros.
+    cbn in *.
+    exists v;split;auto.
+    eapply cm_eval_addrstack_zero_chain with (n:=Nat.pred max);eauto.
+    rewrite <- (Nat.succ_pred_pos _ h_lt_O_max) in h_chain_m_max_sp.
+    !inversion h_chain_m_max_sp.
+    !inversion h_CM_eval_expr_v.
+    subst_det_addrstack_zero.
+    rewrite h_loadv in h_loadv_vaddr_v.
+    inversion h_loadv_vaddr_v.
+    assumption.
+  - !intros.
+    cbn in h_CM_eval_expr_v.
+    !invclear h_CM_eval_expr_v;subst.
+    change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) with (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (S n)) in h_CM_eval_expr_vaddr.
+    !!assert (n<max) by omega.
+    specialize IHn with (1:=h_chain_m_max_sp)(2:=h_lt_n_max)(3:=h_CM_eval_expr_vaddr).
+    decomp IHn.
+    exists sp';split;auto.
+    cbn.
+    econstructor;eauto.
+Qed.
+
+
+
 Lemma chained_stack_structure_spec :
   forall  g e m n b,
     (forall lvl,
         (lvl <= n)%nat
-        -> exists b', Cminor.eval_expr g (Values.Vptr b Ptrofs.zero) e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl)
-                                  (Values.Vptr b' Ptrofs.zero))
+        -> exists b',
+          Cminor.eval_expr g (Values.Vptr b Ptrofs.zero) e m
+                           (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl)
+                           (Values.Vptr b' Ptrofs.zero))
     -> chained_stack_structure m n (Values.Vptr b Ptrofs.zero).
 Proof.
   induction n;!intros.
   - constructor.
-  - 
-    
-    !!assert (1 <= S n) by omega.
+  - !!assert (1 <= S n) by omega.
     !!pose proof  (H 1%nat h_le).
     decomp h_ex.
     !!assert (S n <= S n) by omega.
     !!pose proof  (H _ h_le0).
     decomp h_ex.
     cbn in *.
-    !!pose proof chained_stack_structure_decomp_S _ _ _ _ _ h_CM_eval_expr _ _ h_CM_eval_expr0.
+    !!specialize build_loads__decomp_S with (1:=h_CM_eval_expr)(2:=h_CM_eval_expr0) as ?.
     decomp h_ex.
     subst_det_addrstack_zero.
     eapply chained_S with (b':=b');eauto.
@@ -223,7 +265,7 @@ Proof.
       !!pose proof  (H _ h_le1).
       decomp h_ex.
       cbn in *.
-      !!pose proof chained_stack_structure_decomp_S _ _ _ _ _ h_CM_eval_expr_sp' _ _ h_CM_eval_expr.
+      !!specialize build_loads__decomp_S with (1:=h_CM_eval_expr_sp') (2:=h_CM_eval_expr) as ?.
       decomp h_ex.
       subst_det_addrstack_zero.
       eauto.
@@ -453,27 +495,40 @@ Proof.
   rewrite Nat.add_comm.
   assumption.
 Qed.
-xxx
+
 Lemma chained_stack_structure_decomp_add: forall n1 n2 m sp,
     chained_stack_structure m (n1 + n2) sp ->
-    forall g e v base,
-      Cminor.eval_expr g sp e m (build_loads_ base (n1 + n2)) v
+    forall g e v,
+      Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (n1 + n2)) v ->
       exists sp',
-        Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n1) sp' /\
-        Cminor.eval_expr g sp' e m (build_loads_ base n) v.
+        Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n2) sp' /\
+        Cminor.eval_expr g sp' e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n1) v.
 Proof.
+  !!intros until e.
+  specialize chain_structure_cut with (1:=h_chain_m)(g:=g)(e:=e) as h.
+  decomp h.
   !intros.
-  unfold base in h_CM_eval_expr_v.
-  rewrite <- build_loads_compos in h_CM_eval_expr_v.
-  cbn [plus] in h_CM_eval_expr_v.
-  !!pose proof chained_stack_structure_decomp_S_2 _ _ _ h_chain_m g e v h_CM_eval_expr_v.
-  decomp h_ex.
-  exists sp';split;eauto.
-  unfold base.
-  rewrite <- build_loads_compos_comm.
-  rewrite Nat.add_comm.
+  subst_det_addrstack_zero.
+  exists sp'.
+  split;auto.
+Qed.
+
+Lemma chained_stack_structure_decomp_add': forall n1 n2 m sp sp' g e v,
+    chained_stack_structure m (n1 + n2) sp ->
+    Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n2) sp' ->
+    Cminor.eval_expr g sp' e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n1) v -> 
+    Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (n1 + n2)) v.
+Proof.
+  !!intros until 1.
+  specialize chain_structure_cut with (1:=h_chain_m)(g:=g)(e:=e) as h.
+  decomp h.
+  !intros.
+  repeat subst_det_addrstack_zero.
   assumption.
 Qed.
+
+
+
 
 Lemma chain_repeat_loadv_2: forall (m : mem) (n : nat) (sp : Values.val),
     chained_stack_structure m n sp
@@ -915,8 +970,6 @@ Proof.
 Qed.
 
 
-
- (* to finish *)
 Lemma malloc_distinct_from_chaining_loads_2 : 
   forall lvl m sp, 
     chained_stack_structure m lvl sp ->
