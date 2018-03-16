@@ -8855,7 +8855,7 @@ Proof.
           transl_variable st ((pb_lvl, sto) :: CE_sufx) astnum id =: (build_loads (S δlvl) n)
           -> eval_expr g stkptr_proc locenv_postchainarg m_postchainarg (build_loads (S δlvl) n) id_v
           -> eval_expr g stkptr locenv_postchainarg m_postchainarg (build_loads (Datatypes.length CE_prefx+δlvl) n) id_v
-          ). {
+          ) as h_reachable_enclosing_variables. {
       !intros.
       up_type.
       !assert (Datatypes.length CE = Datatypes.length CE_sufx + Datatypes.length CE_prefx)%nat.
@@ -8899,7 +8899,7 @@ Proof.
           assumption.
         + eapply chained_stack_structure_le;eauto.
           omega. }
-xxx
+
     assert (∀ astnum addr ofs, (forbidden st CE g astnum locenv stkptr m m addr ofs)
             -> (forbidden st ((pb_lvl, sto) :: CE_sufx)
                           g astnum locenv_postchainarg stkptr_proc m_postchainarg m_postchainarg addr ofs)).
@@ -8928,8 +8928,45 @@ xxx
       - unfold invisible_cminor_addr.
         !intros.
         !functional inversion heq_transl_variable.
+        cbn in heq_lvloftop_m'.
+        !invclear heq_lvloftop_m'.
+        subst m'.
         subst id_t.
-        unfold invisible_cminor_addr in h_invis_stkptr__m_addr_ofs.
+        (* either the variable is local to the new frame and it was
+        'not invisible" from enclosing one because it was free, either
+        it is from a deeper frame and it was visible from enclosing frame. *)
+        !functional inversion heq_CEframeG_id;subst.
+        + rewrite Nat.sub_diag in *. (* the variable is local *)
+          unfold build_loads in h_CM_eval_expr_id_t.
+          simpl in h_CM_eval_expr_id_t.
+          !inversion h_CM_eval_expr_id_t;subst.
+          !assert (v1 = stkptr_proc).
+          { eapply det_eval_expr;eauto.
+            apply cm_eval_addrstack_zero. }
+          subst.
+          !assert (is_free_block m spb_proc ofs).
+          { red.
+            intros perm. 
+            eapply fresh_block_alloc_perm;eauto. }
+          Lemma is_free_block_disj : forall m sp ofs sp',
+              is_free_block m sp ofs ->
+              ¬ is_free_block m sp' ofs ->
+              sp <> sp'
+          .
+          Proof.
+            intros m sp ofs sp' ofs' H H0. 
+            unfold is_free_block in *.
+            subst sp'.
+            contradiction.
+          Qed.
+          simpl in h_eval_binop_Oadd_v1_v2.
+          destruct v2;try discriminate.
+          !!assert (Archi.ptr64 = false) by reflexivity.
+          rewrite heq_ptr64 in h_eval_binop_Oadd_v1_v2.
+          !inversion h_eval_binop_Oadd_v1_v2.
+          left.
+          eapply is_free_block_disj;eauto.
+        + (* The variable is deeper, so it is visible from stkptr *)
 
 
 xxxx
