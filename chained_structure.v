@@ -37,18 +37,25 @@ Definition stack_localstack_aligned lvl locenv g m sp :=
 
 Ltac rename_chained t th :=
   match th with
-| chained_stack_structure ?m ?lvl ?sp => fresh "h_chain_" m "_" lvl "_" sp
-| chained_stack_structure ?m ?lvl _ => fresh "h_chain_" m "_" lvl
-| chained_stack_structure ?m _ _ => fresh "h_chain_" m
-| chained_stack_structure _ ?lvl _ => fresh "h_chain_" lvl
-| chained_stack_structure _ _ _ => fresh "h_chain"
-| repeat_Mem_loadv _ ?m ?lvl ?v ?sp => fresh "h_repeat_loadv_" lvl "_" v
-| repeat_Mem_loadv _ ?m ?lvl ?v ?sp => fresh "h_repeat_loadv_" lvl
-| repeat_Mem_loadv _ ?m ?lvl ?v ?sp => fresh "h_repeat_loadv"
-| stack_localstack_aligned _ _ ?g ?m ?sp => fresh "h_aligned_" g "_" m
-| stack_localstack_aligned _ _ _ ?m ?sp => fresh "h_aligned_" m
-| stack_localstack_aligned _ _ ?g _ ?sp => fresh "h_aligned_" g
+| chained_stack_structure ?m ?lvl ?sp => fresh "chain_" m "_" lvl "_" sp
+| chained_stack_structure ?m ?lvl _ => fresh "chain_" m "_" lvl
+| chained_stack_structure ?m _ _ => fresh "chain_" m
+| chained_stack_structure _ ?lvl _ => fresh "chain_" lvl
+| chained_stack_structure _ _ _ => fresh "chain"
+| repeat_Mem_loadv _ ?m ?lvl ?v ?sp => fresh "repeat_loadv_" lvl "_" v
+| repeat_Mem_loadv _ ?m ?lvl ?v ?sp => fresh "repeat_loadv_" lvl
+| repeat_Mem_loadv _ ?m ?lvl ?v ?sp => fresh "repeat_loadv"
+| stack_localstack_aligned _ _ ?g ?m ?sp => fresh "aligned_" g "_" m
+| stack_localstack_aligned _ _ _ ?m ?sp => fresh "aligned_" m
+| stack_localstack_aligned _ _ ?g _ ?sp => fresh "aligned_" g
 end.
+
+Ltac prefixable h th ::=
+  match th with
+  | _ => prefixable_compcert h th
+  | _ => prefixable_eq_neq h th
+  end.
+
 
 Ltac rename_hyp h th ::=
   match th with
@@ -69,7 +76,7 @@ Proof.
   - destruct n'.
     * constructor.
     * econstructor;eauto.
-      apply IHh_chain_m_n_sp;eauto;omega.
+      apply h_forall_n';eauto;omega.
 Qed.
 
 Lemma chained_stack_struct_inv_sp_zero: forall m n sp,
@@ -192,8 +199,8 @@ Proof.
     cbn in h_CM_eval_expr_v.
     !invclear h_CM_eval_expr_v;subst.
     change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) with (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (S n)) in h_CM_eval_expr_vaddr.
-    specialize (IHn _ _ h_CM_eval_expr h_CM_eval_expr_vaddr).
-    decomp IHn.
+    specialize (h_forall_v _ _ h_CM_eval_expr h_CM_eval_expr_vaddr).
+    decomp h_forall_v.
     exists sp';split;auto.
     cbn.
     econstructor;eauto.
@@ -227,8 +234,8 @@ Proof.
     !invclear h_CM_eval_expr_v;subst.
     change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) with (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (S n)) in h_CM_eval_expr_vaddr.
     !!assert (n<max) by omega.
-    specialize IHn with (1:=h_chain_m_max_sp)(2:=h_lt_n_max)(3:=h_CM_eval_expr_vaddr).
-    decomp IHn.
+    specialize h_forall_v with (1:=h_chain_m_max_sp)(2:=h_lt_n_max)(3:=h_CM_eval_expr_vaddr).
+    decomp h_forall_v.
     exists sp';split;auto.
     cbn.
     econstructor;eauto.
@@ -246,23 +253,23 @@ Lemma chained_stack_structure_spec :
                            (Values.Vptr b' Ptrofs.zero))
     -> chained_stack_structure m n (Values.Vptr b Ptrofs.zero).
 Proof.
-  induction n;!intros.
+  !!induction n;!intros.
   - constructor.
   - !!assert (1 <= S n) by omega.
-    !!pose proof  (H 1%nat h_le).
+    !!pose proof  (h_forall_lvl 1%nat h_le).
     decomp h_ex.
     !!assert (S n <= S n) by omega.
-    !!pose proof  (H _ h_le0).
+    !!pose proof  (h_forall_lvl _ h_le0).
     decomp h_ex.
     cbn in *.
     !!specialize build_loads__decomp_S with (1:=h_CM_eval_expr)(2:=h_CM_eval_expr0) as ?.
     decomp h_ex.
     subst_det_addrstack_zero.
     eapply chained_S with (b':=b');eauto.
-    + eapply IHn.
+    + eapply h_forall_b.
       !intros.
       !!assert (S lvl <= S n) by omega.
-      !!pose proof  (H _ h_le1).
+      !!pose proof  (h_forall_lvl _ h_le1).
       decomp h_ex.
       cbn in *.
       !!specialize build_loads__decomp_S with (1:=h_CM_eval_expr_sp') (2:=h_CM_eval_expr) as ?.
@@ -336,7 +343,7 @@ Proof.
     cbn.
     inversion h_CM_eval_expr_v;subst.
     econstructor;eauto.
-    eapply IHn;eauto.
+    eapply h_forall_m;eauto.
     eapply chained_stack_structure_le;eauto.
 Qed.
 
@@ -353,8 +360,8 @@ Proof.
   !induction h_chain_m_n_sp;!intros.
   - exists b.
     eapply cm_eval_addrstack_zero;eauto.
-  - specialize (IHh_chain_m_n_sp g e).
-    decomp IHh_chain_m_n_sp.
+  - specialize (h_forall_g g e).
+    decomp h_forall_g.
     exists b0.
     eapply chained_stack_structure_decomp_S_2';eauto.
     + econstructor;eauto.
@@ -376,7 +383,7 @@ Proof.
     + econstructor;eauto.
     + econstructor;eauto.
       econstructor;eauto.
-    + eapply IHh_chain_m_n_sp;eauto.
+    + eapply h_forall_v;eauto.
       !inversion h_repeat_loadv.
       rewrite h_loadv in h_loadv_sp'.
       !invclear h_loadv_sp'.
@@ -409,8 +416,8 @@ Proof.
     change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) with (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (S n)) in h_CM_eval_expr_vaddr.
     !assert (chained_stack_structure m (S n) sp).
     { eapply chained_stack_structure_le;eauto. }
-    specialize IHn with (1:=h_chain_m0) (2:=h_CM_eval_expr_vaddr).
-    decomp IHn.
+    specialize h_forall_m with (1:=h_chain_m0) (2:=h_CM_eval_expr_vaddr).
+    decomp h_forall_m.
     exists sp';split;auto.
     cbn.
     econstructor;eauto.
@@ -441,14 +448,14 @@ Proof.
     exists sp;split;[eauto| split;eauto].
     cbn.
     eapply cm_eval_addrstack_zero_chain;eauto.
-  - specialize (IHn'' (S n') m sp g e b).
+  - specialize (h_forall_n' (S n') m sp g e b).
     !assert (chained_stack_structure m (S n' + n'') sp).
     { replace (n' + S n'')%nat with (S n' + n'')%nat in h_chain_m; try omega.
       assumption. }
-    specialize (IHn'' h_chain_m0).
+    specialize (h_forall_n' h_chain_m0).
     replace (n' + S n'')%nat with (S n' + n'')%nat in h_CM_eval_expr; try omega.
-    specialize (IHn'' h_CM_eval_expr).
-    decomp IHn''.
+    specialize (h_forall_n' h_CM_eval_expr).
+    decomp h_forall_n'.
     !!pose proof chained_stack_structure_decomp_S_2 n' m sp' h_chain_m1 g e (Values.Vptr b Ptrofs.zero) h_CM_eval_expr1.
     decomp h_ex.
     exists sp'0;split;[|split;[|split]];eauto.
@@ -546,7 +553,7 @@ Proof.
     econstructor 2.
     all:swap 1 2.
     + eassumption.
-    + eapply IHh_chain_m_n_sp with (g:=g)(e:=e).
+    + eapply h_forall_v with (g:=g)(e:=e).
       cbn in h_CM_eval_expr_v.
       specialize chained_stack_structure_decomp_S_2 with (1:=H)(2:=h_CM_eval_expr_v) as h.
       decomp h.
@@ -623,7 +630,7 @@ Proof.
   - !inversion h_chain_m.
     cbn in *.
     econstructor.
-    + eapply IHlvl;eauto.
+    + eapply h_forall_m;eauto.
     + cbn.
       eapply Mem.load_alloc_other;eauto.
 Qed.
@@ -749,11 +756,11 @@ Proof.
       intro abs;subst b.
       !!pose proof Mem.load_valid_access _ _ _ _ _ h_loadv.
       !!pose proof Mem.fresh_block_alloc _ _ _ _ _ h_malloc_m_m'.
-      apply neg_h_valid_blck_m_new_sp.
+      apply h_neg_valid_blck_m_new_sp.
       eapply Mem.valid_access_valid_block.
       eapply Mem.valid_access_implies with (1:=h_valid_access_new_sp).
       constructor.
-    + eapply IHh_chain_m_lvl_sp with (n0:=n0);eauto.
+    + eapply h_forall_n with (n0:=n0);eauto.
       * omega.
       * !assert(chained_stack_structure m (S n) (Values.Vptr b Ptrofs.zero)).
         { econstructor;eauto. }
@@ -796,12 +803,12 @@ Proof.
     + cbn.
       !!destruct lgth_CE;[cbn in h_le_δ_lvl_lgth_CE;exfalso;omega|].
       subst;up_type.
-      specialize (IHh_chain_m_n_stkptr lgth_CE).
+      specialize (h_forall_lgth_CE lgth_CE).
       !!assert (lgth_CE <= n) by omega.
       !!assert (δ_lvl <= lgth_CE)%nat by omega.
-      specialize (fun locenv g => IHh_chain_m_n_stkptr h_le_lgth_CE_n locenv g δ_lvl h_le_δ_lvl_lgth_CE0).
-      specialize (IHh_chain_m_n_stkptr locenv g).
-      decomp IHh_chain_m_n_stkptr.
+      specialize (fun locenv g => h_forall_lgth_CE h_le_lgth_CE_n locenv g δ_lvl h_le_δ_lvl_lgth_CE0).
+      specialize (h_forall_lgth_CE locenv g).
+      decomp h_forall_lgth_CE.
       exists b_δ.
       assert (chained_stack_structure m (S δ_lvl) (Values.Vptr b Ptrofs.zero)).
       { econstructor; eauto.
@@ -835,10 +842,10 @@ Proof.
     subst_det_addrstack_zero.
     apply cm_eval_addrstack_zero.
   - !!assert (n <= lvl)%nat by omega.
-    specialize (IHn h_chain_m_lvl_sp _ _ _ _ heq_storev_x_m' h_le_n_lvl).
+    specialize (h_impl_forall_x h_chain_m_lvl_sp _ _ _ _ heq_storev_x_m' h_le_n_lvl).
     cbn -[Mem.storev] in *.
     !inversion h_CM_eval_expr_v.
-    specialize (IHn _ h_CM_eval_expr_vaddr).
+    specialize (h_impl_forall_x _ h_CM_eval_expr_vaddr).
     econstructor.
     + eassumption.
     + cbn in *.
@@ -902,7 +909,8 @@ Lemma storev_outside_struct_chain_preserves_var_value:
                        Cminor.eval_expr g sp e m (Eload _chk' (build_loads n δ)) v
                        -> Cminor.eval_expr g sp e m' (Eload _chk' (build_loads n δ)) v.
 Proof.
-  !!intros * h_unch **.  
+  !!intros.
+  rename h_forall_n into h_unch.
   !inversion h_CM_eval_expr_v.
   assert (h_unch':forall n : nat,
              (n < lvl)%nat
@@ -964,7 +972,7 @@ Proof.
   eapply chained_stack_structure_spec.
   !intros.
   !!pose proof chain_structure_spec lvl0 m (Values.Vptr x0 Ptrofs.zero).
-  !!edestruct H1 with (g:=g) (e:=e).
+  !!edestruct h_impl_forall_g with (g:=g) (e:=e).
   eapply chained_stack_structure_le;eauto;try omega.
   eauto.
 Qed.

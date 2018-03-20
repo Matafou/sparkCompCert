@@ -5,30 +5,25 @@ Require Import sparkfrontend.LibHypsNaming Sorted ZArith List.
 
 Ltac rename_hyp1 h th :=
   match th with
-  | List.In ?e ?l => fresh "h_in_" e "_" l
-  | List.In ?e _ => fresh "h_in_" e
-  | List.In _ _ => fresh "h_in"
-  | InA _ ?e ?l => fresh "h_inA_" e "_" l
-  | InA _ ?e _ => fresh "h_inA_" e
-  | InA _ _ _ => fresh "h_inA"
-  | @Forall _ ?P ?x => fresh "h_forall_" P "_" x
-  | @Forall _ _ ?x => fresh "h_forall_" x
-  | @Forall _ ?P _ => fresh "h_forall_" P
-  | @Forall _ _ _ => fresh "h_forall"
-  | @StronglySorted _ ?ord ?l => fresh "h_strgSorted_" l
-  | @StronglySorted _ ?ord ?l => fresh "h_strgSorted"
-  | NoDupA _ ?l => fresh "h_NoDupA_" l
-  | NoDupA _ _ => fresh "h_NoDupA"
+  | List.In ?e ?l => fresh "lst_in_" e "_" l
+  | List.In ?e _ => fresh "lst_in_" e
+  | List.In _ _ => fresh "lst_in"
+  | InA _ ?e ?l => fresh "inA_" e "_" l
+  | InA _ ?e _ => fresh "inA_" e
+  | InA _ _ _ => fresh "inA"
+  | @Forall _ ?P ?x => fresh "lst_forall_" P "_" x
+  | @Forall _ _ ?x => fresh "lst_forall_" x
+  | @Forall _ ?P _ => fresh "lst_forall_" P
+  | @Forall _ _ _ => fresh "lst_forall"
+  | @StronglySorted _ ?ord ?l => fresh "strgSorted_" l
+  | @StronglySorted _ ?ord ?l => fresh "strgSorted"
+  | NoDupA _ ?l => fresh "NoDupA_" l
+  | NoDupA _ _ => fresh "NoDupA"
   end.
 
 
-Ltac rename_hyp2 h th :=
-  match th with
-  | _ => rename_hyp1 h th
-  | _ => LibHypsNaming.rename_hyp_neg h th
-  end.
 
-Ltac rename_hyp ::= rename_hyp2.
+Ltac rename_hyp ::= rename_hyp1.
 
 (* All elements of a sorted list are smaller or equal to the first
    element. If the ordering is reflexive. *)
@@ -43,7 +38,7 @@ Proof.
   - apply List.Forall_forall.
     !intros.
     right.
-    rewrite List.Forall_forall in h_forall_stk.
+    rewrite List.Forall_forall in h_lst_forall_stk.
     auto.
 Qed.
 
@@ -97,8 +92,8 @@ Qed.
 Lemma Zneq_bool_true_iff: forall x y : Z, x <> y <-> Zneq_bool x y = true.
 Proof.
   !intros;split;!intros.
-  - red in hneq.
-    rewrite <- Z.compare_eq_iff in hneq.
+  - red in hneq_x.
+    rewrite <- Z.compare_eq_iff in hneq_x.
     unfold Zneq_bool.
     destruct (x ?= y); auto.
   - unfold Zneq_bool in *.
@@ -126,10 +121,10 @@ Proof.
     apply Zeq_is_eq_bool in heq_x0.
     rewrite heq_x, heq_x0.
     reflexivity.
-  - generalize hneq.
+  - generalize hneq_x.
     !intro .
-    apply Zneq_bool_true in hneq.
-    apply Zeq_is_neq_bool in hneq0.
-    rewrite hneq, hneq0.
+    apply Zneq_bool_true in hneq_x.
+    apply Zeq_is_neq_bool in hneq_x0.
+    rewrite hneq_x, hneq_x0.
     reflexivity.
 Qed.

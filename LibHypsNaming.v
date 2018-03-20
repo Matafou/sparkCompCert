@@ -16,83 +16,6 @@
    ZArith to be loaded *)
 Require Import ZArith FunInd.
 
-(** ** The default fallback renaming strategy 
-  This is used if the user-defined renaing scheme fails to give a name
-  to a hypothesis. [th] is the type of the hypothesis. *)
-Ltac fallback_rename_hyp h th :=
-  match th with
-
-    | true = beq_nat _ _ => fresh "hbeqnat_true"
-    | beq_nat _ _ = true => fresh "hbeqnat_true"
-    | false = beq_nat _ _ => fresh "hbeqnat_false"
-    | beq_nat _ _ = false => fresh "hbeqnat_false"
-    | beq_nat _ _ = _ => fresh "hbeqnat"
-    | Zeq_bool _ _ = true => fresh "heq_Z_true"
-    | Zeq_bool _ _ = false => fresh "heq_Z_false"
-    | true = Zeq_bool _ _ => fresh "heq_Z_true"
-    | false = Zeq_bool _ _ => fresh "heq_Z_false"
-    | Zeq_bool _ _ = _ => fresh "heq_Z"
-    | _ = Zeq_bool _ _ => fresh "heq_Z"
-    | ?f = _ => fresh "heq_" f
-    | ?f _ = _ => fresh "heq_" f
-    | ?f _ _ = _ => fresh "heq_" f
-    | ?f _ _ _ = _ => fresh "heq_" f
-    | ?f _ _ _ _ = _ => fresh "heq_" f
-    | ?f _ _ _ _ _ = _ => fresh "heq_" f
-    | ?f _ _ _ _ _ _ = _ => fresh "heq_" f
-    | ?f _ _ _ _ _ _ _ = _ => fresh "heq_" f
-    | ?f _ _ _ _ _ _ _ _ = _ => fresh "heq_" f
-    | _ = ?f => fresh "heq_" f
-    | _ = ?f _  => fresh "heq_" f
-    | _ = ?f _ _  => fresh "heq_" f
-    | _ = ?f _ _ _  => fresh "heq_" f
-    | _ = ?f _ _ _ _  => fresh "heq_" f
-    | _ = ?f _ _ _ _ _  => fresh "heq_" f
-    | _ = ?f _ _ _ _ _ _  => fresh "heq_" f
-    | _ = ?f _ _ _ _ _ _ _  => fresh "heq_" f
-    | _ = ?f _ _ _ _ _ _ _ _  => fresh "heq_" f
-    | @eq bool _ true => fresh "heq_bool_true"
-    | @eq bool _ false => fresh "heq_bool_false"
-    | @eq bool true _ => fresh "heq_bool_true"
-    | @eq bool false _ => fresh "heq_bool_false"
-    | @eq bool _ _ => fresh "heq_bool"
-    | @eq nat _ true => fresh "heq_nat_true"
-    | @eq nat _ false => fresh "heq_nat_false"
-    | @eq nat true _ => fresh "heq_nat_true"
-    | @eq nat false _ => fresh "heq_nat_false"
-    | @eq nat _ _ => fresh "heq_nat"
-    | _ <> _ => fresh "hneq"
-    | _ = _ => fresh "heq"
-    | _ /\ _ => fresh "h_and"
-    | _ \/ _ => fresh "h_or"
-    | @ex _ _ => fresh "h_ex"
-    | ?x < ?y => fresh "h_lt_" x "_" y
-    | ?x < _ => fresh "h_lt_" x
-    | _ < _ => fresh "h_lt"
-    | ?x <= ?y => fresh "h_le_" x "_" y
-    | ?x <= _ => fresh "h_le_" x
-    | _ <= _ => fresh "h_le"
-    | ?x > ?y => fresh "h_gt_" x "_" y
-    | ?x > _ => fresh "h_gt_" x
-    | _ > _ => fresh "h_gt"
-    | ?x >= ?y => fresh "h_ge_" x "_" y
-    | ?x >= _ => fresh "h_ge_" x
-    | _ >= _ => fresh "h_ge"
-
-    | (?x < ?y)%Z => fresh "h_lt_" x "_" y
-    | (?x < _)%Z => fresh "h_lt_" x
-    | (_ < _)%Z => fresh "h_lt"
-    | (?x <= ?y)%Z => fresh "h_le_" x "_" y
-    | (?x <= _)%Z => fresh "h_le_" x
-    | (_ <= _)%Z => fresh "h_le"
-    | (?x > ?y)%Z => fresh "h_gt_" x "_" y
-    | (?x > _)%Z => fresh "h_gt_" x
-    | (_ > _)%Z => fresh "h_gt"
-    | (?x >= ?y)%Z => fresh "h_ge_" x "_" y
-    | (?x >= _)%Z => fresh "h_ge_" x
-    | (_ >= _)%Z => fresh "h_ge"
-  end.
-
 (** ** The custom renaming tactic
   This tactic should be redefined along a coq development, it should
   return a fresh name build from an hypothesis h and its type th. It
@@ -105,13 +28,13 @@ Ltac fallback_rename_hyp h th :=
 <<
 Ltac my_rename_hyp h th :=
   match th with
-    | (ind1 _ _ _ _) => fresh "h_ind1"
-    | (ind2 _ _) => fresh "h_ind2"
-    | f1 _ _ = true => fresh "hf_eq_true"
-    | f1 _ _ = false => fresh "hf_eq_false"
-    | f1 _ _ = _ => fresh "hf_eq"
-    | ind3 ?h ?x => fresh "h_ind3_" h
-    | ind3 _ ?x => fresh "h_ind3" (* if fresh h failed above *)
+    | (ind1 _ _ _ _) => fresh "ind1"
+    | (ind2 _ _) => fresh "ind2"
+    | f1 _ _ = true => fresh "f_eq_true"
+    | f1 _ _ = false => fresh "f_eq_false"
+    | f1 _ _ = _ => fresh "f_eq"
+    | ind3 ?h ?x => fresh "ind3_" h
+    | ind3 _ ?x => fresh "ind3" (* if fresh h failed above *)
 
     (* Sometime we want to look for the name of another hypothesis to
        name h. For example here we want to rename hypothesis h into
@@ -130,16 +53,146 @@ Ltac my_rename_hyp h th :=
 
 Ltac rename_hyp ::= my_rename_hyp.>> *)
 
-Ltac rename_hyp h ht := fail.
+Ltac rename_hyp h ht := match true with true => fail | _ => fresh "hh" end.
+
+Ltac rename_hyp_prefx h ht :=
+  let res := rename_hyp h ht in
+  fresh "h_" res.
+
+(** ** The default fallback renaming strategy 
+  This is used if the user-defined renaming scheme fails to give a name
+  to a hypothesis. [th] is the type of the hypothesis. *)
+Ltac fallback_rename_hyp h th :=
+  match th with
+    | _ => rename_hyp h th
+    | true = beq_nat _ _ => fresh "beqnat_true"
+    | beq_nat _ _ = true => fresh "beqnat_true"
+    | false = beq_nat _ _ => fresh "beqnat_false"
+    | beq_nat _ _ = false => fresh "beqnat_false"
+    | beq_nat _ _ = _ => fresh "beqnat"
+    | Zeq_bool _ _ = true => fresh "eq_Z_true"
+    | Zeq_bool _ _ = false => fresh "eq_Z_false"
+    | true = Zeq_bool _ _ => fresh "eq_Z_true"
+    | false = Zeq_bool _ _ => fresh "eq_Z_false"
+    | Zeq_bool _ _ = _ => fresh "eq_Z"
+    | _ = Zeq_bool _ _ => fresh "eq_Z"
+    | ?f = _ => fresh "eq_" f
+    | ?f _ = _ => fresh "eq_" f
+    | ?f _ _ = _ => fresh "eq_" f
+    | ?f _ _ _ = _ => fresh "eq_" f
+    | ?f _ _ _ _ = _ => fresh "eq_" f
+    | ?f _ _ _ _ _ = _ => fresh "eq_" f
+    | ?f _ _ _ _ _ _ = _ => fresh "eq_" f
+    | ?f _ _ _ _ _ _ _ = _ => fresh "eq_" f
+    | ?f _ _ _ _ _ _ _ _ = _ => fresh "eq_" f
+    | _ = ?f => fresh "eq_" f
+    | _ = ?f _  => fresh "eq_" f
+    | _ = ?f _ _  => fresh "eq_" f
+    | _ = ?f _ _ _  => fresh "eq_" f
+    | _ = ?f _ _ _ _  => fresh "eq_" f
+    | _ = ?f _ _ _ _ _  => fresh "eq_" f
+    | _ = ?f _ _ _ _ _ _  => fresh "eq_" f
+    | _ = ?f _ _ _ _ _ _ _  => fresh "eq_" f
+    | _ = ?f _ _ _ _ _ _ _ _  => fresh "eq_" f
+    | @eq bool _ true => fresh "eq_bool_true"
+    | @eq bool _ false => fresh "eq_bool_false"
+    | @eq bool true _ => fresh "eq_bool_true"
+    | @eq bool false _ => fresh "eq_bool_false"
+    | @eq bool _ _ => fresh "eq_bool"
+    | @eq nat _ true => fresh "eq_nat_true"
+    | @eq nat _ false => fresh "eq_nat_false"
+    | @eq nat true _ => fresh "eq_nat_true"
+    | @eq nat false _ => fresh "eq_nat_false"
+    | @eq nat _ _ => fresh "eq_nat"
+    | ?x <> _ => fresh "neq_" x
+    | _ <> ?x => fresh "neq_" x
+    | _ <> _ => fresh "neq"
+    | _ = _ => fresh "eq"
+    | _ /\ _ => fresh "and"
+    | _ \/ _ => fresh "or"
+    | @ex _ _ => fresh "ex"
+    | ?x < ?y => fresh "lt_" x "_" y
+    | ?x < _ => fresh "lt_" x
+    | _ < _ => fresh "lt"
+    | ?x <= ?y => fresh "le_" x "_" y
+    | ?x <= _ => fresh "le_" x
+    | _ <= _ => fresh "le"
+    | ?x > ?y => fresh "gt_" x "_" y
+    | ?x > _ => fresh "gt_" x
+    | _ > _ => fresh "gt"
+    | ?x >= ?y => fresh "ge_" x "_" y
+    | ?x >= _ => fresh "ge_" x
+    | _ >= _ => fresh "ge"
+
+    | (?x < ?y)%Z => fresh "lt_" x "_" y
+    | (?x < _)%Z => fresh "lt_" x
+    | (_ < _)%Z => fresh "lt"
+    | (?x <= ?y)%Z => fresh "le_" x "_" y
+    | (?x <= _)%Z => fresh "le_" x
+    | (_ <= _)%Z => fresh "le"
+    | (?x > ?y)%Z => fresh "gt_" x "_" y
+    | (?x > _)%Z => fresh "gt_" x
+    | (_ > _)%Z => fresh "gt"
+    | (?x >= ?y)%Z => fresh "ge_" x "_" y
+    | (?x >= _)%Z => fresh "ge_" x
+    | (_ >= _)%Z => fresh "ge"
+    | ~ (_ = _) => fail 1(* h_neq already dealt by fallback *)
+    | ~ ?th' => 
+      let sufx := fallback_rename_hyp h th' in
+      fresh "neg_" sufx
+    | ~ ?th' => fresh "neg"
+    (* Order is important here: *)
+    | ?A -> ?B =>
+      let nme := fallback_rename_hyp h B in
+      fresh "impl_" nme
+    | forall z:?A , ?B =>
+      fresh "forall_" z
+  end.
+
+Inductive HypPrefixes :=
+  | HypNone
+  | HypH_
+  | HypH.
+
+(* One should rename this if needed *)
+Ltac prefixable_eq_neq h th :=
+  match th with
+  | eq _ _ => HypH
+  | ~ (eq _ _) => HypH
+  | _ => HypH_
+  end.
+
+Ltac prefixable h th := prefixable_eq_neq h th.
+
+(* Add prefix except if not a Prop or if prefixable says otherwise. *)
+Ltac add_prefix h th nme :=
+  match type of th with
+  | Prop => 
+    match prefixable h th with
+    | HypH_ => fresh "h_" nme
+    | HypH => fresh "h" nme
+    | HypNone => nme
+    end
+  | _ => nme
+  end.
+
+Ltac fallback_rename_hyp_prefx h th :=
+  let res := fallback_rename_hyp h th in
+  add_prefix h th res.
+  (* fresh "h_" res. *)
+
 
 
 (* Add this if you want hyps of typr ~ P to be renamed like if of type
    P but prefixed by "neg_" *)
 Ltac rename_hyp_neg h th :=
   match th with
-  | ~ ?th' =>
-    let nme := rename_hyp h th' in
-    fresh "neg_" nme
+  | ~ (_ = _) => fail 1(* h_neq already dealt by fallback *)
+  | ~ ?th' => 
+    let sufx := fallback_rename_hyp h th' in
+    fresh "neg_" sufx
+  | ~ ?th' => fresh "neg"
+  | _ => fail
   end.
 
 (* Credit for the harvesting of hypothesis: Jonathan Leivant *)
@@ -168,19 +221,19 @@ Ltac rename_if_not_old old_hyps H :=
   | context[H] => idtac
   | _ =>
     match type of H with
-    | ?th => 
+(*    | ?th => 
       let dummy_name := fresh "dummy" in
       rename H into dummy_name; (* this renaming makes the renaming more or less
                                    idempotent, it is backtracked if the
                                    rename_hyp below fails. *)
         let newname := rename_hyp dummy_name th in
-        rename dummy_name into newname
+        rename dummy_name into newname*)
     | ?th => 
       let dummy_name := fresh "dummy" in
       rename H into dummy_name; (* this renaming makes the renaming more or less
                                    idempotent, it is backtracked if the
                                    rename_hyp below fails. *)
-        let newname := fallback_rename_hyp dummy_name th in
+        let newname := fallback_rename_hyp_prefx dummy_name th in
         rename dummy_name into newname
     | _ => idtac (* "no renaming pattern for " H *)
     end
@@ -374,3 +427,37 @@ Ltac move_up_types H := match type of H with
    which is no yet commited in coq-trunk. *)
 Ltac up_type := map_all_hyps_rev move_up_types.
 
+(* A full example: *)
+(*
+Ltac rename_hyp_2 h th :=
+  match th with
+  | true = false => fresh "trueEQfalse"
+  end.
+
+Ltac rename_hyp ::= rename_hyp_2.
+
+Lemma foo: forall x y,
+    x <= y -> 
+    x = y -> 
+    ~1 < 0 ->
+    (0 < 1 -> ~(true=false)) ->
+    (forall w w',w < w' -> ~(true=false)) ->
+    (0 < 1 -> ~(1<0)) ->
+    (0 < 1 -> 1<0) -> 0 < 1.
+  (* auto naming at intro: *)
+ !intros.
+ Undo.
+ (* intros first, rename after: *)
+ intros.
+ rename_all_hyps.
+ Undo.
+ (* intros first, rename some hyp only: *)
+ intros.
+ autorename H0.
+ (* put !! before a tactic to rename all new hyps: *)
+ rename_all_hyps.
+ !!destruct h_le_x_y eqn:?.
+ - auto with arith.
+ - auto with arith.
+Qed.
+*)

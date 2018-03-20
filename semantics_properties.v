@@ -15,71 +15,71 @@ Require Import store_util.
 
 Ltac rename_hyp_sem h th :=
   match th with
-  | fetch_var_type _ _ = Error _ => fresh "heq_fetch_var_type_ERR"
-  | fetch_var_type _ _ = _ => fresh "heq_fetch_var_type"
-  | spark2Cminor.compute_chnk _ ?name = OK ?chk => fresh "heq_compute_chnk_" name "_" chk
-  | spark2Cminor.compute_chnk _ ?name = ?chk => fresh "heq_compute_chnk_" name "_" chk
-  | spark2Cminor.compute_chnk _ ?name = _ => fresh "heq_compute_chnk_" name
-  | spark2Cminor.compute_chnk _ _ = _ => fresh "heq_compute_chnk"
-  | symboltable.fetch_exp_type _ _ = _ => fresh "heq_fetch_exp_type"
-  | symboltable.fetch_exp_type _ _ = Error _ => fresh "heq_fetch_exp_type_ERR"
-  | fetch_exp_type _ _ = None => fresh "heq_fetch_exp_type_none"
-  | fetch_exp_type _ _ = _ => fresh "heq_fetch_exp_type"
-  | evalExp _ _ _ (RTE _) => fresh "h_eval_expr_RE"
-  | evalExp _ _ ?e (OK ?v) => fresh "h_eval_expr_" e "_" v
-  | evalExp _ _ _ (OK ?v) => fresh "h_eval_expr_" v
-  | evalExp _ _ ?e ?v => fresh "h_eval_expr_" e "_" v
-  | evalExp _ _ ?e _ => fresh "h_eval_expr_" e
-  | evalExp _ _ _ ?v => fresh "h_eval_expr_" v
-  | evalExp _ _ _ _ => fresh "h_eval_expr"
-  | evalName _ _ _ (RTE _) => fresh "h_eval_name_RE"
-  | evalName _ _ ?e (OK ?v) => fresh "h_eval_name_" e "_" v
-  | evalName _ _ _ (OK ?v) => fresh "h_eval_name_" v
-  | evalName _ _ ?e ?v => fresh "h_eval_name_" e "_" v
-  | evalName _ _ ?e _ => fresh "h_eval_name_" e
-  | evalName _ _ _ ?v => fresh "h_eval_name_" v
-  | evalName _ _ _ _ => fresh "h_eval_name"
-  | overflowCheck _ (RTE _) => fresh "h_overf_check_RE"
-  | overflowCheck _ _ => fresh "h_overf_check"
-  | rangeCheck _ _ _ (RTE _) => fresh "h_do_range_check_RE"
-  | rangeCheck _ _ _ _ => fresh "h_do_range_check"
-  | do_run_time_check_on_binop _ _ _ (RTE _) => fresh "h_do_rtc_binop_RTE"
-  | do_run_time_check_on_binop _ _ _ _ => fresh "h_do_rtc_binop"
-  | evalLiteral _ (RTE _)  => fresh "h_eval_literal_RE"
-  | evalLiteral _ _  => fresh "h_eval_literal"
-  | evalStmt _ _ _ (RTE _) => fresh "h_eval_stmt_RE"
-  | evalStmt _ _ _ _ => fresh "h_eval_stmt"
-  | evalDecl _ _ _ _ (RTE _) => fresh "h_eval_decl_RE"
-  | evalDecl _ _ _ _ _ => fresh "h_eval_decl"
-  | storeUpdate _ _ _ _ (RTE _) => fresh "h_storeUpd_RE"
-  | storeUpdate _ _ _ _ _ => fresh "h_storeUpd"
-  | do_run_time_check_on_binop _ _ _ (RTE _) =>  fresh "h_do_rtc_binop_RE"
-  | do_run_time_check_on_binop _ _ _ _ =>  fresh "h_do_rtc_binop"
-  | do_run_time_check_on_unop _ _ (RTE _) =>  fresh "h_do_rtc_unop_RE"
-  | do_run_time_check_on_unop _ _ _ =>  fresh "h_do_rtc_unop"
-  | divCheck _ _ _ (RTE _) => fresh "h_do_division_check_RTE"
-  | divCheck _ _ _ _ => fresh "h_do_division_check"
+  | fetch_var_type _ _ = Error _ => fresh "eq_fetch_var_type_ERR"
+  | fetch_var_type _ _ = _ => fresh "eq_fetch_var_type"
+  | spark2Cminor.compute_chnk _ ?name = OK ?chk => fresh "eq_compute_chnk_" name "_" chk
+  | spark2Cminor.compute_chnk _ ?name = ?chk => fresh "eq_compute_chnk_" name "_" chk
+  | spark2Cminor.compute_chnk _ ?name = _ => fresh "eq_compute_chnk_" name
+  | spark2Cminor.compute_chnk _ _ = _ => fresh "eq_compute_chnk"
+  | symboltable.fetch_exp_type _ _ = _ => fresh "eq_fetch_exp_type"
+  | symboltable.fetch_exp_type _ _ = Error _ => fresh "eq_fetch_exp_type_ERR"
+  | fetch_exp_type _ _ = None => fresh "eq_fetch_exp_type_none"
+  | fetch_exp_type _ _ = _ => fresh "eq_fetch_exp_type"
+  | evalExp _ _ _ (RTE _) => fresh "eval_expr_RE"
+  | evalExp _ _ ?e (OK ?v) => fresh "eval_expr_" e "_" v
+  | evalExp _ _ _ (OK ?v) => fresh "eval_expr_" v
+  | evalExp _ _ ?e ?v => fresh "eval_expr_" e "_" v
+  | evalExp _ _ ?e _ => fresh "eval_expr_" e
+  | evalExp _ _ _ ?v => fresh "eval_expr_" v
+  | evalExp _ _ _ _ => fresh "eval_expr"
+  | evalName _ _ _ (RTE _) => fresh "eval_name_RE"
+  | evalName _ _ ?e (OK ?v) => fresh "eval_name_" e "_" v
+  | evalName _ _ _ (OK ?v) => fresh "eval_name_" v
+  | evalName _ _ ?e ?v => fresh "eval_name_" e "_" v
+  | evalName _ _ ?e _ => fresh "eval_name_" e
+  | evalName _ _ _ ?v => fresh "eval_name_" v
+  | evalName _ _ _ _ => fresh "eval_name"
+  | overflowCheck _ (RTE _) => fresh "overf_check_RE"
+  | overflowCheck _ _ => fresh "overf_check"
+  | rangeCheck _ _ _ (RTE _) => fresh "do_range_check_RE"
+  | rangeCheck _ _ _ _ => fresh "do_range_check"
+  | do_run_time_check_on_binop _ _ _ (RTE _) => fresh "do_rtc_binop_RTE"
+  | do_run_time_check_on_binop _ _ _ _ => fresh "do_rtc_binop"
+  | evalLiteral _ (RTE _)  => fresh "eval_literal_RE"
+  | evalLiteral _ _  => fresh "eval_literal"
+  | evalStmt _ _ _ (RTE _) => fresh "eval_stmt_RE"
+  | evalStmt _ _ _ _ => fresh "eval_stmt"
+  | evalDecl _ _ _ _ (RTE _) => fresh "eval_decl_RE"
+  | evalDecl _ _ _ _ _ => fresh "eval_decl"
+  | storeUpdate _ _ _ _ (RTE _) => fresh "storeUpd_RE"
+  | storeUpdate _ _ _ _ _ => fresh "storeUpd"
+  | do_run_time_check_on_binop _ _ _ (RTE _) =>  fresh "do_rtc_binop_RE"
+  | do_run_time_check_on_binop _ _ _ _ =>  fresh "do_rtc_binop"
+  | do_run_time_check_on_unop _ _ (RTE _) =>  fresh "do_rtc_unop_RE"
+  | do_run_time_check_on_unop _ _ _ =>  fresh "do_rtc_unop"
+  | divCheck _ _ _ (RTE _) => fresh "do_division_check_RTE"
+  | divCheck _ _ _ _ => fresh "do_division_check"
   | extract_subtype_range _ ?t ?rge => fresh "subtype_rge_" t "_" rge
   | extract_subtype_range _ ?t _ => fresh "subtype_rge_" t
   | extract_subtype_range _ _ _ => fresh "subtype_rge"
-  | copyOut ?st ?s ?pstmt ?paramsprf ?args (RTE ?er) => fresh "h_copy_out_RE"
-  | copyOut ?st ?s ?pstmt ?paramsprf ?args (OK ?s') => fresh "h_copy_out_" s "_" s'
-  | copyOut ?st ?s ?pstmt ?paramsprf ?args ?s' => fresh "h_copy_out_" s "_" s'
-  | copyOut ?st ?s ?pstmt ?paramsprf ?args _ => fresh "h_copy_out_" s
-  | copyOut ?st ?s ?pstmt ?paramsprf ?args _ => fresh "h_copy_out"
+  | copyOut ?st ?s ?pstmt ?paramsprf ?args (RTE ?er) => fresh "copy_out_RE"
+  | copyOut ?st ?s ?pstmt ?paramsprf ?args (OK ?s') => fresh "copy_out_" s "_" s'
+  | copyOut ?st ?s ?pstmt ?paramsprf ?args ?s' => fresh "copy_out_" s "_" s'
+  | copyOut ?st ?s ?pstmt ?paramsprf ?args _ => fresh "copy_out_" s
+  | copyOut ?st ?s ?pstmt ?paramsprf ?args _ => fresh "copy_out"
 
-  | copyIn ?st ?s ?fr ?paramsprf ?args (RTE ?er) => fresh "h_copy_in_RE"
-  | copyIn ?st ?s ?fr ?paramsprf ?args (OK ?fr') => fresh "h_copy_in_" fr "_" fr'
-  | copyIn ?st ?s ?fr ?paramsprf ?args ?fr' => fresh "h_copy_in_" fr "_" fr'
-  | copyIn ?st ?s ?fr ?paramsprf ?args _ => fresh "h_copy_in_" fr
-  | copyIn ?st ?s ?fr ?paramsprf ?args _ => fresh "h_copy_in"
+  | copyIn ?st ?s ?fr ?paramsprf ?args (RTE ?er) => fresh "copy_in_RE"
+  | copyIn ?st ?s ?fr ?paramsprf ?args (OK ?fr') => fresh "copy_in_" fr "_" fr'
+  | copyIn ?st ?s ?fr ?paramsprf ?args ?fr' => fresh "copy_in_" fr "_" fr'
+  | copyIn ?st ?s ?fr ?paramsprf ?args _ => fresh "copy_in_" fr
+  | copyIn ?st ?s ?fr ?paramsprf ?args _ => fresh "copy_in"
 
-  | symboltable.fetch_proc ?p _ = None => fresh "h_fetch_proc_None_" p
-  | symboltable.fetch_proc _ _ = None => fresh "h_fetch_proc_None"
-  | symboltable.fetch_proc ?p _ = Some ?r => fresh "h_fetch_proc_" p "_" r
-  | symboltable.fetch_proc ?p _ = ?r => fresh "h_fetch_proc_" p "_" r
-  | symboltable.fetch_proc ?p _ = _ => fresh "h_fetch_proc_" p
-  | symboltable.fetch_proc _ _ = _ => fresh "h_fetch_proc"
+  | symboltable.fetch_proc ?p _ = None => fresh "eq_fetch_proc_None_" p
+  | symboltable.fetch_proc _ _ = None => fresh "eq_fetch_proc_None"
+  | symboltable.fetch_proc ?p _ = Some ?r => fresh "eq_fetch_proc_" p "_" r
+  | symboltable.fetch_proc ?p _ = ?r => fresh "eq_fetch_proc_" p "_" r
+  | symboltable.fetch_proc ?p _ = _ => fresh "eq_fetch_proc_" p
+  | symboltable.fetch_proc _ _ = _ => fresh "eq_fetch_proc"
   end.
 
 
@@ -138,10 +138,10 @@ Proof.
   !inversion h_eval_name_v''.
   specialize (storeUpdate_id_ok_others _ _ _ _ _ _ h_storeUpd).
   !intro.
-  specialize (H id' hneq).
-  rewrite heq_SfetchG_id'_stk in H.
-  rewrite heq_SfetchG_id'_stk' in H.
-  inversion H.
+  specialize (h_forall_id' id' hneq_id).
+  rewrite heq_SfetchG_id'_stk in h_forall_id'.
+  rewrite heq_SfetchG_id'_stk' in h_forall_id'.
+  inversion h_forall_id'.
   reflexivity.
 Qed.
 
@@ -154,14 +154,14 @@ Proof.
   intros until v.
   !functional induction (updateIndexedComp arr k v);!intros;subst;simpl in *.
   - apply Zeq_bool_eq in heq_Z_true;subst;simpl.
-    apply Zeq_is_neq_bool in hneq.
-    rewrite hneq.
+    apply Zeq_is_neq_bool in hneq_i.
+    rewrite hneq_i.
     reflexivity.
-  - specialize (IHl (updateIndexedComp a1 i v) eq_refl _ hneq).
-    rewrite IHl.
+  - specialize (h_forall_arr' (updateIndexedComp a1 i v) eq_refl _ hneq_i).
+    rewrite h_forall_arr'.
     reflexivity.
-  - apply Zeq_is_neq_bool in hneq.
-    rewrite hneq.
+  - apply Zeq_is_neq_bool in hneq_i.
+    rewrite hneq_i.
     reflexivity.
 Qed.
 
@@ -174,7 +174,7 @@ Proof.
   - rewrite heq_Z_true.
     reflexivity.
   - rewrite heq_Z_false.
-    apply IHl;auto.
+    apply h_forall_arr';auto.
   - replace (Zeq_bool i i) with true;auto.
     symmetry.
     apply Zeq_is_eq_bool.

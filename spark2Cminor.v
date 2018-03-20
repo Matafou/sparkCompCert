@@ -1063,143 +1063,143 @@ Definition empty_CE: compilenv := nil.
 
 Ltac rename_hyp1 h th :=
   match th with
-    | transl_stmt _ _ _ = Error _ => fresh "heq_transl_stmt_ERR"
-    | transl_stmt _ _ ?s = (OK ?r) => fresh "heq_transl_stmt_" s "_" r
-    | transl_stmt _ _ ?s = (OK ?r) => fresh "heq_transl_stmt_" r
-    | transl_stmt _ _ ?s = (Error _) => fresh "heq_transl_stmt_" s "_err"
-    | transl_stmt _ _ ?s = (Error _) => fresh "heq_transl_stmt_err"
-    | transl_stmt _ _ ?s = ?r => fresh "heq_transl_stmt_" s "_" r
-    | transl_stmt _ _ ?s = ?r => fresh "heq_transl_stmt_" r
-    | transl_stmt _ _ ?s = ?r => fresh "heq_transl_stmt_" s
-    | transl_stmt _ _ ?s = ?r => fresh "heq_transl_stmt"
-    | transl_name _ _ _ = Error _ => fresh "heq_transl_name_ERR"
-    | transl_name _ _ _ = _ => fresh "heq_transl_name"
-    | transl_value ?v ?vt => fresh "heq_transl_value_" v "_" vt
-    | transl_value ?v ?vt => fresh "heq_transl_value_" v
-    | transl_value ?v ?vt => fresh "heq_transl_value_" vt
-    | transl_value _ _ => fresh "heq_transl_value"
-    | transl_variable _ _ _ _ = Error _ => fresh "heq_transl_variable_RE"
-    | transl_variable _ _ _ _ = _ => fresh "heq_transl_variable"
-    | transl_type _ _ = Error _ => fresh "heq_transl_type_RE"
-    | transl_type _ _ = _ => fresh "heq_transl_type"
-    | transl_basetype _ _ = Error _ => fresh "heq_transl_basetype_RE"
-    | transl_basetype _ _ = _ => fresh "heq_transl_basetype"
+    | transl_stmt _ _ _ = Error _ => fresh "eq_transl_stmt_ERR"
+    | transl_stmt _ _ ?s = (OK ?r) => fresh "eq_transl_stmt_" s "_" r
+    | transl_stmt _ _ ?s = (OK ?r) => fresh "eq_transl_stmt_" r
+    | transl_stmt _ _ ?s = (Error _) => fresh "eq_transl_stmt_" s "_err"
+    | transl_stmt _ _ ?s = (Error _) => fresh "eq_transl_stmt_err"
+    | transl_stmt _ _ ?s = ?r => fresh "eq_transl_stmt_" s "_" r
+    | transl_stmt _ _ ?s = ?r => fresh "eq_transl_stmt_" r
+    | transl_stmt _ _ ?s = ?r => fresh "eq_transl_stmt_" s
+    | transl_stmt _ _ ?s = ?r => fresh "eq_transl_stmt"
+    | transl_name _ _ _ = Error _ => fresh "eq_transl_name_ERR"
+    | transl_name _ _ _ = _ => fresh "eq_transl_name"
+    | transl_value ?v ?vt => fresh "transl_value_" v "_" vt
+    | transl_value ?v ?vt => fresh "transl_value_" v
+    | transl_value ?v ?vt => fresh "transl_value_" vt
+    | transl_value _ _ => fresh "transl_value"
+    | transl_variable _ _ _ _ = Error _ => fresh "eq_transl_variable_RE"
+    | transl_variable _ _ _ _ = _ => fresh "eq_transl_variable"
+    | transl_type _ _ = Error _ => fresh "eq_transl_type_RE"
+    | transl_type _ _ = _ => fresh "eq_transl_type"
+    | transl_basetype _ _ = Error _ => fresh "eq_transl_basetype_RE"
+    | transl_basetype _ _ = _ => fresh "eq_transl_basetype"
 
-    | transl_exprlist _ _ ?x = Error _ => fresh "h_trans_exprl_Err_" x
-    | transl_exprlist _ _ _ = Error _ => fresh "h_trans_exprl_Err"
-    | transl_exprlist _ _ ?x = Some ?y => fresh "h_trans_exprl_" x "_" y
-    | transl_exprlist _ _ ?x = Some _ => fresh "h_trans_exprl_" x
-    | transl_exprlist _ _ _ = _ => fresh "h_trans_exprl"
+    | transl_exprlist _ _ ?x = Error _ => fresh "trans_exprl_Err_" x
+    | transl_exprlist _ _ _ = Error _ => fresh "trans_exprl_Err"
+    | transl_exprlist _ _ ?x = Some ?y => fresh "trans_exprl_" x "_" y
+    | transl_exprlist _ _ ?x = Some _ => fresh "trans_exprl_" x
+    | transl_exprlist _ _ _ = _ => fresh "trans_exprl"
 
-    | transl_paramexprlist _ _ ?x _ = Error _ => fresh "h_trans_prmexprl_Err_" x
-    | transl_paramexprlist _ _ _ _ = Error _ => fresh "h_trans_prmexprl_Err"
-    | transl_paramexprlist _ _ ?x _ = Some ?y => fresh "h_trans_prmexprl_" x "_" y
-    | transl_paramexprlist _ _ ?x _ = Some _ => fresh "h_trans_prmexprl_" x
-    | transl_paramexprlist _ _ _ _ = _ => fresh "h_trans_prmexprl"
+    | transl_paramexprlist _ _ ?x _ = Error _ => fresh "trans_prmexprl_Err_" x
+    | transl_paramexprlist _ _ _ _ = Error _ => fresh "trans_prmexprl_Err"
+    | transl_paramexprlist _ _ ?x _ = Some ?y => fresh "trans_prmexprl_" x "_" y
+    | transl_paramexprlist _ _ ?x _ = Some _ => fresh "trans_prmexprl_" x
+    | transl_paramexprlist _ _ _ _ = _ => fresh "trans_prmexprl"
 
-    | transl_params _ _ _ _ = Error _ => fresh "heq_transl_params_ERR"
-    | transl_params _ ?p _ _ = (OK ?r) => fresh "heq_transl_params_" p "_" r
-    | transl_params _ ?p _ _ = ?r => fresh "heq_transl_params_" p "_" r
-    | transl_params _ ?p _ _ = _ => fresh "heq_transl_params_" p
-    | transl_params _ _ _ _ = _ => fresh "heq_transl_params"
+    | transl_params _ _ _ _ = Error _ => fresh "eq_transl_params_ERR"
+    | transl_params _ ?p _ _ = (OK ?r) => fresh "eq_transl_params_" p "_" r
+    | transl_params _ ?p _ _ = ?r => fresh "eq_transl_params_" p "_" r
+    | transl_params _ ?p _ _ = _ => fresh "eq_transl_params_" p
+    | transl_params _ _ _ _ = _ => fresh "eq_transl_params"
 
-    | transl_procsig _ _ = Error _ => fresh "heq_transl_procsig_ERR"
-    | transl_procsig _ ?p = (OK ?r) => fresh "heq_transl_procsig_" p "_" r
-    | transl_procsig _ ?p = ?r => fresh "heq_transl_procsig_" p "_" r
-    | transl_procsig _ ?p = _ => fresh "heq_transl_procsig_" p
-    | transl_procsig _ _ = _ => fresh "heq_transl_procsig"
+    | transl_procsig _ _ = Error _ => fresh "eq_transl_procsig_ERR"
+    | transl_procsig _ ?p = (OK ?r) => fresh "eq_transl_procsig_" p "_" r
+    | transl_procsig _ ?p = ?r => fresh "eq_transl_procsig_" p "_" r
+    | transl_procsig _ ?p = _ => fresh "eq_transl_procsig_" p
+    | transl_procsig _ _ = _ => fresh "eq_transl_procsig"
 
-    | transl_procedure _ _ _ _ = Error _ => fresh "heq_transl_proc_ERR"
-    | transl_procedure _ _ _ ?p = (OK ?r) => fresh "heq_transl_proc_" p "_" r
-    | transl_procedure _ _ _ ?p = ?r => fresh "heq_transl_proc_" p "_" r
-    | transl_procedure _ _ _ ?p = _ => fresh "heq_transl_proc_" p
-    | transl_procedure _ _ _ _ = _ => fresh "heq_transl_proc"
+    | transl_procedure _ _ _ _ = Error _ => fresh "eq_transl_proc_ERR"
+    | transl_procedure _ _ _ ?p = (OK ?r) => fresh "eq_transl_proc_" p "_" r
+    | transl_procedure _ _ _ ?p = ?r => fresh "eq_transl_proc_" p "_" r
+    | transl_procedure _ _ _ ?p = _ => fresh "eq_transl_proc_" p
+    | transl_procedure _ _ _ _ = _ => fresh "eq_transl_proc"
 
-    | transl_declaration _ _ _ _ = Error _ => fresh "heq_transl_decl_ERR"
-    | transl_declaration _ _ _ ?p = (OK ?r) => fresh "heq_transl_decl_" p "_" r
-    | transl_declaration _ _ _ ?p = ?r => fresh "heq_transl_decl_" p "_" r
-    | transl_declaration _ _ _ ?p = _ => fresh "heq_transl_decl_" p
-    | transl_declaration _ _ _ _ = _ => fresh "heq_transl_decl"
+    | transl_declaration _ _ _ _ = Error _ => fresh "eq_transl_decl_ERR"
+    | transl_declaration _ _ _ ?p = (OK ?r) => fresh "eq_transl_decl_" p "_" r
+    | transl_declaration _ _ _ ?p = ?r => fresh "eq_transl_decl_" p "_" r
+    | transl_declaration _ _ _ ?p = _ => fresh "eq_transl_decl_" p
+    | transl_declaration _ _ _ _ = _ => fresh "eq_transl_decl"
 
-    | transl_lparameter_specification_to_procsig _ _ _ = Error _ => fresh "heq_transl_lprm_spec_ERR"
-    | transl_lparameter_specification_to_procsig _ _ ?p = (OK ?r) => fresh "heq_transl_lprm_spec_" p "_" r
-    | transl_lparameter_specification_to_procsig _ _ ?p = ?r => fresh "heq_transl_lprm_spec_" p "_" r
-    | transl_lparameter_specification_to_procsig _ _ ?p = _ => fresh "heq_transl_lprm_spec_" p
-    | transl_lparameter_specification_to_procsig _ _ _ = _ => fresh "heq_transl_lprm_spec"
+    | transl_lparameter_specification_to_procsig _ _ _ = Error _ => fresh "eq_transl_lprm_spec_ERR"
+    | transl_lparameter_specification_to_procsig _ _ ?p = (OK ?r) => fresh "eq_transl_lprm_spec_" p "_" r
+    | transl_lparameter_specification_to_procsig _ _ ?p = ?r => fresh "eq_transl_lprm_spec_" p "_" r
+    | transl_lparameter_specification_to_procsig _ _ ?p = _ => fresh "eq_transl_lprm_spec_" p
+    | transl_lparameter_specification_to_procsig _ _ _ = _ => fresh "eq_transl_lprm_spec"
 
 
 
-    | make_load _ _ = Error _ => fresh "heq_make_load_RE"
-    | make_load _ _ = _ => fresh "heq_make_load"
-    | reduce_type _ _ _ = Error _ => fresh "heq_reduce_type_RE"
-    | reduce_type _ _ _ = _  => fresh "heq_reduce_type"
+    | make_load _ _ = Error _ => fresh "eq_make_load_RE"
+    | make_load _ _ = _ => fresh "eq_make_load"
+    | reduce_type _ _ _ = Error _ => fresh "eq_reduce_type_RE"
+    | reduce_type _ _ _ = _  => fresh "eq_reduce_type"
     | concrete_type_of_value _ = Error _ => fresh "concrete_type_of_value_RE"
     | concrete_type_of_value _ = _ => fresh "concrete_type_of_value"
 
-    | CompilEnv.fetchG ?id ?CE = _ => fresh "heq_CEfetchG_" id "_" CE
-    | CompilEnv.fetchG ?id _ = _ => fresh "heq_CEfetchG_" id
-    | CompilEnv.fetchG _ _ = Some _ => fresh "heq_CEfetchG"
-    | CompilEnv.fetchG _ _ = None => fresh "heq_CEfetchG_none"
+    | CompilEnv.fetchG ?id ?CE = _ => fresh "eq_CEfetchG_" id "_" CE
+    | CompilEnv.fetchG ?id _ = _ => fresh "eq_CEfetchG_" id
+    | CompilEnv.fetchG _ _ = Some _ => fresh "eq_CEfetchG"
+    | CompilEnv.fetchG _ _ = None => fresh "eq_CEfetchG_none"
 
-    | CompilEnv.fetch ?id ?CE = _ => fresh "heq_CEfetch_" id "_" CE
-    | CompilEnv.fetch ?id _ = _ => fresh "heq_CEfetch_" id
-    | CompilEnv.fetch _ _ = Some _ => fresh "heq_CEfetch"
-    | CompilEnv.fetch _ _ = None => fresh "heq_CEfetch_none"
+    | CompilEnv.fetch ?id ?CE = _ => fresh "eq_CEfetch_" id "_" CE
+    | CompilEnv.fetch ?id _ = _ => fresh "eq_CEfetch_" id
+    | CompilEnv.fetch _ _ = Some _ => fresh "eq_CEfetch"
+    | CompilEnv.fetch _ _ = None => fresh "eq_CEfetch_none"
 
-    | CompilEnv.fetches ?id ?CE = _ => fresh "heq_CEfetches_" id "_" CE
-    | CompilEnv.fetches ?id _ = _ => fresh "heq_CEfetches_" id
-    | CompilEnv.fetches _ _ = Some _ => fresh "heq_CEfetches"
-    | CompilEnv.fetches _ _ = None => fresh "heq_CEfetches_none"
+    | CompilEnv.fetches ?id ?CE = _ => fresh "eq_CEfetches_" id "_" CE
+    | CompilEnv.fetches ?id _ = _ => fresh "eq_CEfetches_" id
+    | CompilEnv.fetches _ _ = Some _ => fresh "eq_CEfetches"
+    | CompilEnv.fetches _ _ = None => fresh "eq_CEfetches_none"
 
-    | CompilEnv.frameG ?id ?CE = _ => fresh "heq_CEframeG_" id "_" CE
-    | CompilEnv.frameG ?id _ = _ => fresh "heq_CEframeG_" id
-    | CompilEnv.frameG _ _ = Some _ => fresh "heq_CEframeG"
-    | CompilEnv.frameG _ _ = None => fresh "heq_CEframeG_none"
+    | CompilEnv.frameG ?id ?CE = _ => fresh "eq_CEframeG_" id "_" CE
+    | CompilEnv.frameG ?id _ = _ => fresh "eq_CEframeG_" id
+    | CompilEnv.frameG _ _ = Some _ => fresh "eq_CEframeG"
+    | CompilEnv.frameG _ _ = None => fresh "eq_CEframeG_none"
 
-    | CompilEnv.level_of_top ?ce = None => fresh "heq_lvloftop_none_" ce
-    | CompilEnv.level_of_top ?ce = None => fresh "heq_lvloftop_none"
-    | CompilEnv.level_of_top ?ce = Some ?s => fresh "heq_lvloftop_" ce "_" s
-    | CompilEnv.level_of_top ?ce = ?s => fresh "heq_lvloftop_" ce "_" s
-    | CompilEnv.level_of_top ?ce = _ => fresh "heq_lvloftop_" ce
-    | CompilEnv.level_of_top _ = Some ?s => fresh "heq_lvloftop_" s
-    | CompilEnv.level_of_top _ = _ => fresh "heq_lvloftop"
+    | CompilEnv.level_of_top ?ce = None => fresh "eq_lvloftop_none_" ce
+    | CompilEnv.level_of_top ?ce = None => fresh "eq_lvloftop_none"
+    | CompilEnv.level_of_top ?ce = Some ?s => fresh "eq_lvloftop_" ce "_" s
+    | CompilEnv.level_of_top ?ce = ?s => fresh "eq_lvloftop_" ce "_" s
+    | CompilEnv.level_of_top ?ce = _ => fresh "eq_lvloftop_" ce
+    | CompilEnv.level_of_top _ = Some ?s => fresh "eq_lvloftop_" s
+    | CompilEnv.level_of_top _ = _ => fresh "eq_lvloftop"
 
-    | transl_expr ?stbl ?CE ?e = Error => fresh "heq_tr_expr_none"
-    | transl_expr ?stbl ?CE ?e = OK ?r => fresh "heq_tr_expr_" e
-    | transl_expr ?stbl ?CE ?e = ?r => fresh "heq_tr_expr"
+    | transl_expr ?stbl ?CE ?e = Error => fresh "eq_tr_expr_none"
+    | transl_expr ?stbl ?CE ?e = OK ?r => fresh "eq_tr_expr_" e
+    | transl_expr ?stbl ?CE ?e = ?r => fresh "eq_tr_expr"
 
-    | init_locals ?stbl ?CE ?declpart = Error => fresh "heq_init_lcl_ERR_" declpart
-    | init_locals ?stbl ?CE ?declpart = Error => fresh "heq_init_lcl_ERR"
-    | init_locals ?stbl ?CE ?declpart = OK ?r => fresh "heq_init_lcl_" declpart "_"r
-    | init_locals ?stbl ?CE ?declpart = ?r => fresh "heq_init_lcl"
+    | init_locals ?stbl ?CE ?declpart = Error => fresh "eq_init_lcl_ERR_" declpart
+    | init_locals ?stbl ?CE ?declpart = Error => fresh "eq_init_lcl_ERR"
+    | init_locals ?stbl ?CE ?declpart = OK ?r => fresh "eq_init_lcl_" declpart "_"r
+    | init_locals ?stbl ?CE ?declpart = ?r => fresh "eq_init_lcl"
 
-    | store_params ?stbl ?CE ?declpart = Error => fresh "heq_store_prms_ERR_" declpart
-    | store_params ?stbl ?CE ?declpart = Error => fresh "heq_store_prms_ERR"
-    | store_params ?stbl ?CE ?declpart = OK ?r => fresh "heq_store_prms_" declpart "_"r
-    | store_params ?stbl ?CE ?declpart = ?r => fresh "heq_store_prms"
+    | store_params ?stbl ?CE ?declpart = Error => fresh "eq_store_prms_ERR_" declpart
+    | store_params ?stbl ?CE ?declpart = Error => fresh "eq_store_prms_ERR"
+    | store_params ?stbl ?CE ?declpart = OK ?r => fresh "eq_store_prms_" declpart "_"r
+    | store_params ?stbl ?CE ?declpart = ?r => fresh "eq_store_prms"
 
-    | copy_out_params ?st ?CE ?paramsprf = (OK ?res) => fresh "h_cpout_prm_" paramsprf "_" res 
-    | copy_out_params ?st ?s ?paramsprf = (OK _) => fresh "h_cpout_prm_" paramsprf
-    | copy_out_params ?st ?s ?paramsprf = (OK _) => fresh "h_cpout_prm"
-    | copy_out_params ?st ?s ?paramsprf = Error => fresh "h_cpout_prm_" paramsprf "_ERR"
-    | copy_out_params ?st ?s ?paramsprf = Error => fresh "h_cpout_prm_ERR"
-    | copy_out_params ?st ?s ?paramsprf = Error => fresh "h_cpout_prm_ERR"
+    | copy_out_params ?st ?CE ?paramsprf = (OK ?res) => fresh "cpout_prm_" paramsprf "_" res 
+    | copy_out_params ?st ?s ?paramsprf = (OK _) => fresh "cpout_prm_" paramsprf
+    | copy_out_params ?st ?s ?paramsprf = (OK _) => fresh "cpout_prm"
+    | copy_out_params ?st ?s ?paramsprf = Error => fresh "cpout_prm_" paramsprf "_ERR"
+    | copy_out_params ?st ?s ?paramsprf = Error => fresh "cpout_prm_ERR"
+    | copy_out_params ?st ?s ?paramsprf = Error => fresh "cpout_prm_ERR"
 
-    | compute_size _ ?subtype = Some ?sz => fresh "heq_cmpt_size_" subtype "_" sz
-    | compute_size _ ?subtype = Error => fresh "heq_cmpt_size_ERR_" subtype
-    | compute_size _ _ = Error => fresh "heq_cmpt_size_ERR"
-    | compute_size _ ?subtype = _ => fresh "heq_cmpt_size_" subtype
-    | compute_size _ _ = _ => fresh "heq_cmpt_size"
+    | compute_size _ ?subtype = Some ?sz => fresh "eq_cmpt_size_" subtype "_" sz
+    | compute_size _ ?subtype = Error => fresh "eq_cmpt_size_ERR_" subtype
+    | compute_size _ _ = Error => fresh "eq_cmpt_size_ERR"
+    | compute_size _ ?subtype = _ => fresh "eq_cmpt_size_" subtype
+    | compute_size _ _ = _ => fresh "eq_cmpt_size"
 
-    | build_frame_lparams _ _ ?lprm = Error _ => fresh "heq_bld_frm_ERR_" lprm
-    | build_frame_lparams _ _ _ = Error _ => fresh "heq_bld_frm_ERR"
-    | build_frame_lparams _ _ ?lprm = _ => fresh "heq_bld_frm_" lprm
-    | build_frame_lparams _ _ _ = _ => fresh "heq_bld_frm"
+    | build_frame_lparams _ _ ?lprm = Error _ => fresh "eq_bld_frm_ERR_" lprm
+    | build_frame_lparams _ _ _ = Error _ => fresh "eq_bld_frm_ERR"
+    | build_frame_lparams _ _ ?lprm = _ => fresh "eq_bld_frm_" lprm
+    | build_frame_lparams _ _ _ = _ => fresh "eq_bld_frm"
 
-    | add_to_frame _ _ ?typ _ = Error _ => fresh "heq_add_to_fr_ERR_" typ
-    | add_to_frame _ _ _ _ = Error _ => fresh "heq_add_to_fr_ERR" 
-    | add_to_frame _ _ ?typ _ = _ => fresh "heq_add_to_fr_" typ 
-    | add_to_frame _ _ _ _ = _ => fresh "heq_add_to_fr" 
+    | add_to_frame _ _ ?typ _ = Error _ => fresh "eq_add_to_fr_ERR_" typ
+    | add_to_frame _ _ _ _ = Error _ => fresh "eq_add_to_fr_ERR" 
+    | add_to_frame _ _ ?typ _ = _ => fresh "eq_add_to_fr_" typ 
+    | add_to_frame _ _ _ _ = _ => fresh "eq_add_to_fr" 
 end.
 
 

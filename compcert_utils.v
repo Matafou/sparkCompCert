@@ -32,130 +32,146 @@ Definition is_free_block := fun m sp_id ofs_id => forall perm, ~ Mem.perm m sp_i
 
 Ltac rename_hyp1 h th :=
   match th with
-    | ?min <= ?x and ?x < ?max => fresh "h_" x "_bounded_" min "_" max 
-    | ?min <= ?x and ?x < ?max => fresh "h_" x "_bounded_"
-    | ?min <= ?x and ?x < ?max => fresh "h_bounded"
-    | Ctypes.access_mode ?x = _ => fresh "h_access_mode_" x
-    | Values.Vptr ?b ?v = _ => fresh "heq_vptr_" b "_" v
-    | Values.Vptr ?b = _ => fresh "heq_vptr_" b
-    | Values.Vptr _ _ = _ => fresh "heq_vptr"
-    | Mem.valid_access ?m ?chk ?b ?ofs ?perm => fresh "h_valid_access_" b
-    | Mem.valid_access ?m ?chk ?b ?ofs ?perm => fresh "h_valid_access"
-    | Ctypes.access_mode _ = _ => fresh "h_access_mode"
-    | Cminor.exec_stmt _ _ _ _ _ ?stmt _ _ _ None  => fresh "h_exec_stmt_None_" stmt 
-    | Cminor.exec_stmt _ _ _ _ _ ?stmt _ _ _ None  => fresh "h_exec_stmt_None"
-    | Cminor.exec_stmt _ _ _ _ _ ?stmt _ _ _ (Some ?res)  => fresh "h_exec_stmt_" stmt "_" res
-    | Cminor.exec_stmt _ _ _ _ _ ?stmt _ _ _ ?res => fresh "h_exec_stmt_" stmt "_" res
-    | Cminor.exec_stmt _ _ _ _ _ ?stmt _ _ _ _ => fresh "h_exec_stmt_" stmt
-    | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ _  => fresh "h_exec_stmt"
-    | Cminor.eval_constant _ _ _ = (Some _)  => fresh "h_eval_constant"
-    | Cminor.eval_constant _ _ _ = None  => fresh "h_eval_constant_None"
-    | Cminor.eval_expr _ _ _ _ ?x ?y => fresh "h_CM_eval_expr_" x "_" y
-    | Cminor.eval_expr _ _ _ _ ?x _ => fresh "h_CM_eval_expr_" x
-    | Cminor.eval_expr _ _ _ _ _ ?y => fresh "h_CM_eval_expr_" y
-    | Cminor.eval_expr _ _ _ _ _ _ => fresh "h_CM_eval_expr"
+    | ?min <= ?x and ?x < ?max => fresh x "_bounded_" min "_" max 
+    | ?min <= ?x and ?x < ?max => fresh x "_bounded_"
+    | ?min <= ?x and ?x < ?max => fresh "bounded"
+    | Ctypes.access_mode ?x = _ => fresh "access_mode_" x
+    | Values.Vptr ?b ?v = _ => fresh "eq_vptr_" b "_" v
+    | Values.Vptr ?b = _ => fresh "eq_vptr_" b
+    | Values.Vptr _ _ = _ => fresh "eq_vptr"
+    | Mem.valid_access ?m ?chk ?b ?ofs ?perm => fresh "valid_access_" b
+    | Mem.valid_access ?m ?chk ?b ?ofs ?perm => fresh "valid_access"
+    | Ctypes.access_mode _ = _ => fresh "access_mode"
+    | Cminor.exec_stmt _ _ _ _ _ ?stmt _ _ _ None  => fresh "exec_stmt_None_" stmt 
+    | Cminor.exec_stmt _ _ _ _ _ ?stmt _ _ _ None  => fresh "exec_stmt_None"
+    | Cminor.exec_stmt _ _ _ _ _ ?stmt _ _ _ (Some ?res)  => fresh "exec_stmt_" stmt "_" res
+    | Cminor.exec_stmt _ _ _ _ _ ?stmt _ _ _ ?res => fresh "exec_stmt_" stmt "_" res
+    | Cminor.exec_stmt _ _ _ _ _ ?stmt _ _ _ _ => fresh "exec_stmt_" stmt
+    | Cminor.exec_stmt _ _ _ _ _ _ _ _ _ _  => fresh "exec_stmt"
+    | Cminor.eval_constant _ _ _ = (Some _)  => fresh "eval_constant"
+    | Cminor.eval_constant _ _ _ = None  => fresh "eval_constant_None"
+    | Cminor.eval_expr _ _ _ _ ?x ?y => fresh "CM_eval_expr_" x "_" y
+    | Cminor.eval_expr _ _ _ _ ?x _ => fresh "CM_eval_expr_" x
+    | Cminor.eval_expr _ _ _ _ _ ?y => fresh "CM_eval_expr_" y
+    | Cminor.eval_expr _ _ _ _ _ _ => fresh "CM_eval_expr"
 
-    | Cminor.eval_funcall ?g ?m ?proc_value ?vargs ?t ?m' ?vres => fresh "h_evalfuncall_" proc_value "_" vargs "_" vres
-    | Cminor.eval_funcall ?g ?m ?proc_value ?vargs ?t ?m' ?vres => fresh "h_evalfuncall_" proc_value "_" vargs
-    | Cminor.eval_funcall ?g ?m ?proc_value ?vargs ?t ?m' ?vres => fresh "h_evalfuncall_" proc_value
-    | Cminor.eval_funcall ?g ?m ?proc_value ?vargs ?t ?m' ?vres => fresh "h_evalfuncall"
+    | Cminor.eval_funcall ?g ?m ?proc_value ?vargs ?t ?m' ?vres => fresh "evalfuncall_" proc_value "_" vargs "_" vres
+    | Cminor.eval_funcall ?g ?m ?proc_value ?vargs ?t ?m' ?vres => fresh "evalfuncall_" proc_value "_" vargs
+    | Cminor.eval_funcall ?g ?m ?proc_value ?vargs ?t ?m' ?vres => fresh "evalfuncall_" proc_value
+    | Cminor.eval_funcall ?g ?m ?proc_value ?vargs ?t ?m' ?vres => fresh "evalfuncall"
 
-    | Cminor.eval_exprlist _ _ _ _ ?x ?y => fresh "h_CM_eval_exprl_" x "_" y
-    | Cminor.eval_exprlist _ _ _ _ ?x _ => fresh "h_CM_eval_exprl_" x
-    | Cminor.eval_exprlist _ _ _ _ _ ?y => fresh "h_CM_eval_exprl_" y
-    | Cminor.eval_exprlist _ _ _ _ _ _ => fresh "h_CM_eval_exprl"
+    | Cminor.eval_exprlist _ _ _ _ ?x ?y => fresh "CM_eval_exprl_" x "_" y
+    | Cminor.eval_exprlist _ _ _ _ ?x _ => fresh "CM_eval_exprl_" x
+    | Cminor.eval_exprlist _ _ _ _ _ ?y => fresh "CM_eval_exprl_" y
+    | Cminor.eval_exprlist _ _ _ _ _ _ => fresh "CM_eval_exprl"
 
-    | Mem.store ?chk ?m ?blk ?n ?v = None => fresh "heq_store_" v "_none"
-    | Mem.store ?chk ?m ?blk ?n ?v = Some ?m2 => fresh "heq_store_" v "_" m2
-    | Mem.store ?chk ?m ?blk ?n ?v = ?m2 => fresh "heq_store_" v "_" m2
-    | Mem.store ?chk ?m ?blk ?n ?v = ?m2 => fresh "heq_store_" v
-    | Mem.store ?chk ?m ?blk ?n ?v = ?m2 => fresh "heq_store"
-    | Mem.storev ?chk ?m ?vaddr ?v = None => fresh "heq_storev_" v "_none"
-    | Mem.storev ?chk ?m ?vaddr ?v = Some ?m2 => fresh "heq_storev_" v "_" m2
-    | Mem.storev ?chk ?m ?vaddr ?v = ?m2 => fresh "heq_storev_" v "_" m2
-    | Mem.storev ?chk ?m ?vaddr ?v = ?m2 => fresh "heq_storev_" v
-    | Mem.storev ?chk ?m ?vaddr ?v = ?m2 => fresh "heq_storev"
+    | Mem.store ?chk ?m ?blk ?n ?v = None => fresh "eq_store_" v "_none"
+    | Mem.store ?chk ?m ?blk ?n ?v = Some ?m2 => fresh "eq_store_" v "_" m2
+    | Mem.store ?chk ?m ?blk ?n ?v = ?m2 => fresh "eq_store_" v "_" m2
+    | Mem.store ?chk ?m ?blk ?n ?v = ?m2 => fresh "eq_store_" v
+    | Mem.store ?chk ?m ?blk ?n ?v = ?m2 => fresh "eq_store"
+    | Mem.storev ?chk ?m ?vaddr ?v = None => fresh "eq_storev_" v "_none"
+    | Mem.storev ?chk ?m ?vaddr ?v = Some ?m2 => fresh "eq_storev_" v "_" m2
+    | Mem.storev ?chk ?m ?vaddr ?v = ?m2 => fresh "eq_storev_" v "_" m2
+    | Mem.storev ?chk ?m ?vaddr ?v = ?m2 => fresh "eq_storev_" v
+    | Mem.storev ?chk ?m ?vaddr ?v = ?m2 => fresh "eq_storev"
 
-    | Mem.valid_block ?m ?sp => fresh "h_valid_blck_" m "_" sp
-    | Mem.valid_block ?m ?sp => fresh "h_valid_blck_" m
-    | Mem.valid_block ?m ?sp => fresh "h_valid_blck_" sp
-    | Mem.valid_block _ _ => fresh "h_valid_blck"
+    | Mem.valid_block ?m ?sp => fresh "valid_blck_" m "_" sp
+    | Mem.valid_block ?m ?sp => fresh "valid_blck_" m
+    | Mem.valid_block ?m ?sp => fresh "valid_blck_" sp
+    | Mem.valid_block _ _ => fresh "valid_blck"
 
-    | Mem.alloc ?m ?ofs ?sz = (?m', ?sp) => fresh "h_malloc_" m "_" m'
-    | Mem.alloc ?m ?ofs ?sz = ?res       => fresh "h_malloc_" m "_" res
-    | Mem.alloc ?m ?ofs ?sz = _ => fresh "h_malloc_" m
-    | Mem.alloc _ _ _ = _ => fresh "h_malloc"
+    | Mem.alloc ?m ?ofs ?sz = (?m', ?sp) => fresh "malloc_" m "_" m'
+    | Mem.alloc ?m ?ofs ?sz = ?res       => fresh "malloc_" m "_" res
+    | Mem.alloc ?m ?ofs ?sz = _ => fresh "malloc_" m
+    | Mem.alloc _ _ _ = _ => fresh "malloc"
 
-    | Mem.unchanged_on ?prd ?m ?m' => fresh "h_unchanged_on_" prd "_" m "_" m'
-    | Mem.unchanged_on ?prd ?m ?m' => fresh "h_unchanged_on_" m "_" m'
-    | Mem.unchanged_on ?prd ?m ?m' => fresh "h_unchanged_on_" prd
-    | Mem.unchanged_on ?prd ?m ?m' => fresh "h_unchanged_on"
-
-
-    | outcome_result_value ?out ?typ ?res => fresh "h_outc_resval_" out "_" res
-    | outcome_result_value ?out ?typ ?res => fresh "h_outc_resval_" out
-    | outcome_result_value ?out ?typ ?res => fresh "h_outc_resval_" res
-    | outcome_result_value ?out ?typ ?res => fresh "h_outc_resval"
-
-    | outcome_free_mem ?out ?m1 ?sp ?size ?m2 => fresh "h_outc_freemem_" out "_" m1 "_" m2
-    | outcome_free_mem ?out ?m1 ?sp ?size ?m2 => fresh "h_outc_freemem_" m1 "_" m2
-    | outcome_free_mem ?out ?m1 ?sp ?size ?m2 => fresh "h_outc_freemem_" m1
-    | outcome_free_mem ?out ?m1 ?sp ?size ?m2 => fresh "h_outc_freemem_" m2
-    | outcome_free_mem ?out ?m1 ?sp ?size ?m2 => fresh "h_outc_freemem"
-
-    | eval_binop ?op ?v1 ?v2 ?m = Some ?res => fresh "h_eval_binop_" op "_" v1 "_" v2
-    | eval_binop ?op ?v1 ?v2 ?m = Some ?res => fresh "h_eval_binop_" op "_" v1
-    | eval_binop ?op ?v1 ?v2 ?m = Some ?res => fresh "h_eval_binop_" op "_" v2
-    | eval_binop ?op ?v1 ?v2 ?m = Some ?res => fresh "h_eval_binop_" op
-    | eval_binop ?op ?v1 ?v2 ?m = Some ?res => fresh "h_eval_binop"
-    | eval_binop ?op ?v1 ?v2 ?m = None => fresh "h_eval_binop_None_" op "_" v1 "_" v2
-    | eval_binop ?op ?v1 ?v2 ?m = None => fresh "h_eval_binop_None_" op "_" v1
-    | eval_binop ?op ?v1 ?v2 ?m = None => fresh "h_eval_binop_None_" op "_" v2
-    | eval_binop ?op ?v1 ?v2 ?m = None => fresh "h_eval_binop_None_" op
-    | eval_binop ?op ?v1 ?v2 ?m = None => fresh "h_eval_binop_None"
+    | Mem.unchanged_on ?prd ?m ?m' => fresh "unchanged_on_" prd "_" m "_" m'
+    | Mem.unchanged_on ?prd ?m ?m' => fresh "unchanged_on_" m "_" m'
+    | Mem.unchanged_on ?prd ?m ?m' => fresh "unchanged_on_" prd
+    | Mem.unchanged_on ?prd ?m ?m' => fresh "unchanged_on"
 
 
-    | Values.Val.add ?v1 ?v2 = ?res => fresh "h_val_add_" v1 "_" v2 "_" res
-    | Values.Val.add ?v1 ?v2 = ?res => fresh "h_val_add_" v1 "_" v2
-    | Values.Val.add ?v1 ?v2 = ?res => fresh "h_val_add_" v1
-    | Values.Val.add ?v1 ?v2 = ?res => fresh "h_val_add_" v2
-    | Values.Val.add ?v1 ?v2 = ?res => fresh "h_val_add"
+    | outcome_result_value ?out ?typ ?res => fresh "outc_resval_" out "_" res
+    | outcome_result_value ?out ?typ ?res => fresh "outc_resval_" out
+    | outcome_result_value ?out ?typ ?res => fresh "outc_resval_" res
+    | outcome_result_value ?out ?typ ?res => fresh "outc_resval"
 
-    | Values.Val.offset_ptr ?v1 ?v2 = ?res => fresh "h_val_offs_" v1 "_" v2 "_" res
-    | Values.Val.offset_ptr ?v1 ?v2 = ?res => fresh "h_val_offs_" v1 "_" v2
-    | Values.Val.offset_ptr ?v1 ?v2 = ?res => fresh "h_val_offs_" v1
-    | Values.Val.offset_ptr ?v1 ?v2 = ?res => fresh "h_val_offs_" v2
-    | Values.Val.offset_ptr ?v1 ?v2 = ?res => fresh "h_val_offs"
+    | outcome_free_mem ?out ?m1 ?sp ?size ?m2 => fresh "outc_freemem_" out "_" m1 "_" m2
+    | outcome_free_mem ?out ?m1 ?sp ?size ?m2 => fresh "outc_freemem_" m1 "_" m2
+    | outcome_free_mem ?out ?m1 ?sp ?size ?m2 => fresh "outc_freemem_" m1
+    | outcome_free_mem ?out ?m1 ?sp ?size ?m2 => fresh "outc_freemem_" m2
+    | outcome_free_mem ?out ?m1 ?sp ?size ?m2 => fresh "outc_freemem"
 
-    | Mem.loadv ?chk ?m ?vaddr = Some ?res => fresh "h_loadv_" vaddr "_" res
-    | Mem.loadv ?chk ?m ?vaddr = Some ?res => fresh "h_loadv_" res
-    | Mem.loadv ?chk ?m ?vaddr = Some ?res => fresh "h_loadv"
-    | Mem.loadv ?chk ?m ?vaddr = None => fresh "h_loadv_None_" vaddr
-    | Mem.loadv ?chk ?m ?vaddr = None => fresh "h_loadv_None"
+    | eval_binop ?op ?v1 ?v2 ?m = Some ?res => fresh "eval_binop_" op "_" v1 "_" v2
+    | eval_binop ?op ?v1 ?v2 ?m = Some ?res => fresh "eval_binop_" op "_" v1
+    | eval_binop ?op ?v1 ?v2 ?m = Some ?res => fresh "eval_binop_" op "_" v2
+    | eval_binop ?op ?v1 ?v2 ?m = Some ?res => fresh "eval_binop_" op
+    | eval_binop ?op ?v1 ?v2 ?m = Some ?res => fresh "eval_binop"
+    | eval_binop ?op ?v1 ?v2 ?m = None => fresh "eval_binop_None_" op "_" v1 "_" v2
+    | eval_binop ?op ?v1 ?v2 ?m = None => fresh "eval_binop_None_" op "_" v1
+    | eval_binop ?op ?v1 ?v2 ?m = None => fresh "eval_binop_None_" op "_" v2
+    | eval_binop ?op ?v1 ?v2 ?m = None => fresh "eval_binop_None_" op
+    | eval_binop ?op ?v1 ?v2 ?m = None => fresh "eval_binop_None"
 
 
-    | Globalenvs.Genv.find_funct ?g ?paddr = Some ?res => fresh "heq_find_func_" paddr "_" res
-    | Globalenvs.Genv.find_funct ?g ?paddr = Some _ => fresh "heq_find_func_" paddr
-    | Globalenvs.Genv.find_funct ?g _ = Some _ => fresh "heq_find_func"
-    | Globalenvs.Genv.find_funct ?g ?paddr = None => fresh "heq_find_func_" paddr "_NONE"
-    | Globalenvs.Genv.find_funct ?g ?paddr = None => fresh "heq_find_func_None"
+    | Values.Val.add ?v1 ?v2 = ?res => fresh "val_add_" v1 "_" v2 "_" res
+    | Values.Val.add ?v1 ?v2 = ?res => fresh "val_add_" v1 "_" v2
+    | Values.Val.add ?v1 ?v2 = ?res => fresh "val_add_" v1
+    | Values.Val.add ?v1 ?v2 = ?res => fresh "val_add_" v2
+    | Values.Val.add ?v1 ?v2 = ?res => fresh "val_add"
 
-    | Maps.PTree.get ?k ?m = Some ?v => fresh "heq_mget_" k "_" m "_" v
-    | Maps.PTree.get ?k _ = Some ?v => fresh "heq_mget_" k "_" v
-    | Maps.PTree.get ?k _ = Some _ => fresh "heq_mget_" k
-    | Maps.PTree.get _ _ = Some _ => fresh "heq_mget"
+    | Values.Val.offset_ptr ?v1 ?v2 = ?res => fresh "val_offs_" v1 "_" v2 "_" res
+    | Values.Val.offset_ptr ?v1 ?v2 = ?res => fresh "val_offs_" v1 "_" v2
+    | Values.Val.offset_ptr ?v1 ?v2 = ?res => fresh "val_offs_" v1
+    | Values.Val.offset_ptr ?v1 ?v2 = ?res => fresh "val_offs_" v2
+    | Values.Val.offset_ptr ?v1 ?v2 = ?res => fresh "val_offs"
 
-    | build_loads ?n ?z = _ => fresh "heq_build_loads_" n "_" z
-    | build_loads _ _ = _ => fresh "heq_build_loads"
-    | build_loads_ ?n ?z = _ => fresh "heq_build_loads_" n "_" z
-    | build_loads_ _ _ = _ => fresh "heq_build_loads"
+    | Mem.loadv ?chk ?m ?vaddr = Some ?res => fresh "loadv_" vaddr "_" res
+    | Mem.loadv ?chk ?m ?vaddr = Some ?res => fresh "loadv_" res
+    | Mem.loadv ?chk ?m ?vaddr = Some ?res => fresh "loadv"
+    | Mem.loadv ?chk ?m ?vaddr = None => fresh "loadv_None_" vaddr
+    | Mem.loadv ?chk ?m ?vaddr = None => fresh "loadv_None"
 
-    | is_free_block ?m ?sp ?ofs => fresh "h_free_blck_" m "_" sp "_" ofs
-    | is_free_block ?m ?sp ?ofs => fresh "h_free_blck_" sp "_" ofs
-    | is_free_block ?m ?sp ?ofs => fresh "h_free_blck_" m
-    | is_free_block ?m ?sp ?ofs => fresh "h_free_blck"
+
+    | Globalenvs.Genv.find_funct ?g ?paddr = Some ?res => fresh "eq_find_func_" paddr "_" res
+    | Globalenvs.Genv.find_funct ?g ?paddr = Some _ => fresh "eq_find_func_" paddr
+    | Globalenvs.Genv.find_funct ?g _ = Some _ => fresh "eq_find_func"
+    | Globalenvs.Genv.find_funct ?g ?paddr = None => fresh "eq_find_func_" paddr "_NONE"
+    | Globalenvs.Genv.find_funct ?g ?paddr = None => fresh "eq_find_func_None"
+
+    | Maps.PTree.get ?k ?m = Some ?v => fresh "eq_mget_" k "_" m "_" v
+    | Maps.PTree.get ?k _ = Some ?v => fresh "eq_mget_" k "_" v
+    | Maps.PTree.get ?k _ = Some _ => fresh "eq_mget_" k
+    | Maps.PTree.get _ _ = Some _ => fresh "eq_mget"
+
+    | build_loads ?n ?z = _ => fresh "eq_build_loads_" n "_" z
+    | build_loads _ _ = _ => fresh "eq_build_loads"
+    | build_loads_ ?n ?z = _ => fresh "eq_build_loads_" n "_" z
+    | build_loads_ _ _ = _ => fresh "eq_build_loads"
+
+    | is_free_block ?m ?sp ?ofs => fresh "free_blck_" m "_" sp "_" ofs
+    | is_free_block ?m ?sp ?ofs => fresh "free_blck_" sp "_" ofs
+    | is_free_block ?m ?sp ?ofs => fresh "free_blck_" m
+    | is_free_block ?m ?sp ?ofs => fresh "free_blck"
 
   end.
+
+(* This adhoc exceptions to the usual prefix heq_ which is replaced by
+h_. TODO: go back to regular prefixing. *)
+Ltac prefixable_compcert h th :=
+  match th with
+  | Ctypes.access_mode _ = _ => HypH_
+  | Mem.alloc _ _ _ = _ => HypH_
+  | Mem.loadv _ _ _ = _ => HypH_
+  | Values.Val.offset_ptr _ _ = _ => HypH_
+  | Values.Val.add _ _ = _ => HypH_
+  | eval_binop _ _ _ _ = _ => HypH_
+  | outcome_free_mem _ _ _ = _ => HypH_
+  | Mem.unchanged_on _ _ _ = _ => HypH_
+  | Cminor.eval_constant _ _ _ = _ => HypH_
+  end.
+
 
 Ltac rename_hyp2 h th :=
   match th with
@@ -238,9 +254,9 @@ Lemma map_get_set_same_nodup :
 Proof.
   !!induction l;cbn;!intros.
   - apply Maps.PTree.gss.
-  - rename H into h_diff.
+  - rename h_forall_i into h_diff.
     rewrite Maps.PTree.gso.
-    + eapply IHl.
+    + eapply h_forall_m.
       !intros.
       apply h_diff.
       right;assumption.
@@ -260,13 +276,13 @@ Proof.
   !!induction decl;!intros;cbn.
   - reflexivity.
   - rewrite Maps.PTree.gso.
-    + eapply IHdecl.
+    + eapply h_forall_x.
       intro abs.
-      apply neg_h_in_x.
+      apply h_neg_lst_in_x.
       constructor 2.
       assumption.
     + intro abs.
-      apply neg_h_in_x.
+      apply h_neg_lst_in_x.
       subst.
       constructor 1.
       reflexivity.
@@ -280,7 +296,7 @@ Proof.
   - cbn in *.
     reflexivity.
   - cbn in *.
-    erewrite IHi.
+    erewrite h_forall_x.
    reflexivity.
 Qed.
 
@@ -323,7 +339,7 @@ Proof.
     + cbn in *.
       inversion heq_build_loads.
       f_equal.
-      eapply IHi₁;auto.
+      eapply h_forall_i₂;auto.
 Qed.
 
 Lemma build_loads__inj_neq : forall x i₁ i₂,
