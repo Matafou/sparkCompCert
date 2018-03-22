@@ -8972,17 +8972,6 @@ Proof.
           { red.
             intros perm. 
             eapply fresh_block_alloc_perm;eauto. }
-          Lemma is_free_block_disj : forall m sp ofs sp',
-              is_free_block m sp ofs ->
-              ¬ is_free_block m sp' ofs ->
-              sp <> sp'
-          .
-          Proof.
-            intros m sp ofs sp' ofs' H H0. 
-            unfold is_free_block in *.
-            subst sp'.
-            contradiction.
-          Qed.
           simpl in h_eval_binop_Oadd_v1_v2.
           destruct v2;try discriminate.
           !!assert (Archi.ptr64 = false) by reflexivity.
@@ -8991,8 +8980,50 @@ Proof.
           left.
           eapply is_free_block_disj;eauto.
         + (* The variable is deeper, so it is visible from stkptr *)
+          !assert (lvl_id < Datatypes.length CE_sufx)%nat.
+          { admit. }
+          !assert (exists δ', Datatypes.length CE_sufx - lvl_id = S δ')%nat.
+          { exists ((Datatypes.length CE_sufx - lvl_id) - 1)%nat.
+            omega. }
+          decomp h_ex.
+          rewrite heq_sub in heq_transl_variable , h_CM_eval_expr_id_t.
+          specialize h_reachable_enclosing_variables with (1:=heq_transl_variable).
+          specialize h_reachable_enclosing_variables with (1:=h_CM_eval_expr_id_t).
+          (* the variable was accesssible the same way in (locenv,m) *)
+          assert (eval_expr g stkptr locenv m
+                            (build_loads (Datatypes.length CE_prefx + δ') δ_id)
+                            (Values.Vptr spb_id ofs_id))
+            as h_reachable_enclosing_variables_in_m. {
+            (* intermediate state where chained_stack do not hold *)
+            !assert (eval_expr g stkptr locenv m_proc_pre_init
+                               (build_loads (Datatypes.length CE_prefx + δ') δ_id)
+                               (Values.Vptr spb_id ofs_id)). {
+              !inversion h_exec_stmt.
+              !inversion h_CM_eval_expr_vaddr.
+              simpl in h_eval_constant.
+              inversion h_eval_constant.
+              subst.
+              eapply storev_outside_struct_chain_preserves_var_addresses2 with (3:=heq_storev_v_m_postchainarg).
+              - !intros.
+                admit. (* TODO: from stkptr nothing chnaged since m. *)
+              - 
+            }
+            admit. }
+          !assert (transl_variable st CE astnum id
+                                   =: build_loads (Datatypes.length CE_prefx + δ') δ_id). {
+            admit. }
+          unfold invisible_cminor_addr in h_invis_stkptr__m_addr_ofs.
+          specialize h_invis_stkptr__m_addr_ofs
+            with (1:=heq_transl_variable0) (2:=heq_compute_chnk_id)
+                 (3:= h_reachable_enclosing_variables_in_m).
+          assumption. }
+          
 
-
+          
+          simpl in heq_CEfetchG_id.
+          rewrite CompilEnv.reside_false_fetch_none in heq_reside .
+          rewrite heq_reside in heq_CEfetchG_id.
+          
 xxxx
         assert (
             (Values.Vptr spb_id ofs_id)

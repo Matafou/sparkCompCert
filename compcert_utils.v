@@ -427,3 +427,16 @@ Proof.
   destruct abs;contradiction.
 Qed.
 
+Lemma is_free_block_disj : forall m sp ofs sp',
+    is_free_block m sp ofs ->
+    ~ is_free_block m sp' ofs ->
+    sp <> sp'
+.
+Proof.
+  !intros.
+  unfold is_free_block in *.
+  intro abs.
+  subst sp'.
+  contradiction.
+Qed.
+
