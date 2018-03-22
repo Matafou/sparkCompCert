@@ -109,12 +109,12 @@ Definition type_of_name (stbl:symboltable) (nme:name): res type :=
   | IndexedComponent astnum x0 x1 =>
     match symboltable.fetch_exp_type astnum stbl with
       Some x => Errors.OK x
-    | None =>  Error (msg "type_of_name: unknown type for astnum (indexed_component")
+    | None =>  Error (msg "type_of_name: unknown type for astnum (indexed_component)")
     end
   | SelectedComponent astnum x0 x1 =>
     match symboltable.fetch_exp_type astnum stbl with
       Some x => Errors.OK x
-    | None =>  Error (msg "type_of_name: unknown type for astnum (selected_component")
+    | None =>  Error (msg "type_of_name: unknown type for astnum (selected_component)")
     end
   end.
 
@@ -8957,8 +8957,9 @@ Proof.
         subst m'.
         subst id_t.
         (* either the variable is local to the new frame and it was
-        'not invisible" from enclosing one because it was free, either
-        it is from a deeper frame and it was visible from enclosing frame. *)
+           "not invisible" from enclosing one because it was free,
+           either it is from a deeper frame and it was visible from
+           enclosing frame. *)
         !functional inversion heq_CEframeG_id;subst.
         + rewrite Nat.sub_diag in *. (* the variable is local *)
           unfold build_loads in h_CM_eval_expr_id_t.
@@ -8989,40 +8990,95 @@ Proof.
           rewrite heq_sub in heq_transl_variable , h_CM_eval_expr_id_t.
           specialize h_reachable_enclosing_variables with (1:=heq_transl_variable).
           specialize h_reachable_enclosing_variables with (1:=h_CM_eval_expr_id_t).
-          (* the variable was accesssible the same way in (locenv,m) *)
+          (* intermediate state where chained_stack do not hold. But
+          the variable was accessible the same way from stkptr *)
+          !assert (eval_expr g stkptr locenv m_proc_pre_init
+                             (build_loads (Datatypes.length CE_prefx + δ') δ_id)
+                             (Values.Vptr spb_id ofs_id)). {
+            !inversion h_exec_stmt.
+            !inversion h_CM_eval_expr_vaddr.
+            simpl in h_eval_constant.
+            inversion h_eval_constant.
+            subst.
+            eapply storev_outside_struct_chain_preserves_var_addresses2
+              with (3:=heq_storev_v_m_postchainarg)
+                   (lvl:=(Datatypes.length CE_prefx + Datatypes.length CE_sufx)%nat).
+            all:cycle 1.
+            - !assert (Datatypes.length CE = (Datatypes.length CE_prefx + Datatypes.length CE_sufx)%nat).
+              { erewrite <- CompilEnv.cut_until_spec1 with (s:=CE);eauto.
+                apply app_length. }
+              rewrite <- heq_length0.
+              assumption.
+            - omega.
+            - eapply eval_expr_build_load_inv_locenv;eauto.
+            - !intros.
+              eapply malloc_distinct_from_chaining_loads with (m:=m)(n:=n)(lvl:=Datatypes.length CE);eauto.
+              + !assert (Datatypes.length CE = (Datatypes.length CE_prefx + Datatypes.length CE_sufx)%nat).
+                { erewrite <- CompilEnv.cut_until_spec1 with (s:=CE);eauto.
+                  apply app_length. }
+                omega.
+              + eapply malloc_preserves_chaining_loads_2;eauto.
+                eapply chained_stack_structure_le;eauto.
+                !assert (Datatypes.length CE = (Datatypes.length CE_prefx + Datatypes.length CE_sufx)%nat).
+                { erewrite <- CompilEnv.cut_until_spec1 with (s:=CE);eauto.
+                  apply app_length. }
+                omega. }
+              
           assert (eval_expr g stkptr locenv m
                             (build_loads (Datatypes.length CE_prefx + δ') δ_id)
                             (Values.Vptr spb_id ofs_id))
             as h_reachable_enclosing_variables_in_m. {
-            (* intermediate state where chained_stack do not hold *)
-            !assert (eval_expr g stkptr locenv m_proc_pre_init
-                               (build_loads (Datatypes.length CE_prefx + δ') δ_id)
-                               (Values.Vptr spb_id ofs_id)). {
-              !inversion h_exec_stmt.
-              !inversion h_CM_eval_expr_vaddr.
-              simpl in h_eval_constant.
-              inversion h_eval_constant.
-              subst.
-              eapply storev_outside_struct_chain_preserves_var_addresses2 with (3:=heq_storev_v_m_postchainarg).
-              - !intros.
-                admit. (* TODO: from stkptr nothing chnaged since m. *)
-              - 
-            }
-            admit. }
+                unfold build_loads in h_CM_eval_expr|- *.
+                !inversion h_CM_eval_expr.
+                econstructor.
+                - eapply malloc_preserves_chaining_loads_2;eauto.
+                  + eapply chained_stack_structure_le;eauto.
+                    !assert (Datatypes.length CE = (Datatypes.length CE_prefx + Datatypes.length CE_sufx)%nat).
+                    { erewrite <- CompilEnv.cut_until_spec1 with (s:=CE);eauto.
+                      apply app_length. }
+                    omega.
+                - eapply eval_expr_Econst_inv_locenv;eauto.
+                - assumption.
+              }
+          (* the variable was accesssible the same way in (locenv,m) *)
           !assert (transl_variable st CE astnum id
                                    =: build_loads (Datatypes.length CE_prefx + δ') δ_id). {
-            admit. }
+            unfold transl_variable.
+            !assert (CE = CE_prefx++CE_sufx). {
+              erewrite CompilEnv.cut_until_spec1;eauto. }
+            rewrite heq_CE.
+            
+            erewrite CompilEnv.nodupG_fetchG_app;eauto.
+            - erewrite CompilEnv.nodupG_frameG_app;eauto.
+              + cbn.
+                erewrite foo;eauto.
+                * f_equal.
+                  f_equal.
+                  rewrite app_length.
+                  omega.
+                * intro abs.
+                  apply app_eq_nil in abs.
+                  decomp abs.
+                  subst.
+                  cbn in heq_sub.
+                  inversion heq_sub.
+                * rewrite <- heq_CE.
+                  eapply h_inv_comp_CE_st.
+              + rewrite <- heq_CE.
+                eapply h_inv_comp_CE_st.
+            - rewrite <- heq_CE.
+              eapply h_inv_comp_CE_st.
+            - !functional inversion heq_CEfetchG_id;subst.
+              + exfalso.
+                rewrite CompilEnv.reside_false_fetch_none in heq_reside.
+                rewrite heq_reside in heq_CEfetch_id.
+                discriminate heq_CEfetch_id.
+              + assumption. }
           unfold invisible_cminor_addr in h_invis_stkptr__m_addr_ofs.
           specialize h_invis_stkptr__m_addr_ofs
             with (1:=heq_transl_variable0) (2:=heq_compute_chnk_id)
                  (3:= h_reachable_enclosing_variables_in_m).
           assumption. }
-          
-
-          
-          simpl in heq_CEfetchG_id.
-          rewrite CompilEnv.reside_false_fetch_none in heq_reside .
-          rewrite heq_reside in heq_CEfetchG_id.
           
 xxxx
         assert (
