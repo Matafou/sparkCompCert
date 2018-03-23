@@ -8924,7 +8924,7 @@ Proof.
         + eapply chained_stack_structure_le;eauto.
           omega. }
 
-    assert (∀ astnum addr ofs, (forbidden st CE g astnum locenv stkptr m m addr ofs)
+    !assert (∀ astnum addr ofs, (forbidden st CE g astnum locenv stkptr m m addr ofs)
             -> (forbidden st ((pb_lvl, sto) :: CE_sufx)
                           g astnum locenv_postchainarg stkptr_proc m_postchainarg m_postchainarg addr ofs)).
     { unfold forbidden.
@@ -9080,53 +9080,17 @@ Proof.
                  (3:= h_reachable_enclosing_variables_in_m).
           assumption. }
           
-xxxx
-        assert (
-            (Values.Vptr spb_id ofs_id)
-            ∨ exists n,eval_expr g stkptr locenv_init m_proc_pre_init (build_loads (n+(m' - lvl_id)) δ_id) (Values.Vptr spb_id ofs_id)). {
-          (* (m' - lvl_id) *)
-        }
-        xxxx
-}
-    assert (∀ astnum addr ofs, (forbidden st CE g astnum locenv stkptr m m addr ofs)
-            -> (forbidden st CE g astnum locenv stkptr m_postchainarg m_postchainarg addr ofs)).
-    { unfold forbidden.
-      !intros.
-      decomp h_and.
-      (* rename H0 into hneg_perm. *)
-      split.
-      all:swap 1 2.
-      - intro abs.
-        apply h_neg_free_blck_m_addr_ofs.
-        unfold is_free_block in *.
-        intro.
-        intro abs2.
-        apply abs with perm.
-        eapply Mem.perm_alloc_1;eauto.
-        
-        apply hneg_perm.
-        !intros.
-        specialize fresh_block_alloc_perm with (1:=h_alloc) as h.
-        intro abs2.
-        apply (abs perm).
-        
-
-    (* Once chain_arg is set, forbidden mpostchain is included in forbidden m *)
-    assert (∃ (m_postchainarg : mem) (trace_postchainarg : Events.trace),
-               exec_stmt g the_proc stkptr_proc locenv_init m
-                         (Sstore AST.Mint32 (Econst (Oaddrstack Ptrofs.zero)) (Evar chaining_param))
-                          trace_postchainarg locenv_init m_postchainarg Out_normal ∧
-               ∀ astnum : astnum,
-                 unchange_forbidden st CE g astnum locenv locenv stkptr m m_postchainarg
-                 ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postchainarg).
-    {
-
+    (* Maybe we will need to proe that forbidden m_postchain means:
+    (forbidden m OR inside CE_prefx). *)
+    
 
 
     (* set_locals initiates local varaibles to undefined and arguments
        to there dynamic values. But until args are copied to local
        stack it is not sync with spark. declarative parts is
        evaluated. *)
+
+
 
     (* stating that m_postfree is the result of free on the resulting state of proc body + free *)
     (* We should maybe write here unchange_forbidden on the state
@@ -9156,20 +9120,44 @@ xxxx
       - assumption.
       - assumption.
       - assumption. }
-
     
+    assert (∀ astnum : astnum,unchange_forbidden st CE g astnum locenv locenv stkptr m m_postchainarg). {
+      xxx TODO.
+
+    }
+    
+    !!enough 
+    (exists locenv_postcpout m_postcpout trace_postcpout,
+        exec_stmt g the_proc stkptr_proc locenv_postchainarg m_postchainarg
+                  (Sseq (Sseq s_parms (Sseq s_locvarinit Sskip)) (Sseq s_pbdy s_copyout))
+                  trace_postcpout locenv_postcpout m_postcpout Out_normal
+        ∧ exists m_postfree,
+          Mem.free m_postcpout spb_proc 0 sto_sz = Some m_postfree
+          ∧ match_env st s'  CE stkptr locenv g m_postfree
+          ∧ chained_stack_structure m_postfree (Datatypes.length CE) stkptr
+          ∧ (∀ astnum : astnum, 
+                unchange_forbidden st CE g astnum locenv locenv stkptr m m_postfree
+                ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postfree)).
+    { decomp h_ex.
+      exists locenv_postcpout, m_postcpout.
+      exists (Events.Eapp trace_postchainarg trace_postcpout).
+      split;[|esplit;[split;[|split;[|split]]]];eauto.
+      simpl fn_body.
+      econstructor;eauto. }
+
     (* unchange_forbidden on the state prior to free. Proving this
        needs to show that freeing something that was also free in m
        does not change forbidden. *)
     enough (h_ex:exists locenv_postcpout m_postcpout trace_postcpout,
                exec_stmt g the_proc stkptr_proc locenv_init m_proc_pre_init
                          (fn_body the_proc) trace_postcpout locenv_postcpout m_postcpout Out_normal
-               ∧ exists m_postfree, Mem.free m_postcpout spb_proc 0 sto_sz = Some m_postfree
-               ∧ match_env st s'  CE stkptr locenv g m_postfree
-               ∧ chained_stack_structure m_postfree (Datatypes.length CE) stkptr
-               ∧ (∀ astnum : astnum, 
-                     unchange_forbidden st CE g astnum locenv locenv stkptr m m_postcpout
-                     ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postcpout)).
+               ∧ exists m_postfree,
+                 Mem.free m_postcpout spb_proc 0 sto_sz = Some m_postfree
+                 ∧ match_env st s'  CE stkptr locenv g m_postfree
+                 ∧ chained_stack_structure m_postfree (Datatypes.length CE) stkptr
+                 ∧ (∀ astnum : astnum, 
+                       unchange_forbidden st CE g astnum locenv locenv stkptr m m_postcpout
+                       ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postcpout)).
     { decomp h_ex.
       match goal with
       | H:forall _, _ ∧ _ |- _ => rename H into h_forbid
