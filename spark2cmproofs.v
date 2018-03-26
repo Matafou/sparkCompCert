@@ -8924,9 +8924,9 @@ Proof.
         + eapply chained_stack_structure_le;eauto.
           omega. }
 
-    !assert (∀ astnum addr ofs, (forbidden st CE g astnum locenv stkptr m m addr ofs)
+    assert (∀ astnum addr ofs, (forbidden st CE g astnum locenv stkptr m m addr ofs)
             -> (forbidden st ((pb_lvl, sto) :: CE_sufx)
-                          g astnum locenv_postchainarg stkptr_proc m_postchainarg m_postchainarg addr ofs)).
+                          g astnum locenv_postchainarg stkptr_proc m_postchainarg m_postchainarg addr ofs)) as h_forbidden_incl_m_m_poschainarg.
     { unfold forbidden.
       !intros.
       decomp h_and.
@@ -9121,11 +9121,32 @@ Proof.
       - assumption.
       - assumption. }
     
-    assert (∀ astnum : astnum,unchange_forbidden st CE g astnum locenv locenv stkptr m m_postchainarg). {
-      xxx TODO.
+    (* From stkptr, no forbidden address were modified. *)
+    assert (forall astnum,
+               Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postchainarg)
+      as h_unch_forbid_m_mpostchainarg.
+    { intros astnum. 
+      !inversion h_exec_stmt.
+      !inversion h_CM_eval_expr_vaddr.
+      simpl in h_eval_constant.
+      !inversion h_eval_constant.
+      eapply Mem.unchanged_on_trans with (m2:=m_proc_pre_init).
+      - eapply Mem.alloc_unchanged_on;eauto.
+      - eapply Mem.store_unchanged_on;eauto.
+        !intros.
+        (* This address was free in m, so it is not forbidden in m *)
+        intro abs.
+        unfold forbidden in abs.
+        decomp abs.
+        apply h_neg_free_blck_m_spb_proc_i.
+        red.
+        !intros.
+        eapply fresh_block_alloc_perm;eauto. }
 
-    }
-    
+
+
+
+
     !!enough 
     (exists locenv_postcpout m_postcpout trace_postcpout,
         exec_stmt g the_proc stkptr_proc locenv_postchainarg m_postchainarg
