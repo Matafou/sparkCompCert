@@ -870,6 +870,76 @@ Proof.
            eassumption.
 Qed.
 
+(* more general result: we can change something in the chained
+structure but not the structure itself (chainging pointers. *)
+Lemma gen_storev_outside_struct_chain_preserves_chaining:
+  forall sp0 e sp g m lvl ofs0,
+    (* chainging addresses are unchanged. *)
+    ((4 <= (Ptrofs.unsigned ofs0))%Z \/
+    (forall n, (n < lvl)%nat -> forall b' ,
+          Cminor.eval_expr
+            g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)
+            (Values.Vptr b' Ptrofs.zero)
+          -> b' <> sp0)) ->
+    forall n, chained_stack_structure m lvl sp ->
+              forall x _chk m', Mem.storev _chk m (Values.Vptr sp0 ofs0) x = Some m' ->
+                                (n <= lvl)%nat -> forall v,
+                                    Cminor.eval_expr g sp e m ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) v
+                                    -> Cminor.eval_expr g sp e m' ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) v.
+Proof.
+  !!intros until ofs0.
+  intros h_eval_sp_lds n.
+  !induction n;!intros.
+  - cbn in *.
+    !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_lvl_sp.
+    decomp h_ex.
+    subst.
+    subst_det_addrstack_zero.
+    apply cm_eval_addrstack_zero.
+  - !!assert (n <= lvl)%nat by omega.
+    specialize h_impl_forall_x with (1:=h_chain_m_lvl_sp)(2:=heq_storev_x_m') (3:=h_le_n_lvl).
+    cbn -[Mem.storev] in *.
+    !inversion h_CM_eval_expr_v.
+    specialize (h_impl_forall_x _ h_CM_eval_expr_vaddr).
+    econstructor.
+    + eassumption.
+    + cbn in *.
+      destruct vaddr; try discriminate.
+      cbn in *.
+      pose proof Mem.load_store_other _ _ _ _ _ _ heq_storev_x_m' AST.Mint32 b (Ptrofs.unsigned i) as h.
+      rewrite h.
+      * assumption.
+      * !destruct h_eval_sp_lds.
+        -- right.
+           assert (i = Ptrofs.zero).
+           { !!specialize chained_stack_structure_le with (1:=h_chain_m_lvl_sp) (2:=h_le_n_lvl) as ?.
+             !!specialize chain_structure_spec with (1:=h_chain_m_n_sp) (g:=g)(e:=e) as ?.
+             decomp h_ex.
+             !!specialize det_eval_expr with (1:=h_CM_eval_expr) (2:=h_CM_eval_expr_vaddr) as ?.
+             !inversion heq_vptr_b0_zero.
+             reflexivity. }
+           subst.
+           left.
+           cbn.
+           rewrite Ptrofs.unsigned_zero.
+           omega.
+        -- left.
+           eapply h_forall_n with (n:=n).
+           ++ omega.
+           ++ assert (i = Ptrofs.zero). 
+              { !!pose proof chain_aligned _ _ _ h_chain_m_lvl_sp lvl (le_n _) e g.
+                red in h_aligned_g_m.
+                !!assert (n <= lvl) by omega.
+                specialize (h_aligned_g_m _ h_le_n_lvl0).
+                decomp h_aligned_g_m.
+                !! (subst_det_addrstack_zero;idtac).
+                inversion heq_vptr_b_i.
+                reflexivity. }
+              subst.
+              eassumption.
+Qed.
+
+
 Lemma storev_outside_struct_chain_preserves_chaining2:
   forall sp0 e sp g m lvl,
       (* chainging addresses are unchanged. *)
@@ -919,6 +989,73 @@ Proof.
              reflexivity. }
            subst.
            eassumption.
+Qed.
+
+(* More general result *)
+Lemma gen_storev_outside_struct_chain_preserves_chaining2:
+  forall sp0 e sp g m lvl ofs0,
+    (* chainging addresses are unchanged. *)
+    ((4 <= (Ptrofs.unsigned ofs0))%Z \/
+     forall n, (n < lvl)%nat -> forall b' ,
+         Cminor.eval_expr g sp e m 
+                          ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) (Values.Vptr b' Ptrofs.zero)
+         -> b' <> sp0) ->
+    forall n, chained_stack_structure m lvl sp ->
+              forall x _chk m', Mem.storev _chk m (Values.Vptr sp0 ofs0) x = Some m' ->
+                                   (n <= lvl)%nat -> forall v,
+                                       Cminor.eval_expr g sp e m' ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) v
+                                       -> Cminor.eval_expr g sp e m ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) v.
+Proof.
+  !!intros until ofs0.
+  intros h_eval_sp_lds n.
+  !induction n;!intros.
+  - cbn in *.
+    !!specialize chained_stack_struct_inv_sp_zero with (1:=h_chain_m_lvl_sp) as ?.
+    decomp h_ex.
+    subst.
+    subst_det_addrstack_zero.
+    apply cm_eval_addrstack_zero.
+  - !!assert (n <= lvl)%nat by omega.
+    specialize h_impl_forall_x with (1:=h_chain_m_lvl_sp) (2:=heq_storev_x_m') (3:=h_le_n_lvl).
+    cbn -[Mem.storev] in *.
+    !inversion h_CM_eval_expr_v.
+    specialize (h_impl_forall_x _ h_CM_eval_expr_vaddr).
+    econstructor.
+    + eassumption.
+    + cbn in *.
+      destruct vaddr; try discriminate.
+      cbn in *.
+      pose proof Mem.load_store_other _ _ _ _ _ _ heq_storev_x_m' AST.Mint32 b (Ptrofs.unsigned i) as h.
+      rewrite <- h.
+      * assumption.
+      * !destruct h_eval_sp_lds.
+        -- right.
+           assert (i = Ptrofs.zero).
+           { !!specialize chained_stack_structure_le with (1:=h_chain_m_lvl_sp) (2:=h_le_n_lvl) as ?.
+             !!specialize chain_structure_spec with (1:=h_chain_m_n_sp) (g:=g)(e:=e) as ?.
+             decomp h_ex.
+             !!specialize det_eval_expr with (1:=h_CM_eval_expr) (2:=h_impl_forall_x) as ?.
+             !inversion heq_vptr_b0_zero.
+             reflexivity. }
+           subst.
+           left.
+           cbn.
+           rewrite Ptrofs.unsigned_zero.
+           omega.
+        -- left.
+           eapply h_forall_n with (n:=n).
+           ++ omega.
+           ++ assert (i = Ptrofs.zero). 
+              { !!pose proof chain_aligned _ _ _ h_chain_m_lvl_sp lvl (le_n _) e g.
+                red in h_aligned_g_m.
+                !!assert (n <= lvl) by omega.
+                specialize (h_aligned_g_m _ h_le_n_lvl0).
+                decomp h_aligned_g_m.
+                !! (subst_det_addrstack_zero;idtac).
+                inversion heq_vptr_b_δ_zero.
+                reflexivity. }
+              subst.
+              eassumption.
 Qed.
 
 Lemma storev_outside_struct_chain_preserves_var_addresses:

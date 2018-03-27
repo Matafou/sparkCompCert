@@ -8147,6 +8147,37 @@ Admitted.
 
 
 
+Lemma malloc_preserves_is_non_free : forall n1 n2 spb m m',
+    Mem.alloc m n1 n2 = (m', spb) ->
+    forall addr ofs , 
+      ¬ is_free_block m addr ofs ->
+      ¬ is_free_block m' addr ofs.
+Proof.
+  !intros.
+  intro abs.
+  apply h_neg_free_blck_m_addr_ofs.
+  unfold is_free_block in *.
+  intro.
+  intro abs2.
+  apply abs with perm.
+  eapply Mem.perm_alloc_1;eauto.
+Qed.
+Lemma storev_preserves_is_non_free : forall chk m vaddr v m',
+    Mem.storev chk m vaddr v = Some m' ->
+    forall addr ofs , 
+      ¬ is_free_block m addr ofs ->
+      ¬ is_free_block m' addr ofs.
+Proof.
+  unfold is_free_block.
+  !intros.
+  destruct vaddr;eauto;try discriminate.
+  intro abs.
+  apply h_neg_forall_perm.
+  !intros.
+  intro abs2.
+  apply abs with perm.
+  eapply Mem.perm_store_1;eauto.
+Qed.
 
 (* replacing match-env by strong_match_env + unchange_on (forbidden). *)
 Lemma transl_stmt_normal_OK : forall stbl (stm:stmt) s norms',
@@ -8924,6 +8955,58 @@ Proof.
         + eapply chained_stack_structure_le;eauto.
           omega. }
 
+
+
+    assert (∀ astnum addr ofs,
+               (forbidden st CE g astnum locenv stkptr m m addr ofs)
+            -> (forbidden st CE g astnum locenv stkptr m_postchainarg m_postchainarg addr ofs))
+      as h_forbidden_incl_m_m_poschainarg.
+    { unfold forbidden.
+      !intros.
+      decomp h_and.
+      (* rename H0 into hneg_perm. *)
+      split.
+      all:swap 1 2.
+      - !inversion h_exec_stmt.
+        eapply storev_preserves_is_non_free;eauto.
+        eapply malloc_preserves_is_non_free with (m:=m);eauto.
+      - red.
+        !intros.
+        unfold invisible_cminor_addr in h_invis_stkptr__m_addr_ofs.
+        !functional inversion heq_transl_variable.
+        !assert (chained_stack_structure m (m' - lvl_id) stkptr). {
+          eapply chained_stack_structure_le with (n:=Datatypes.length CE);eauto.
+          !!specialize CompilEnv.exact_lvl_lvl_of_top with (l:=CE) as ?.
+          erewrite <- h_impl_forall_n.
+          all:swap 3 1.
+          -- eapply heq_lvloftop_CE_m'.
+          -- eapply h_inv_comp_CE_st.
+          -- omega. }
+        !!specialize chain_structure_spec with (1:=h_chain_m0) (g:=g)(e:=locenv) as ?.
+        decomp h_ex.
+        eapply h_invis_stkptr__m_addr_ofs.
+        + eapply heq_transl_variable.
+        + assumption.
+        +
+          unfold build_loads.
+          !inversion h_exec_stmt.
+          !inversion h_CM_eval_expr_vaddr.
+          simpl in h_eval_constant.
+          inversion h_eval_constant.
+          subst.
+          econstructor.
+          all:swap 1 2.
+          * econstructor.
+            reflexivity.
+          * eapply h_CM_eval_expr.
+          * simpl.
+            !!assert (Archi.ptr64=false) by reflexivity.
+            rewrite heq_ptr64.
+            rewrite Ptrofs.add_zero_l.
+            TBC.
+            
+          
+    }
     assert (∀ astnum addr ofs, (forbidden st CE g astnum locenv stkptr m m addr ofs)
             -> (forbidden st ((pb_lvl, sto) :: CE_sufx)
                           g astnum locenv_postchainarg stkptr_proc m_postchainarg m_postchainarg addr ofs)) as h_forbidden_incl_m_m_poschainarg.
@@ -9168,7 +9251,10 @@ Proof.
         + red.
           intros sp_id ofs_id. 
           transitivity (forbidden st CE g astnum locenv stkptr m_postchainarg m_postchainarg sp_id ofs_id).
-          * admit. (* Not the right property here. *)
+          * split.
+            -- intro.
+               auto.
+            admit. (* Not the right property here. *)
           * eapply h_forall_astnum.
         + eapply Mem.unchanged_on_trans with (m2:=m_postchainarg).
           * apply h_unch_forbid_m_mpostchainarg.
