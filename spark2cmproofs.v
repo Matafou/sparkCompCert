@@ -9143,8 +9143,39 @@ Proof.
         !intros.
         eapply fresh_block_alloc_perm;eauto. }
 
-
-
+    enough (h_ex:exists locenv_postcpout m_postcpout trace_postcpout,
+               exec_stmt g the_proc stkptr_proc locenv_postchainarg m_postchainarg
+                         (Sseq (Sseq s_parms (Sseq s_locvarinit Sskip))
+                               (Sseq s_pbdy s_copyout))
+                         trace_postcpout locenv_postcpout m_postcpout Out_normal
+               ∧ exists m_postfree, Mem.free m_postcpout spb_proc 0 sto_sz = Some m_postfree
+               ∧ match_env st s'  CE stkptr locenv g m_postfree
+               ∧ chained_stack_structure m_postfree (Datatypes.length CE) stkptr
+               ∧ (∀ astnum : astnum, 
+                     unchange_forbidden st CE g astnum locenv locenv stkptr m_postchainarg m_postfree
+                     ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m_postchainarg m_postfree)).
+    { decomp h_ex.
+      eexists locenv_postcpout,m_postcpout.
+      eexists.
+      split.
+      - unfold the_proc at 2.
+        simpl.
+        econstructor;eauto.
+      - exists m_postfree.
+        split;[|split;[|split]];eauto.
+        intros astnum. 
+        split.
+        + red.
+          intros sp_id ofs_id. 
+          transitivity (forbidden st CE g astnum locenv stkptr m_postchainarg m_postchainarg sp_id ofs_id).
+          * admit. (* Not the right property here. *)
+          * eapply h_forall_astnum.
+        + eapply Mem.unchanged_on_trans with (m2:=m_postchainarg).
+          * apply h_unch_forbid_m_mpostchainarg.
+          * eapply  h_forall_astnum. }
+    
+    
+xxx
 
 
     !!enough 
