@@ -8955,7 +8955,52 @@ Proof.
         + eapply chained_stack_structure_le;eauto.
           omega. }
 
-
+    !assert (forall astnum id v1 lvl_v1 δ_v1,
+    (lvl_v1 <= Datatypes.length CE)%nat ->
+    transl_variable st CE astnum id =: build_loads lvl_v1 δ_v1 ->
+    eval_expr g stkptr locenv m_postchainarg (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl_v1) v1 <->
+    eval_expr g stkptr locenv m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl_v1) v1). {
+      !intros.
+      split;!intros.
+      { eapply malloc_preserves_chaining_loads_2 with (lvl:=Datatypes.length CE).
+        - eassumption.
+        - apply Nat.lt_le_incl.
+          eapply transl_variable_exact_lvl_le_toplvl;eauto.
+        - assumption.
+        - !inversion h_exec_stmt.
+          !!specialize (cm_eval_addrstack_zero spb_proc Ptrofs.zero m_proc_pre_init g locenv_postchainarg).
+          !intro.
+          fold stkptr_proc in h_CM_eval_expr.
+          rewrite det_eval_expr with (1:=h_CM_eval_expr_vaddr)(2:=h_CM_eval_expr)
+            in heq_storev_v_m_postchainarg.
+          eapply storev_outside_struct_chain_preserves_chaining2 with (3:=heq_storev_v_m_postchainarg).
+          all: cycle 1.
+          + eassumption.
+          + apply Nat.lt_le_incl.
+            eapply transl_variable_exact_lvl_le_toplvl;eauto.
+          + assumption.
+          + !intros.
+            eapply malloc_distinct_from_chaining_loads_2 with (2:=h_alloc)(4:=h_CM_eval_expr0)(lvl:=Datatypes.length CE);auto. }
+      { !inversion h_exec_stmt.
+        !!specialize (cm_eval_addrstack_zero spb_proc Ptrofs.zero m_proc_pre_init g locenv_postchainarg).
+        !intro.
+        fold stkptr_proc in h_CM_eval_expr.
+        rewrite det_eval_expr with (1:=h_CM_eval_expr_vaddr)(2:=h_CM_eval_expr)
+          in heq_storev_v_m_postchainarg.
+        eapply storev_outside_struct_chain_preserves_chaining with (3:=heq_storev_v_m_postchainarg).
+        - !intros.
+          eapply malloc_distinct_from_chaining_loads_2 with (2:=h_alloc) (4:=h_CM_eval_expr0)(lvl:=Datatypes.length CE);auto.
+          + eassumption.
+        - assumption.
+        - apply Nat.lt_le_incl.
+          eapply transl_variable_exact_lvl_le_toplvl;eauto.
+        - eapply malloc_preserves_chaining_loads with (lvl:=Datatypes.length CE).
+          + eassumption.
+          + apply Nat.lt_le_incl.
+            eapply transl_variable_exact_lvl_le_toplvl;eauto.
+          + assumption.
+          + assumption. }
+    }
 
     assert (∀ astnum addr ofs,
                (forbidden st CE g astnum locenv stkptr m m addr ofs)
@@ -9003,14 +9048,52 @@ Proof.
             !!assert (Archi.ptr64=false) by reflexivity.
             rewrite heq_ptr64.
             rewrite Ptrofs.add_zero_l.
-            TBC.
-            
-          
+            !!specialize eval_build_loads_offset with (4:=h_CM_eval_expr_id_t) as  ?.
+            erewrite h_forall_lvl;eauto.
+            all:cycle 1.
+            -- eapply Z.mod_small.
+               eapply h_inv_comp_CE_st;eauto.
+            -- eapply chain_aligned;eauto.
+               { !!specialize CompilEnv.exact_lvl_lvl_of_top with (l:=CE) as ?.
+                 erewrite <- h_impl_forall_n.
+                 all:swap 3 1.
+                 - eapply heq_lvloftop_CE_m'.
+                 - eapply h_inv_comp_CE_st.
+                 - omega. }
+            -- move h_CM_eval_expr_id_t after heq_ptr64.
+               unfold build_loads in h_CM_eval_expr_id_t.
+               !inversion h_CM_eval_expr_id_t.
+               move h_CM_eval_expr after h_CM_eval_expr_v1.
+               !assert (eval_expr g stkptr locenv m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (m' - lvl_id)) v1). {
+                 eapply h_forall_astnum;eauto.
+                 apply Nat.lt_le_incl.
+                 eapply transl_variable_exact_lvl_le_toplvl;eauto.
+               }
+               !!specialize det_eval_expr with (1:=h_CM_eval_expr_v0)(2:=h_CM_eval_expr) as ?.
+               subst.
+               simpl in h_eval_binop_Oadd_v1_v2.
+               !destruct v2; try discriminate.
+               rewrite heq_ptr64 in h_eval_binop_Oadd_v1_v2.
+               !inversion h_eval_binop_Oadd_v1_v2.
+               f_equal.
+               f_equal.
+               unfold Ptrofs.of_int.
+               rewrite Int.unsigned_repr;auto.
+               rewrite <- max_unsigned_ok.
+               unfold max_unsigned.
+               rewrite modulus_ok.
+               !!specialize h_inv_comp_CE_st.(ci_no_overflow) as ?.
+               red in h_bound_addr_CE.
+               specialize h_bound_addr_CE with (1:=heq_CEfetchG_id_CE).
+               rewrite Ptrofs.modulus_eq32 in h_bound_addr_CE;eauto.
+               omega.
     }
+
     assert (∀ astnum addr ofs, (forbidden st CE g astnum locenv stkptr m m addr ofs)
             -> (forbidden st ((pb_lvl, sto) :: CE_sufx)
-                          g astnum locenv_postchainarg stkptr_proc m_postchainarg m_postchainarg addr ofs)) as h_forbidden_incl_m_m_poschainarg.
-    { unfold forbidden.
+                          g astnum locenv_postchainarg stkptr_proc m_postchainarg m_postchainarg addr ofs)) as h_forbidden_incl_m_m_poschainarg'.
+    { 
+      unfold forbidden.
       !intros.
       decomp h_and.
       (* rename H0 into hneg_perm. *)
