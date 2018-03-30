@@ -2388,6 +2388,7 @@ Proof.
   - eapply stack_freeable_inv_locenv;eauto.
 Qed.
 
+
 Lemma cut_until_exact_lvl:
   forall stoCE CE lvl,
     CompilEnv.exact_levelG (stoCE :: CE)
@@ -4661,6 +4662,29 @@ Proof.
   red;!intros.
   reflexivity.
 Qed.
+
+Lemma invisible_cminor_addr_inv_locenv : forall st CE g astnum locenv locenv' stkptr m b ofs,
+  invisible_cminor_addr st CE g astnum locenv stkptr m b ofs
+ -> invisible_cminor_addr st CE g astnum locenv' stkptr m b ofs.
+Proof.
+  !intros.
+  unfold invisible_cminor_addr in *.
+  !intros.
+  eapply h_invis_stkptr__m_b_ofs;eauto.
+  eapply eval_expr_transl_variable_inv_locenv;eauto.
+Qed.
+
+Lemma forbidden_inv_locenv: forall st CE g astnum locenv locenv' stkptr m b ofs,
+    forbidden st CE g astnum locenv stkptr m m b ofs
+    -> forbidden st CE g astnum locenv' stkptr m m b ofs.
+Proof.
+  !intros.
+  unfold forbidden in *.
+  !destruct h_forbid_m_m_b_ofs.
+  split;auto.
+  eapply invisible_cminor_addr_inv_locenv;eauto.
+Qed.
+
 
 Definition strict_unchanged_on st CE g astnum e_chain e_chain' sp m m' :=
   Mem.unchanged_on (forbidden st CE g astnum e_chain sp m m) m m' /\
@@ -9088,10 +9112,13 @@ Proof.
                rewrite Ptrofs.modulus_eq32 in h_bound_addr_CE;eauto.
                omega.
     }
-
+          
+    (* Maybe we will need to prove the other direction too:
+       forbidden m_postchain <-> (forbidden m OR inside CE_prefx). *)
     assert (∀ astnum addr ofs, (forbidden st CE g astnum locenv stkptr m m addr ofs)
-            -> (forbidden st ((pb_lvl, sto) :: CE_sufx)
-                          g astnum locenv_postchainarg stkptr_proc m_postchainarg m_postchainarg addr ofs)) as h_forbidden_incl_m_m_poschainarg'.
+            -> (forbidden st ((pb_lvl, sto) :: CE_sufx) g astnum locenv_postchainarg
+                          stkptr_proc m_postchainarg m_postchainarg addr ofs))
+      as h_forbidden_incl_m_m_poschainarg'.
     { 
       unfold forbidden.
       !intros.
@@ -9245,18 +9272,124 @@ Proof.
             with (1:=heq_transl_variable0) (2:=heq_compute_chnk_id)
                  (3:= h_reachable_enclosing_variables_in_m).
           assumption. }
-          
-    (* Maybe we will need to proe that forbidden m_postchain means:
-    (forbidden m OR inside CE_prefx). *)
     
-
-
     (* set_locals initiates local varaibles to undefined and arguments
        to there dynamic values. But until args are copied to local
        stack it is not sync with spark. declarative parts is
        evaluated. *)
+    
+    !assert (exists locenv_postargs m_postargs trace_postargs,
+               exec_stmt g the_proc stkptr_proc locenv_init m_postchainarg
+                         s_parms trace_postargs locenv_postargs m_postargs Out_normal). {
+      admit.
+    }
+    decomp h_ex.
+
+    assert (∀ astnum addr ofs, 
+               (forbidden st CE g astnum locenv stkptr m m addr ofs 
+                -> forbidden st CE g astnum locenv stkptr m_postargs m_postargs addr ofs)
+               ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postargs). {
+      !intros.
+      !!specialize init_params_preserves_structure
+        with (4:=heq_store_prms_procedure_parameter_profile_s_parms)
+             (8:=h_exec_stmt_s_parms_Out_normal)(astnum:=astnum)
+             (lvl:=(1 + Datatypes.length CE_sufx)%nat) as ?.
+      !!destruct h_impl_impl_impl_impl_impl_impl_and;try eapply h_inv_CE''_bld;auto.
+      all:cycle 2.
+      - decomp h_and.
+        split.
+        all:cycle 1.
+        + eapply Mem.unchanged_on_trans with (m2:=m_postchainarg).
+          * admit.
+          * eapply Mem.unchanged_on_implies with (1:=h_unchanged_on_m_postchainarg_m_postargs).
+            !intros.
+            apply forbidden_inv_locenv with (locenv:=locenv_postchainarg).
+            eapply h_forbidden_incl_m_m_poschainarg';eauto.
+            
+        +
+          Lemma foo2: forall st CE g astnum locenv stkptr1 stkptr2 m1 m2,
+            (forall x y, forbidden st CE g astnum locenv stkptr1 m1 m1 x y
+                         → forbidden st CE g astnum locenv stkptr2 m1 m1 x y)
+            → Mem.unchanged_on (forbidden st CE g astnum locenv stkptr2 m1 m1) m1 m2
+            → Mem.unchanged_on (forbidden st CE g astnum locenv stkptr1 m1 m1) m1 m2.
+            Proof.
+              !intros.
+              eapply Mem.unchanged_on_implies;eauto.
+            Qed.
 
 
+          Lemma foo3: forall st CE g astnum locenv stkptr1 stkptr2 m1 m2,
+            (forall x y, forbidden st CE g astnum locenv stkptr1 m1 m1 x y
+                         → forbidden st CE g astnum locenv stkptr2 m1 m1 x y)
+            → Mem.unchanged_on (forbidden st CE g astnum locenv stkptr2 m1 m1) m1 m2
+            → (forall x y, forbidden st CE g astnum locenv stkptr2 m1 m1 x y
+                           → forbidden st CE g astnum locenv stkptr2 m2 m2 x y)
+            → (forall x y, forbidden st CE g astnum locenv stkptr2 m1 m1 x y
+                           → forbidden st CE g astnum locenv stkptr1 m2 m2 x y).
+            Proof.
+              !intros.
+              specialize foo2 with (1:=h_forall_x)(2:=h_unchanged_on_m1_m2) as h.
+              red.
+              specialize h_forall_x0 with (1:=h_forbid_m1_m1_x_y).
+              unfold forbidden in h_forall_x0, h_forbid_m1_m1_x_y.
+              decomp h_forall_x0.
+              decomp h_forbid_m1_m1_x_y.
+              split.
+              all:cycle 1.
+              - assumption.
+              - unfold invisible_cminor_addr in *.
+                !intros.
+                specialize h_invis_stkptr2__m2_x_y with (1:=heq_transl_variable) (2:=heq_compute_chnk_id).
+                specialize h_invis_stkptr2__m1_x_y with (1:=heq_transl_variable) (2:=heq_compute_chnk_id).
+                destruct h_unchanged_on_m1_m2.
+                !functional inversion heq_transl_variable.
+                unfold is_free_block.
+                !intro.
+                assert ().
+                eapply h_forall_perm.
+x                rewrite unchanged_on_perm in h_forall_perm.
+              
+
+            Qed.
+
+ !intros.
+          !!specialize h_forbidden_incl_m_m_poschainarg with (1:=h_forbid_m_m_addr_ofs) as ?.
+          !!specialize h_forbidden_incl_m_m_poschainarg' with (1:=h_forbid_m_m_addr_ofs) as ?.
+          red in h_unch_forbid_m_postchainarg_m_postargs.
+          !destruct (h_unch_forbid_m_postchainarg_m_postargs addr ofs).
+          !assert (forbidden st ((pb_lvl, sto) :: CE_sufx) g astnum locenv_init
+                            stkptr_proc m_postchainarg m_postchainarg addr ofs).
+          { admit. }
+          apply h_unch_forbid_m_postchainarg_m_postargs in h_forbid_m_postchainarg_m_postchainarg_addr_ofs1.
+       
+    }
+
+    assert (match_env st ((pb_lvl, f)::suffix_s) ((pb_lvl, sto) :: CE_sufx)
+                           stkptr_proc locenv_postargs g m_postargs
+               ∧ chained_stack_structure m_postargs (1 + Datatypes.length CE_sufx) stkptr_proc
+               ∧ (∀ astnum addr ofs, 
+                     (forbidden st CE g astnum locenv stkptr m m addr ofs 
+                      -> forbidden st CE g astnum locenv stkptr m_postargs m_postargs addr ofs)
+                     ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postargs)). {
+      !!specialize init_params_preserves_structure
+        with (4:=heq_store_prms_procedure_parameter_profile_s_parms)
+             (8:=h_exec_stmt_s_parms_Out_normal) as ?.
+      !!edestruct h_impl_impl_impl_forall_astnum.
+      all:cycle 6.
+      - decomp h_and.
+        split;[|split;[|split]].
+        all:cycle 2.
+        + !intros.
+          eapply h_forbidden_incl_m_m_poschainarg' in h_forbid_m_m_addr_ofs.
+          red in h_unch_forbid_m_postchainarg_m_postargs.
+          !!edestruct h_unch_forbid_m_postchainarg_m_postargs.
+          !assert (forbidden st ((pb_lvl, sto) :: CE_sufx) g astnum locenv_init stkptr_proc m_postchainarg m_postchainarg addr ofs).
+          { admit. (* change of locenv *) }
+          
+          apply h_impl_forbid_m_postargs_m_postargs in h_forbid_m_postchainarg_m_postchainarg_addr_ofs.
+        eapply H0.
+      
+    }
 
     (* stating that m_postfree is the result of free on the resulting state of proc body + free *)
     (* We should maybe write here unchange_forbidden on the state
