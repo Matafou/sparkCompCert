@@ -545,7 +545,7 @@ match cenv_sz return (res (prod CompilEnv.store Z)) with
     match compute_size stbl subtyp_mrk return (res (prod (list (prod idnum Z)) Z)) with
     | OK x =>
         let new_size : Z := Z.add sz x in
-        match Z.geb new_size Integers.Int.modulus return (res (prod (list (prod idnum Z)) Z)) with
+        match Z.geb new_size Integers.Ptrofs.modulus return (res (prod (list (prod idnum Z)) Z)) with
         | true =>
             @Error (prod (list (prod idnum Z)) Z) (msg "add_to_frame: memory would overflow")
         | false =>
@@ -606,7 +606,7 @@ Function build_frame_decl (stbl : Symbol_Table_Module.symboltable) (fram_sz : lo
       match spark2Cminor.compute_size stbl (object_nominal_subtype objdecl) with
       | OK x =>
           let new_size := sz + x in
-          if new_size >=? Integers.Int.modulus
+          if new_size >=? Integers.Ptrofs.modulus
           then Error (msg "build_frame_decl: memory would overflow")
           else OK ((object_name objdecl, sz) :: fram, new_size)
       | Error msg => Error msg

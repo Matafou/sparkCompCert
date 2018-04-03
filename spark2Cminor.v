@@ -660,7 +660,7 @@ Definition add_to_frame stbl (cenv_sz:localframe*Z) nme subtyp_mrk: res (localfr
   let (cenv,sz) := cenv_sz in
   do size <- compute_size stbl subtyp_mrk ;
   let new_size := (sz+size)%Z in
-  if (new_size >=? Integers.Int.modulus) then Error (msg "add_to_frame: memory would overflow")
+  if (new_size >=? Integers.Ptrofs.modulus) then Error (msg "add_to_frame: memory would overflow")
   else
     let new_cenv := (nme,sz) :: cenv in
     OK (new_cenv,new_size).
@@ -691,7 +691,7 @@ Fixpoint build_frame_decl (stbl:symboltable) (fram_sz:localframe * Z)
     | ObjDecl _ objdecl =>
       do size <- compute_size stbl (objdecl.(object_nominal_subtype)) ;
       let new_size := (sz+size)%Z in
-      if (new_size >=? Integers.Int.modulus) then Error (msg "build_frame_decl: memory would overflow")
+      if (new_size >=? Integers.Ptrofs.modulus) then Error (msg "build_frame_decl: memory would overflow")
       else
       OK (((objdecl.(object_name),sz)::fram) ,new_size)
     | TypeDecl _ typdcl =>
@@ -851,7 +851,7 @@ Fixpoint transl_procedure (stbl:symboltable) (enclosingCE:compilenv)
     | mkprocBodyDecl _ pnum lparams decl statm =>
         (* setup frame chain *)
         do (CE,stcksize) <- build_compilenv stbl enclosingCE lvl lparams decl ;
-        if Z.leb stcksize Integers.Int.max_unsigned
+        if Z.leb stcksize Integers.Ptrofs.max_unsigned
         then
           (* generate nested procedures inside [decl] with CE compile
              environment with one more lvl. *)

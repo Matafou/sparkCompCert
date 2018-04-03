@@ -5648,8 +5648,8 @@ Qed.
 
 Lemma build_frame_lparams_mon'': forall st stosz lparams sto' sz',
     build_frame_lparams st stosz lparams =: (sto',sz') ->
-    snd stosz <= Int.modulus -> 
-    sz' <= Int.modulus.
+    snd stosz <= Ptrofs.modulus -> 
+    sz' <= Ptrofs.modulus.
 Proof.
   !!intros until lparams.
   !functional induction (function_utils.build_frame_lparams st stosz lparams);cbn;!intros;subst.
@@ -5676,8 +5676,8 @@ Qed.
    So that next addition will overflow *)
 Lemma build_frame_lparams_mon': forall st stosz lparams sto' sz',
     build_frame_lparams st stosz lparams =: (sto',sz') ->
-    snd stosz <= Int.modulus -> 
-    snd stosz<=sz'<= Int.modulus
+    snd stosz <= Ptrofs.modulus -> 
+    snd stosz<=sz'<= Ptrofs.modulus
     /\
     (forall stoszchainparam sz,
         stosz = (stoszchainparam,sz) -> 
@@ -5705,7 +5705,7 @@ Proof.
     !assert (x0 >0).
     { eapply compute_size_pos;eauto. }
     cbn in h_forall_sto'.
-    !assert (new_size <= Int.modulus).
+    !assert (new_size <= Ptrofs.modulus).
     { rewrite Z.geb_leb in heq_geb.
       apply Z.leb_gt in heq_geb.
       omega. }
@@ -5754,8 +5754,8 @@ Qed.
 
 Lemma build_frame_decl_mon: forall st stosz lparams sto' sz',
     spark2Cminor.build_frame_decl st stosz lparams =: (sto',sz') ->
-    snd stosz <= Int.modulus -> 
-    snd stosz<=sz'<= Int.modulus
+    snd stosz <= Ptrofs.modulus -> 
+    snd stosz<=sz'<= Ptrofs.modulus
     /\
     (forall stoszchainparam sz,
         stosz = (stoszchainparam,sz) -> 
@@ -5784,7 +5784,7 @@ Proof.
       cbn.
       omega.
     + !invclear heq_OK;cbn in *.
-      destruct (Z.geb_spec (sz + x) Int.modulus);try discriminate;omega.
+      destruct (Z.geb_spec (sz + x) Ptrofs.modulus);try discriminate;omega.
     + !invclear heq_OK;subst;cbn in *.
       !intros.
       !invclear heq_pair.
@@ -6211,6 +6211,8 @@ Proof.
     eapply build_compilenv_no_null_offset;eauto.
 Qed.
 
+
+
 (** Consequence of chained structure: build_load returns always a pointeur *)
 Lemma build_loads_Vptr : forall lvl_nme lvl g spb ofs locenv m δ_nme nme_t nme_t_v,
     Archi.ptr64 = false ->
@@ -6255,7 +6257,7 @@ Qed.
 
 
 Definition all_addr_no_overflow_localframe sto := 
-  ∀ (id : idnum) (δ : CompilEnv.V),CompilEnv.fetch id sto = Some δ → 0 <= δ ∧ δ < Int.modulus.
+  ∀ (id : idnum) (δ : CompilEnv.V),CompilEnv.fetch id sto = Some δ → 0 <= δ ∧ δ < Ptrofs.modulus.
 
 Ltac rename_hyp_overf h th :=
   match th with
@@ -6311,7 +6313,7 @@ Proof.
     cbn in heq_CEfetch_id.
     !destruct (id =? nme)%nat.
     + !invclear heq_CEfetch_id.
-      generalize (Zge_cases (δ + x0)  Int.modulus).
+      generalize (Zge_cases (δ + x0)  Ptrofs.modulus).
       intro h_ge.
       rewrite heq_geb in h_ge.
       split.
@@ -6378,7 +6380,7 @@ Proof.
       
       !destruct (id =? (object_name objdecl))%nat.
       * !invclear heq_CEfetch_id.
-        generalize (Zge_cases (δ + size)  Int.modulus).
+        generalize (Zge_cases (δ + size)  Ptrofs.modulus).
         intro h_ge.
         rewrite heq_geb in h_ge.
         split.
@@ -6434,6 +6436,45 @@ Proof.
   ; try rewrite -> build_frame_decl_ok in *.
 *)
 
+Lemma all_addr_nooverflow_localeframe_nil : forall lvl, all_addr_no_overflow_localframe (lvl, [ ]).
+Proof.
+  !intros.
+  red. !intros.
+  unfold CompilEnv.fetch in heq_CEfetch_id.
+  simpl in heq_CEfetch_id.
+  inversion heq_CEfetch_id.
+Qed.
+
+Lemma build_compilenv_stack_no_overf:
+  ∀ (st : symboltable) (CE : CompilEnv.state) (proc_lvl : level) (lparams : list paramSpec) (decl : decl) 
+    (CE' : compilenv) (sz : Z),
+    CompilEnv.exact_levelG CE
+    → all_addr_no_overflow CE
+    → stack_no_null_offset CE
+    → build_compilenv st CE proc_lvl lparams decl =: (CE', sz)
+    → all_addr_no_overflow CE'.
+Proof.
+  !intros.
+  rewrite <- build_compilenv_ok  in heq_build_compilenv.
+  !functional inversion heq_build_compilenv;subst; rewrite build_compilenv_ok in *.
+  red.
+  !intros.
+  destruct x.
+  subst stoszchainparam.
+  subst scope_lvl.
+  eapply all_addr_no_overflow_fetch_OK;eauto.
+  eapply build_frame_decl_preserve_no_overflow;eauto.
+  + eapply build_frame_decl_preserve_pos_addr with (lvl:=4%nat);eauto.
+    * eapply build_frame_lparams_preserve_pos_addr with (lvl:=4%nat);eauto.
+      -- omega.
+      -- apply all_addr_nooverflow_localeframe_nil.
+    * eapply build_frame_lparams_preserve_no_overflow with (lvl:=4%nat);eauto.
+      -- omega.
+      -- apply all_addr_nooverflow_localeframe_nil.
+  + eapply build_frame_lparams_preserve_no_overflow with (lvl:=4%nat);eauto.
+    -- omega.
+    -- apply all_addr_nooverflow_localeframe_nil.
+Qed.
 
 
 Lemma build_frame_lparams_preserve_increasing_order:
@@ -9277,36 +9318,61 @@ Proof.
        to there dynamic values. But until args are copied to local
        stack it is not sync with spark. declarative parts is
        evaluated. *)
-    
+    (* exec s_parms gives a result *)
     !assert (exists locenv_postargs m_postargs trace_postargs,
-               exec_stmt g the_proc stkptr_proc locenv_init m_postchainarg
-                         s_parms trace_postargs locenv_postargs m_postargs Out_normal). {
+                exec_stmt g the_proc stkptr_proc locenv_init m_postchainarg
+                          s_parms trace_postargs locenv_postargs m_postargs Out_normal).
+    {
       admit.
     }
     decomp h_ex.
-
     assert (∀ astnum addr ofs, 
                (forbidden st CE g astnum locenv stkptr m m addr ofs 
                 -> forbidden st CE g astnum locenv stkptr m_postargs m_postargs addr ofs)
                ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postargs). {
+      !assert( CompilEnv.exact_levelG CE_sufx). {
+        eapply CompilEnv.exact_levelG_sublist2 with (CE1:=CE_prefx).
+        erewrite (CompilEnv.cut_until_spec1 _ _ _ _ h_CEcut_CE_pb_lvl);eauto. }
+      !assert (stack_no_null_offset CE_sufx). {
+        eapply no_null_offset_NoDup_G_cut with (2:=h_CEcut_CE_pb_lvl) ;eauto.
+        erewrite (CompilEnv.cut_until_spec1 _ _ _ _ h_CEcut_CE_pb_lvl);eauto. }
+      !assert (all_addr_no_overflow CE_sufx). {
+        eapply no_overflow_NoDup_G_cut with (2:=h_CEcut_CE_pb_lvl) ;eauto.
+        erewrite (CompilEnv.cut_until_spec1 _ _ _ _ h_CEcut_CE_pb_lvl);eauto. }
+      !assert (stack_no_null_offset ((pb_lvl, sto) :: CE_sufx)). {
+        eapply build_compilenv_stack_no_null_offset with (4:=heq_bldCE);eauto. }
+      !assert (CompilEnv.exact_levelG ((pb_lvl, sto) :: CE_sufx)). {
+        eapply h_inv_CE''_bld. }
+      !assert (all_addr_no_overflow ((pb_lvl, sto) :: CE_sufx)). {
+        eapply build_compilenv_stack_no_overf with (4:=heq_bldCE);eauto. }
+      !assert (stack_localstack_aligned
+                (Datatypes.length ((pb_lvl, sto) :: CE_sufx)) locenv_init g
+                m_postchainarg stkptr_proc). {
+        eapply chain_aligned.
+        eapply h_chain_m_postchainarg.
+        (* omega fails because implicits do not match exactly (but are convertible) *)
+        apply le_n. }
       !intros.
       !!specialize init_params_preserves_structure
-        with (4:=heq_store_prms_procedure_parameter_profile_s_parms)
+        with (1:=h_exct_lvlG) (2:=H) (3:=h_bound_addr)
+             (4:=heq_store_prms_procedure_parameter_profile_s_parms)
+             (7:=h_aligned_g_m_postchainarg)
              (8:=h_exec_stmt_s_parms_Out_normal)(astnum:=astnum)
              (lvl:=(1 + Datatypes.length CE_sufx)%nat) as ?.
-      !!destruct h_impl_impl_impl_impl_impl_impl_and;try eapply h_inv_CE''_bld;auto.
-      all:cycle 2.
-      - decomp h_and.
-        split.
-        all:cycle 1.
-        + eapply Mem.unchanged_on_trans with (m2:=m_postchainarg).
+      !!destruct h_impl_impl_and;try eapply h_inv_CE''_bld;auto.
+      decomp h_and.
+      split.
+      all:cycle 1.
+      + eapply Mem.unchanged_on_trans with (m2:=m_postchainarg).
           * admit.
           * eapply Mem.unchanged_on_implies with (1:=h_unchanged_on_m_postchainarg_m_postargs).
             !intros.
             apply forbidden_inv_locenv with (locenv:=locenv_postchainarg).
             eapply h_forbidden_incl_m_m_poschainarg';eauto.
             
-        +
+        + !intros.
+          eapply h_forbidden_incl_m_m_poschainarg in h_forbid_m_m_addr_ofs.
+
           Lemma foo2: forall st CE g astnum locenv stkptr1 stkptr2 m1 m2,
             (forall x y, forbidden st CE g astnum locenv stkptr1 m1 m1 x y
                          → forbidden st CE g astnum locenv stkptr2 m1 m1 x y)
@@ -9316,6 +9382,12 @@ Proof.
               !intros.
               eapply Mem.unchanged_on_implies;eauto.
             Qed.
+
+            !intros.
+            eapply h_forbidden_incl_m_m_poschainarg in h_forbid_m_m_addr_ofs.
+            
+
+
 
 
           Lemma foo3: forall st CE g astnum locenv stkptr1 stkptr2 m1 m2,
