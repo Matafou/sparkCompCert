@@ -9020,11 +9020,12 @@ Proof.
         + eapply chained_stack_structure_le;eauto.
           omega. }
 
-    !assert (forall astnum id v1 lvl_v1 δ_v1,
-    (lvl_v1 <= Datatypes.length CE)%nat ->
-    transl_variable st CE astnum id =: build_loads lvl_v1 δ_v1 ->
-    eval_expr g stkptr locenv m_postchainarg (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl_v1) v1 <->
-    eval_expr g stkptr locenv m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl_v1) v1). {
+    !assert (
+      forall astnum id v1 lvl_v1 δ_v1,
+        (lvl_v1 <= Datatypes.length CE)%nat ->
+        transl_variable st CE astnum id =: build_loads lvl_v1 δ_v1 ->
+        eval_expr g stkptr locenv m_postchainarg (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl_v1) v1
+        <-> eval_expr g stkptr locenv m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl_v1) v1). {
       !intros.
       split;!intros.
       { eapply malloc_preserves_chaining_loads_2 with (lvl:=Datatypes.length CE).
@@ -9314,6 +9315,65 @@ Proof.
                  (3:= h_reachable_enclosing_variables_in_m).
           assumption. }
     
+    assert (forall astnum,Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postchainarg) as h_unch_m_mpostchain. {
+      intro.
+      split.
+      - eapply Coqlib.Ple_trans with (q:=Mem.nextblock m_proc_pre_init).
+        + erewrite (Mem.nextblock_alloc _ _ _ _ _ h_alloc).
+          apply Coqlib.Ple_succ.
+        + !inversion h_exec_stmt.
+          !inversion h_CM_eval_expr_vaddr.
+          simpl in h_eval_constant.
+          inversion h_eval_constant.
+          subst.
+          simpl Mem.storev in heq_storev_v_m_postchainarg.
+          erewrite Mem.nextblock_store with (1:=heq_storev_v_m_postchainarg).
+          apply Coqlib.Ple_refl.
+      - !intros.
+        !inversion h_exec_stmt.
+        !inversion h_CM_eval_expr_vaddr.
+        simpl in h_eval_constant.
+        inversion h_eval_constant.
+        subst.
+        simpl Mem.storev in heq_storev_v_m_postchainarg.
+        !!transitivity (Mem.perm m_proc_pre_init b ofs k p0);split.
+        + intro hperm.
+          eapply Mem.perm_alloc_1;eauto.
+        + intros hperm.
+          eapply Mem.perm_alloc_4;eauto.
+          intro abs.
+          subst.
+          eapply Mem.fresh_block_alloc;eauto.
+        + intros hperm.
+          eapply Mem.perm_store_1; eauto.
+        + intros hperm.
+          eapply Mem.perm_store_2; eauto.
+      - !intros.
+        !inversion h_exec_stmt.
+        !inversion h_CM_eval_expr_vaddr.
+        simpl in h_eval_constant.
+        inversion h_eval_constant.
+        subst.
+        simpl Mem.storev in heq_storev_v_m_postchainarg.
+        rewrite Mem.store_mem_contents with (1:=heq_storev_v_m_postchainarg).
+        transitivity (Maps.ZMap.get ofs (Maps.PMap.get b (Mem.mem_contents m_proc_pre_init))).
+        + red in h_forbid_m_m_b_ofs.
+          decomp h_forbid_m_m_b_ofs.
+          !destruct (Pos.eq_dec b spb_proc).
+          * subst.
+            exfalso.
+            apply h_neg_free_blck_m_b_ofs.
+            red.
+            !intros.
+            eapply fresh_block_alloc_perm;eauto.
+          * erewrite Maps.PMap.gso;eauto.
+        + specialize Mem.alloc_unchanged_on
+            with (P:=forbidden st CE g astnum locenv stkptr m m)
+                 (1:=h_alloc)
+            as h.
+          destruct h;eauto. }
+
+
     (* set_locals initiates local varaibles to undefined and arguments
        to there dynamic values. But until args are copied to local
        stack it is not sync with spark. declarative parts is
@@ -9328,8 +9388,10 @@ Proof.
     decomp h_ex.
     assert (∀ astnum addr ofs, 
                (forbidden st CE g astnum locenv stkptr m m addr ofs 
-                -> forbidden st CE g astnum locenv stkptr m_postargs m_postargs addr ofs)
-               ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postargs). {
+                -> forbidden st ((pb_lvl, sto) :: CE_sufx) g astnum locenv_postargs stkptr_proc
+                             m_postargs m_postargs addr ofs)
+               ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postargs) as
+    h_incl_forbid_m_m_postargs. {
       !assert( CompilEnv.exact_levelG CE_sufx). {
         eapply CompilEnv.exact_levelG_sublist2 with (CE1:=CE_prefx).
         erewrite (CompilEnv.cut_until_spec1 _ _ _ _ h_CEcut_CE_pb_lvl);eauto. }
@@ -9361,107 +9423,17 @@ Proof.
              (lvl:=(1 + Datatypes.length CE_sufx)%nat) as ?.
       !!destruct h_impl_impl_and;try eapply h_inv_CE''_bld;auto.
       decomp h_and.
-      split.
-      all:cycle 1.
+      split;!intros.
+      + red in h_unch_forbid_m_postchainarg_m_postargs.
+        rewrite <- h_unch_forbid_m_postchainarg_m_postargs.
+        eapply forbidden_inv_locenv;eauto.
       + eapply Mem.unchanged_on_trans with (m2:=m_postchainarg).
-          * admit.
-          * eapply Mem.unchanged_on_implies with (1:=h_unchanged_on_m_postchainarg_m_postargs).
+        * apply h_unch_m_mpostchain. 
+        * eapply Mem.unchanged_on_implies with (1:=h_unchanged_on_m_postchainarg_m_postargs).
             !intros.
             apply forbidden_inv_locenv with (locenv:=locenv_postchainarg).
-            eapply h_forbidden_incl_m_m_poschainarg';eauto.
-            
-        + !intros.
-          eapply h_forbidden_incl_m_m_poschainarg in h_forbid_m_m_addr_ofs.
+            eapply h_forbidden_incl_m_m_poschainarg';eauto. }
 
-          Lemma foo2: forall st CE g astnum locenv stkptr1 stkptr2 m1 m2,
-            (forall x y, forbidden st CE g astnum locenv stkptr1 m1 m1 x y
-                         → forbidden st CE g astnum locenv stkptr2 m1 m1 x y)
-            → Mem.unchanged_on (forbidden st CE g astnum locenv stkptr2 m1 m1) m1 m2
-            → Mem.unchanged_on (forbidden st CE g astnum locenv stkptr1 m1 m1) m1 m2.
-            Proof.
-              !intros.
-              eapply Mem.unchanged_on_implies;eauto.
-            Qed.
-
-            !intros.
-            eapply h_forbidden_incl_m_m_poschainarg in h_forbid_m_m_addr_ofs.
-            
-
-
-
-
-          Lemma foo3: forall st CE g astnum locenv stkptr1 stkptr2 m1 m2,
-            (forall x y, forbidden st CE g astnum locenv stkptr1 m1 m1 x y
-                         → forbidden st CE g astnum locenv stkptr2 m1 m1 x y)
-            → Mem.unchanged_on (forbidden st CE g astnum locenv stkptr2 m1 m1) m1 m2
-            → (forall x y, forbidden st CE g astnum locenv stkptr2 m1 m1 x y
-                           → forbidden st CE g astnum locenv stkptr2 m2 m2 x y)
-            → (forall x y, forbidden st CE g astnum locenv stkptr2 m1 m1 x y
-                           → forbidden st CE g astnum locenv stkptr1 m2 m2 x y).
-            Proof.
-              !intros.
-              specialize foo2 with (1:=h_forall_x)(2:=h_unchanged_on_m1_m2) as h.
-              red.
-              specialize h_forall_x0 with (1:=h_forbid_m1_m1_x_y).
-              unfold forbidden in h_forall_x0, h_forbid_m1_m1_x_y.
-              decomp h_forall_x0.
-              decomp h_forbid_m1_m1_x_y.
-              split.
-              all:cycle 1.
-              - assumption.
-              - unfold invisible_cminor_addr in *.
-                !intros.
-                specialize h_invis_stkptr2__m2_x_y with (1:=heq_transl_variable) (2:=heq_compute_chnk_id).
-                specialize h_invis_stkptr2__m1_x_y with (1:=heq_transl_variable) (2:=heq_compute_chnk_id).
-                destruct h_unchanged_on_m1_m2.
-                !functional inversion heq_transl_variable.
-                unfold is_free_block.
-                !intro.
-                assert ().
-                eapply h_forall_perm.
-x                rewrite unchanged_on_perm in h_forall_perm.
-              
-
-            Qed.
-
- !intros.
-          !!specialize h_forbidden_incl_m_m_poschainarg with (1:=h_forbid_m_m_addr_ofs) as ?.
-          !!specialize h_forbidden_incl_m_m_poschainarg' with (1:=h_forbid_m_m_addr_ofs) as ?.
-          red in h_unch_forbid_m_postchainarg_m_postargs.
-          !destruct (h_unch_forbid_m_postchainarg_m_postargs addr ofs).
-          !assert (forbidden st ((pb_lvl, sto) :: CE_sufx) g astnum locenv_init
-                            stkptr_proc m_postchainarg m_postchainarg addr ofs).
-          { admit. }
-          apply h_unch_forbid_m_postchainarg_m_postargs in h_forbid_m_postchainarg_m_postchainarg_addr_ofs1.
-       
-    }
-
-    assert (match_env st ((pb_lvl, f)::suffix_s) ((pb_lvl, sto) :: CE_sufx)
-                           stkptr_proc locenv_postargs g m_postargs
-               ∧ chained_stack_structure m_postargs (1 + Datatypes.length CE_sufx) stkptr_proc
-               ∧ (∀ astnum addr ofs, 
-                     (forbidden st CE g astnum locenv stkptr m m addr ofs 
-                      -> forbidden st CE g astnum locenv stkptr m_postargs m_postargs addr ofs)
-                     ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postargs)). {
-      !!specialize init_params_preserves_structure
-        with (4:=heq_store_prms_procedure_parameter_profile_s_parms)
-             (8:=h_exec_stmt_s_parms_Out_normal) as ?.
-      !!edestruct h_impl_impl_impl_forall_astnum.
-      all:cycle 6.
-      - decomp h_and.
-        split;[|split;[|split]].
-        all:cycle 2.
-        + !intros.
-          eapply h_forbidden_incl_m_m_poschainarg' in h_forbid_m_m_addr_ofs.
-          red in h_unch_forbid_m_postchainarg_m_postargs.
-          !!edestruct h_unch_forbid_m_postchainarg_m_postargs.
-          !assert (forbidden st ((pb_lvl, sto) :: CE_sufx) g astnum locenv_init stkptr_proc m_postchainarg m_postchainarg addr ofs).
-          { admit. (* change of locenv *) }
-          
-          apply h_impl_forbid_m_postargs_m_postargs in h_forbid_m_postchainarg_m_postchainarg_addr_ofs.
-        eapply H0.
-      
-    }
 
     (* stating that m_postfree is the result of free on the resulting state of proc body + free *)
     (* We should maybe write here unchange_forbidden on the state
@@ -9492,27 +9464,6 @@ x                rewrite unchanged_on_perm in h_forall_perm.
       - assumption.
       - assumption. }
     
-    (* From stkptr, no forbidden address were modified. *)
-    assert (forall astnum,
-               Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postchainarg)
-      as h_unch_forbid_m_mpostchainarg.
-    { intros astnum. 
-      !inversion h_exec_stmt.
-      !inversion h_CM_eval_expr_vaddr.
-      simpl in h_eval_constant.
-      !inversion h_eval_constant.
-      eapply Mem.unchanged_on_trans with (m2:=m_proc_pre_init).
-      - eapply Mem.alloc_unchanged_on;eauto.
-      - eapply Mem.store_unchanged_on;eauto.
-        !intros.
-        (* This address was free in m, so it is not forbidden in m *)
-        intro abs.
-        unfold forbidden in abs.
-        decomp abs.
-        apply h_neg_free_blck_m_spb_proc_i.
-        red.
-        !intros.
-        eapply fresh_block_alloc_perm;eauto. }
 
     enough (h_ex:exists locenv_postcpout m_postcpout trace_postcpout,
                exec_stmt g the_proc stkptr_proc locenv_postchainarg m_postchainarg
