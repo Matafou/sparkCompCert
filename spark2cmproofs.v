@@ -1425,7 +1425,10 @@ Qed.
 
 (* We have translated all procedures of stbl, and they have all an address
    pointing to there translation *)
-Definition stack_match_functions st stckptr CE locenv g m :=
+(* THIS PROPERTY IS FALSE. ONLY VISIBLE PROCEDURES FROM THE CURRENT CE
+   VERIFY THIS PROPERTY. Problem is: this visible procedures are not
+   stored in CE. Maybe they should... *)
+Definition stack_match_functions st stckptr FE CE locenv g m :=
   forall p pb_lvl pb,
     symboltable.fetch_proc p st = Some (pb_lvl, pb) (* p exists in st *)
     -> exists CE' CE'' paddr pnum fction lglobdef, (* then there we can compute its address in Cminor. *)
@@ -1555,7 +1558,7 @@ Definition stack_CE_NoDup_G (CE : compilenv) :=
 Record safe_cm_env st (CE:compilenv) (sp:Values.val) locenv g m: Prop :=
   mk_safe_cm_env {
       me_stack_match_addresses: @stack_match_addresses st CE sp locenv g m;
-      me_stack_match_functions: stack_match_functions st sp CE locenv g m ;
+      (* me_stack_match_functions: stack_match_functions st sp CE locenv g m ; *)
       me_stack_separate: stack_separate st CE sp locenv g m;
       me_stack_localstack_aligned: stack_localstack_aligned (Datatypes.length CE) locenv g m sp;
       me_stack_no_null_offset: stack_no_null_offset CE;
@@ -1601,7 +1604,7 @@ Arguments me_stack_match_lgth : default implicits.
 Arguments me_noDup_s : default implicits.
 Arguments me_noDup_G_s : default implicits.
 Arguments me_exact_levelG : default implicits.
-Arguments me_stack_match_functions : default implicits.
+(* Arguments me_stack_match_functions : default implicits. *)
 Arguments me_overflow : default implicits.
 Arguments me_stack_no_null_offset : default implicits.
 Arguments me_stack_localstack_aligned : default implicits.
@@ -1630,11 +1633,11 @@ Arguments ce_nodup_CE: default implicits.
 Arguments ce_nodup_G_CE: default implicits.
 
 Hint Resolve ci_exact_lvls ci_increasing_ids ci_no_overflow ci_stbl_var_types_ok ce_nodup_G_CE ce_nodup_G_CE.
-Hint Resolve me_stack_match_addresses me_stack_match_functions me_stack_separate me_stack_localstack_aligned
+Hint Resolve me_stack_match_addresses (*me_stack_match_functions*) me_stack_separate me_stack_localstack_aligned
      me_stack_no_null_offset me_stack_freeable me_chain_struct.
 Hint Resolve me_stack_match me_stack_match_CE me_stack_match_lgth (* me_stack_complete *) me_overflow me_safe_cm_env.
 
-(*
+
 Inductive strong_match_env stbl: STACK.state → compilenv → Values.val → env → genv → mem → Prop :=
 | C1: forall v locenv g m,
     match_env stbl [] [] v locenv g m ->
@@ -1645,7 +1648,7 @@ Inductive strong_match_env stbl: STACK.state → compilenv → Values.val → en
     match_env stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m ->
     strong_match_env stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) v' locenv' g m.
 
-
+(*
 
 Definition strong_match_env_2 (st : symboltable) (s : STACK.state) (CE : compilenv)
            (sp : Values.val) (locenv : env) (g : genv) (m : mem) : Prop :=
@@ -1683,7 +1686,7 @@ Ltac rename_hyp3 h th :=
   | stack_match_lgth ?s ?CE => fresh "stk_mtch_lgth_" s "_" CE
   | stack_match_lgth ?s _ => fresh "stk_mtch_lgth_" s
   | stack_match_lgth _ _ => fresh "stk_mtch_lgth"
-  | stack_match_functions _ _ _ _ _ _ => fresh "stk_mtch_fun"
+  (* | stack_match_functions _ _ _ _ _ _ => fresh "stk_mtch_fun" *)
   | stack_complete _ ?s ?CE => fresh "stk_cmpl_" s "_" CE
   | stack_complete _ ?s _ => fresh "stk_cmpl_" s
   | stack_complete _ _ _ => fresh "stk_cmpl"
@@ -1768,12 +1771,12 @@ Ltac rename_sparkprf ::= rename_hyp_cut.
 
 Ltac rename_hyp_strong h th :=
   match th with
-(*
+
   | strong_match_env ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "strg_mtch_" s "_" CE "_" m
   | strong_match_env ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "strg_mtch_" s "_" CE
   | strong_match_env ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "strg_mtch_" s
   | strong_match_env ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "strg_mtch"
-
+(*
   | strong_match_env_2 ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "strg_mtch2_" s "_" CE "_" m
   | strong_match_env_2 ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "strg_mtch2_" s "_" CE
   | strong_match_env_2 ?st ?s ?CE ?sp ?locenv ?g ?m => fresh "strg_mtch2_" s
@@ -2084,8 +2087,8 @@ Proof.
   red;simpl;now !intros.
 Qed.
 
-Lemma match_env_empty: forall st sp b sp' locenv locenv' g m,
-    stack_match_functions st sp' [ ] locenv' g m ->
+Lemma match_env_empty: forall st sp b locenv g m,
+    (* stack_match_functions st sp' [ ] locenv' g m -> *)
     sp = (Values.Vptr b Ptrofs.zero) ->
     match_env st [ ] [ ] sp locenv g m.
 Proof.
@@ -2106,16 +2109,6 @@ Proof.
     !functional inversion heq_transl_variable.
     functional inversion heq_CEfetchG_nme.*)
   + apply stack_match_addresses_empty.
-  + red;!intros.
-    red in h_stk_mtch_fun.
-    specialize h_stk_mtch_fun with (1:=heq_fetch_proc_p).
-    !!decomp h_stk_mtch_fun.
-    up_type.
-    exists CE', CE'', paddr, pnum, fction, lglobdef.
-    repeat split;auto.
-    constructor.
-    inversion h_CM_eval_expr_paddr;subst; simpl in *.
-    assumption.
   + red;!intros.
     functional inversion heq_transl_name.
   + red.
@@ -2274,13 +2267,6 @@ Proof.
   split;[ | | | | | | split | ];try now apply h_match_env.  
   - eapply stack_match_inv_locenv;eauto.
   - eapply stack_match_addr_inv_locenv; eauto.
-  - pose proof me_stack_match_functions (me_safe_cm_env h_match_env) as h_mtch_fun.
-    red in h_mtch_fun.
-    red;!intros.
-    specialize h_mtch_fun with (1:=heq_fetch_proc_p).
-    decomp h_mtch_fun.
-    repeat eexists;eauto.
-    eapply eval_expr_Econst_inv_locenv;eauto.
   - pose proof me_stack_separate (me_safe_cm_env h_match_env) as h_separate.
     red in h_separate.
     red;!intros.
@@ -2310,7 +2296,7 @@ Proof.
     eapply eval_expr_transl_variable_inv_locenv;eauto.
 Qed.
 
-(*
+
 Lemma strong_match_env_inv_locenv : forall st s CE sp locenv g m,
     strong_match_env st s CE sp locenv g m ->
     forall locenv', strong_match_env st s CE sp locenv' g m.
@@ -2322,8 +2308,8 @@ Proof.
   - econstructor;eauto.
     eapply match_env_inv_locenv;eauto.
 Qed.
-*)
 
+(*
 Lemma stack_match_functions_inv_locenv: forall stbl CE stkptr locenv g m,
     stack_match_functions stbl CE stkptr locenv g m ->
     forall locenv', stack_match_functions stbl CE stkptr locenv' g m.
@@ -2336,7 +2322,7 @@ Proof.
   inversion h_CM_eval_expr_paddr.
   econstructor;eauto.
 Qed.
-
+*)
 Lemma stack_localstack_aligned_inv_locenv: forall lvl locenv g m sp,
     stack_localstack_aligned lvl locenv g m sp ->
     forall locenv', stack_localstack_aligned lvl locenv' g m sp.
@@ -2382,7 +2368,7 @@ Proof.
   !intros.
   constructor;eauto.
   - eapply stack_match_addr_inv_locenv;eauto.
-  - eapply stack_match_functions_inv_locenv;eauto.
+  (* - eapply stack_match_functions_inv_locenv;eauto. *)
   - eapply stack_separate_inv_locenv;eauto.
   - eapply stack_localstack_aligned_inv_locenv;eauto.
   - eapply stack_freeable_inv_locenv;eauto.
@@ -2492,10 +2478,10 @@ Proof.
   now red in h_stk_mtch_lgth_s_CE.
 Qed.
 
-(*
+
 (* Yet another hypothesis deducibility *)
 Lemma strong_match_repeat_loadv : forall st s CE sp locenv g  m,
-    match_env st s CE sp locenv g m ->
+    strong_match_env st s CE sp locenv g m ->
     invariant_compile CE st ->
     forall CE' CE'' lvl,
       CompilEnv.cut_until CE lvl CE' CE'' -> 
@@ -2517,7 +2503,7 @@ Proof.
 
     rename v' into sp.
     rename v into sp'.
-    specialize (IHh_strg_mtch_s_CE_m h_inv_comp_CE_st).
+    specialize (h_impl_forall_CE' h_inv_comp_CE_st).
     !inversion h_CEcut;up_type. (* cut reached or not *)
     * (* Reached *)
       cbn in *.
@@ -2529,14 +2515,22 @@ Proof.
       constructor 1;auto.
     * (* not reached *)
       rename s' into CE'.
-      specialize IHh_strg_mtch_s_CE_m with (1:=h_CEcut_CE_lvl0).      
-      !!destruct IHh_strg_mtch_s_CE_m as [sp'' ?].
+      specialize h_impl_forall_CE' with (1:=h_CEcut_CE_lvl0).      
+      !!destruct h_impl_forall_CE' as [sp'' ?].
       exists sp''.
       cbn in *|-.
       cbn [Datatypes.length].
       !!assert ((S (Datatypes.length CE) - lvl0 = S (Datatypes.length CE - lvl0))%nat) by omega.
       rewrite heq_sub.
       econstructor;eauto.
+Qed.
+
+Lemma strong_match_env_top: forall st s CE sp locenv g m,
+    strong_match_env st s CE sp locenv g m ->
+    match_env st s CE sp locenv g m.
+Proof.
+  !intros.
+  inversion h_strg_mtch_s_CE_m;eauto.
 Qed.
 
 Lemma strong_match_env_match_env_sublist : forall st s CE sp locenv g  m,
@@ -2550,11 +2544,18 @@ Lemma strong_match_env_match_env_sublist : forall st s CE sp locenv g  m,
       forall locenv,
         match_env st s'' CE'' sp'' locenv g m.
 Proof.
-  !intros.
+  !!intros.
   !assert ((Datatypes.length CE= Datatypes.length s)).
-  { eapply match_env_length_CE_s;eauto. }
+  { !!specialize strong_match_env_top with (1:=h_strg_mtch_s_CE_m) as ?.
+    eapply match_env_length_CE_s;eauto. }
+  !!remember (Datatypes.length s) as n.
   !assert (exists s' s'', STACK.cut_until s lvl s' s'').
-  { eapply strong_match_env_cut_CE_cut_s;eauto. }
+  { !!specialize strong_match_env_top with (1:=h_strg_mtch_s_CE_m) as ?.
+    !!specialize exact_lvl_cut_until_lgth_left with (CE:=CE)(s:=s)(CE1:=CE')(CE2:=CE'') as ?.
+    !!edestruct h_impl_impl_impl_forall_lvl;eauto.
+    - apply h_match_env.
+    - decomp h_ex.
+      eauto. }
   !assert(exists sp'',repeat_Mem_loadv AST.Mint32 m (Datatypes.length CE - lvl)%nat sp sp'').
   { eapply strong_match_repeat_loadv;eauto. }
   decomp h_ex.
@@ -2562,48 +2563,111 @@ Proof.
   exists s'.
   exists s''.
   exists sp''.
-  repeat (split;[now auto|]).
-  !destruct (dec_lt lvl (Datatypes.length CE)).
-  - eapply strong_match_env_match_env_sublist_aux1;eauto.
-  - !assert (CE' = [] ∧ CE''=CE ∧ s' = [] ∧ s''=s).
-    { !inversion h_CEcut_CE_lvl.
-      - repeat (split;[now auto|]).
-        + cbn in *. symmetry in heq_length.
-          apply length_zero_iff_nil in heq_length.
-          subst.
-          !inversion h_stkcut_s_lvl;auto.
-      - rename s0 into CE''.
-        repeat (split;[now auto|]).
-        !inversion h_strg_mtch_s_CE_m.
-        !inversion h_stkcut_s_lvl;auto.
-        cbn -[minus] in *.
-        !!pose proof (ci_exact_lvls _ _ h_inv_comp_CE_st).
-        !inversion h_exct_lvlG.
-        exfalso;omega.
-      - !!pose proof (ci_exact_lvls _ _ h_inv_comp_CE_st).
-        !inversion h_exct_lvlG.
-        cbn in *.
-        exfalso;omega. }
-    decomp h_and.
+  !assert (Datatypes.length s' = Datatypes.length CE' ∧ Datatypes.length s'' = Datatypes.length CE''). {
+    !assert (STACK.exact_levelG s). {
+      !!specialize strong_match_env_top with (1:=h_strg_mtch_s_CE_m) as ?.
+      eapply h_match_env. }
+    !assert (CompilEnv.exact_levelG CE). {
+      eapply h_inv_comp_CE_st. }
+    !assert (stack_match_lgth s CE). {
+      !!specialize strong_match_env_top with (1:=h_strg_mtch_s_CE_m) as ?.
+      eapply h_match_env. }
+    !!specialize match_env_lgth with (1:=h_stk_mtch_lgth_s_CE) (3:=h_exct_lvlG_CE)(2:=h_exct_lvl_s) (4:=h_CEcut_CE_lvl) as ?.
+    decomp h_ex.
+    !!specialize STACK.cut_until_uniqueness with (1:=h_stkcut_s_lvl)(2:=h_stkcut_s_lvl0) as ?.
+    decomp h_and;subst s1 s2.
+    !!specialize CompilEnv.cut_until_spec1 with (1:=h_CEcut_CE_lvl) as ?.
+    !!specialize STACK.cut_until_spec1 with (1:=h_stkcut_s_lvl) as ?.
+    split;auto.
+    symmetry in heq_app.
     subst.
+    repeat rewrite app_length in heq_length.
+    rewrite heq_length0 in heq_length.
+    omega. }
+  decomp h_and.
+  subst n.
+
+  specialize STACK.cut_until_spec1 with (1:=h_stkcut_s_lvl) as heq_s.
+  specialize CompilEnv.cut_until_spec1 with (1:=h_CEcut_CE_lvl) as heq_CE.
+
+  revert s' s'' st s sp locenv g m h_strg_mtch_s_CE_m h_inv_comp_CE_st heq_length h_stkcut_s_lvl sp'' h_repeat_loadv heq_s heq_CE heq_length0 heq_length1.
+  induction h_CEcut_CE_lvl;!intros;repeat (split;[now auto|]).
+  - clear heq_app0.
+    simpl in *.
+    !!specialize length_invnil with (1:=heq_length1) as ?.
     subst.
-    !!assert ((Datatypes.length CE) - lvl = 0)%nat by omega.
+    simpl in h_repeat_loadv.
+    !inversion h_repeat_loadv;subst.
+    inversion h_strg_mtch_s.
+    eapply match_env_inv_locenv;eauto.
+  - autorename H.
+    clear heq_app0.
+    rename s into CE0.
+    rename s0 into s.
+    !assert (CompilEnv.ST.level_of f = Datatypes.length CE0). {
+      !inversion h_inv_comp_st.
+      !inversion h_exct_lvlG.
+      reflexivity. }
+    !assert (STACK.exact_levelG s). {
+      !!specialize strong_match_env_top with (1:=h_strg_mtch_s0) as ?.
+      eapply h_match_env. }
+    
+    rewrite heq_level_of in h_lt.
+    simpl Datatypes.length in h_repeat_loadv.
+    !assert (S (Datatypes.length CE0) - n = 0)%nat.
+    { omega. }
+    !assert (s'=[]). {
+      eapply length_invnil.
+      assumption. }
+    subst.
+    simpl in h_strg_mtch_s0.
     rewrite heq_sub in h_repeat_loadv.
+    !inversion h_repeat_loadv;subst.
+    !inversion h_strg_mtch_s0.
+    
+    eapply match_env_inv_locenv;eauto.
+  - !!specialize length_invcons with (1:=heq_length0) as ?.
+    decomp h_ex.
+    subst.
+    rename s into CE.
+    rename s' into CE'.
+    rename s'' into CE''.
+    rename l' into s'.
+    rename s''0 into s''.
+    !inversion h_strg_mtch_s0.
+    simpl in heq_length.
+    apply eq_add_S in heq_length.
+    !assert (STACK.cut_until (s' ++ s'') n s' s''). {
+      !inversion h_stkcut_s0_n.
+      assumption. }
+    !!assert (invariant_compile CE st) by (eapply invariant_compile_subcons;eauto).
+    simpl Datatypes.length in h_repeat_loadv.
+    assert (n <= Datatypes.length CE)%nat. {
+      simpl in H.
+      !!specialize ci_exact_lvls with (1:=h_inv_comp_st) as ?.
+      !inversion h_exct_lvlG.
+      omega. }
+    rewrite Nat.sub_succ_l in h_repeat_loadv;eauto.
     !inversion h_repeat_loadv.
-    intro.
-    apply strong_match_env_match_env.
-    eapply strong_match_env_inv_locenv.
-    eassumption.
+    rewrite h_loadv_sp_v in h_loadv_sp_sp'.
+    !invclear h_loadv_sp_sp'.
+    specialize IHh_CEcut_CE_lvl with (1:=h_strg_mtch) (4:=h_stkcut)(3:=heq_length)
+                                     (2:=h_inv_comp_CE_st)(5:=h_repeat_loadv0).
+    !destruct IHh_CEcut_CE_lvl ;auto.
+    { simpl in heq_app0.
+      inversion heq_app0.
+      reflexivity. }
+    decomp h_and.
+    assumption.
 Qed.
-*)
 
 (* Yet another hypothesis deducibility *)
 (*Lemma strong_match_env_match_env_sublist: 
-  forall (st : symboltable.symboltable) (s : STACK.state) (CE : compilenv)
+  forall (st : symboltable) (s : STACK.state) (CE : compilenv)
          (sp : Values.val) (locenv : env) (g : genv) (m : mem),
     strong_match_env st s CE sp locenv g m
     → invariant_compile CE st
-    → ∀ (CE' CE'' : CompilEnv.stack) (lvl : CompilEnv.scope_level),
+    → ∀ CE' CE'' (lvl : CompilEnv.scope_level),
         CompilEnv.cut_until CE lvl CE' CE''
         → exists δ sp'' s' s'',
           ((∃ toplvl : CompilEnv.scope_level, CompilEnv.level_of_top CE = Some toplvl ∧ δ = (toplvl + 1 - lvl)%nat)
@@ -3942,7 +4006,7 @@ Proof.
           elim hneq_id;reflexivity.
 Qed.
 
-
+(*
 Lemma assignment_preserve_stack_match_function :
   forall stbl CE g locenv stkptr s m a chk id id_t e_v e_t_v idaddr s' m' ,
     CompilEnv.exact_levelG CE ->
@@ -3976,7 +4040,7 @@ Proof.
   constructor.
   assumption.
 Qed.
-
+*)
 
 (*
 Lemma updateG_ok_frameG_same_lvl : forall stk id v stk' sto_id  lvl,
@@ -4281,7 +4345,7 @@ Qed.
 
 Hint Resolve
      assignment_preserve_stack_match assignment_preserve_stack_match_CE
-     assignment_preserve_stack_match_function
+     (* assignment_preserve_stack_match_function *)
      assignment_preserve_stack_complete
      assignment_preserve_stack_separate assignment_preserve_loads_offset_non_null
      assignment_preserve_stack_no_null_offset assignment_preserve_stack_safe
@@ -7626,10 +7690,10 @@ Lemma transl_procsig_match_env_succeeds:
 Proof.
   !intros.
   unfold transl_procsig in heq_transl_procsig_pnum.
-  !!assert (stack_match_functions st sp CE e g m) by eauto.
-  red in h_stk_mtch_fun.
-  unfold symboltable.fetch_proc in h_stk_mtch_fun.
-  specialize (h_stk_mtch_fun pnum).
+  (* !!assert (stack_match_functions st sp CE e g m) by eauto. *)
+  (* red in h_stk_mtch_fun. *)
+  (* unfold symboltable.fetch_proc in h_stk_mtch_fun. *)
+  (* specialize (h_stk_mtch_fun pnum). *)
   !!destruct (fetch_proc pnum st) eqn:?;try discriminate.
   !destruct t.
   specialize (h_stk_mtch_fun l p eq_refl).
@@ -9373,7 +9437,7 @@ Proof.
             as h.
           destruct h;eauto. }
 
-
+    (* ******* CP_IN STEP ******* *)
     (* set_locals initiates local varaibles to undefined and arguments
        to there dynamic values. But until args are copied to local
        stack it is not sync with spark. declarative parts is
@@ -9383,6 +9447,33 @@ Proof.
                 exec_stmt g the_proc stkptr_proc locenv_init m_postchainarg
                           s_parms trace_postargs locenv_postargs m_postargs Out_normal).
     {
+      assert (match_env st suffix_s CE_sufx
+                        chaining_expr_from_caller_v
+                        locenv_postchainarg g m_postchainarg). {
+        
+        
+      }
+      assert (match_env st ((pb_lvl, [ ])::suffix_s) ((pb_lvl, []) :: CE_sufx) stkptr_proc locenv_postchainarg g m_postchainarg). {
+        split.
+        
+        
+      }
+      revert heq_store_prms_procedure_parameter_profile_s_parms.
+      
+      rewrite store_params_ok in *.
+      unfold function_utils.store_params in heq_store_prms_procedure_parameter_profile_s_parms.
+      !!functional induction function_utils.store_params st ((pb_lvl, sto) :: CE_sufx) procedure_parameter_profile;try rewrite <- store_params_ok in *.
+
+      - simpl in heq_store_prms_procedure_parameter_profile_s_parms.
+        inversion heq_store_prms_procedure_parameter_profile_s_parms.
+        subst s_parms.
+        exists locenv_init, m_postchainarg, nil.
+        constructor.
+      - match goal with H: pb = _ -> _ |- _ => rename H into IH end.
+        match type of IH with
+        | context [exec_stmt g ?X _ _ _ _ _ _ _ _] => set (the_proc':= X ) in *
+        end.
+        simpl in heq_store_prms_procedure_parameter_profile_s_parms.
       admit.
     }
     decomp h_ex.
@@ -9390,7 +9481,8 @@ Proof.
                (forbidden st CE g astnum locenv stkptr m m addr ofs 
                 -> forbidden st ((pb_lvl, sto) :: CE_sufx) g astnum locenv_postargs stkptr_proc
                              m_postargs m_postargs addr ofs)
-               ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postargs) as
+               ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postargs
+           ∧ (chained_stack_structure m_postargs (S (Datatypes.length CE_sufx)) stkptr_proc)) as
     h_incl_forbid_m_m_postargs. {
       !assert( CompilEnv.exact_levelG CE_sufx). {
         eapply CompilEnv.exact_levelG_sublist2 with (CE1:=CE_prefx).
@@ -9423,7 +9515,7 @@ Proof.
              (lvl:=(1 + Datatypes.length CE_sufx)%nat) as ?.
       !!destruct h_impl_impl_and;try eapply h_inv_CE''_bld;auto.
       decomp h_and.
-      split;!intros.
+      split;[|split];!intros.
       + red in h_unch_forbid_m_postchainarg_m_postargs.
         rewrite <- h_unch_forbid_m_postchainarg_m_postargs.
         eapply forbidden_inv_locenv;eauto.
@@ -9432,8 +9524,15 @@ Proof.
         * eapply Mem.unchanged_on_implies with (1:=h_unchanged_on_m_postchainarg_m_postargs).
             !intros.
             apply forbidden_inv_locenv with (locenv:=locenv_postchainarg).
-            eapply h_forbidden_incl_m_m_poschainarg';eauto. }
+            eapply h_forbidden_incl_m_m_poschainarg';eauto.
+      + assumption. }
 
+
+    (* We need to prove that now match_env is true between ((pb_lvl, f):: suffix_s)
+       and (m_postargs,stkptr_proc).
+       by induction +  assignment_preserve_match_env ? *)
+    
+    (* ********* END OF CP_IN STEP ************* *)
 
     (* stating that m_postfree is the result of free on the resulting state of proc body + free *)
     (* We should maybe write here unchange_forbidden on the state

@@ -835,6 +835,7 @@ Fixpoint init_locals (stbl:symboltable) (CE:compilenv) (decl:decl)
     | _ => OK Sskip
   end.
 
+(* TODO: structure this to reflect the structure of nested declarations. *)
 Definition CMfundecls: Type := (list (AST.ident * AST.globdef fundef unit)).
 
 (** Translating a procedure definition. First computes the compilenv
