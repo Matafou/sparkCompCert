@@ -1,7 +1,7 @@
 Require Import sparkfrontend.LibHypsNaming.
 Require Import Errors.
 Require Import eval.
-From sparkfrontend Require more_stdlib function_utils spark2Cminor.
+From sparkfrontend Require more_stdlib function_utils spark2Cminor  spark_utils.
 Import more_stdlib function_utils spark2Cminor.
 Require Import Morphisms Relations.
 Import STACK.
@@ -86,7 +86,7 @@ Ltac rename_hyp_sem h th :=
 Ltac rename_hyp1 h th :=
   match th with
   | _ => rename_hyp_sem h th
-  | _ => STACK.rename_hyp1 h th
+  | _ => spark_utils.rename_hyp1 h th
   | _ => LibHypsNaming.rename_hyp_neg h th
   end.
 

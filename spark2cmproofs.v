@@ -5,7 +5,7 @@ Require Import spark.symboltable spark.eval.
 Require Import sparkfrontend.function_utils sparkfrontend.LibHypsNaming
         sparkfrontend.spark2Cminor sparkfrontend.semantics_properties
         sparkfrontend.compcert_utils sparkfrontend.more_stdlib
-        sparkfrontend.chained_structure.
+        sparkfrontend.chained_structure sparkfrontend.spark_utils.
 Import Symbol_Table_Module.
 Open Scope error_monad_scope.
 Open Scope Z_scope.
@@ -46,7 +46,7 @@ Ltac rename_sparkprf h th := fail.
 Ltac rename_hyp h th ::=
   match th with
   | _ => (rename_sparkprf h th)
-  | _ => (STACK.rename_hyp1 h th)
+  | _ => (spark_utils.rename_hyp1 h th)
   | _ => (semantics_properties.rename_hyp_sem h th)
   | _ => (more_stdlib.rename_hyp1 h th)
   | _ => (spark2Cminor.rename_hyp1 h th)
@@ -1428,6 +1428,7 @@ Qed.
 (* THIS PROPERTY IS FALSE. ONLY VISIBLE PROCEDURES FROM THE CURRENT CE
    VERIFY THIS PROPERTY. Problem is: this visible procedures are not
    stored in CE. Maybe they should... *)
+xxx
 Definition stack_match_functions st stckptr FE CE locenv g m :=
   forall p pb_lvl pb,
     symboltable.fetch_proc p st = Some (pb_lvl, pb) (* p exists in st *)
