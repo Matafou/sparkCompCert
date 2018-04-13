@@ -9500,7 +9500,7 @@ Proof.
               with (cm_typ_nme:=cm_typ_nme)(typ_nme:=typ_nme)(nme:=(Identifier astnum id))
                    (vaddr:=nme_t_v)(v:=v)(addr_nme:=(build_loads lvl δ_id))
                    (load_addr_nme:=(Eload chunk (build_loads lvl δ_id))).
-            edestruct h_stk_mtch_suffix_s_m_postchainarg;auto.
+            !!edestruct h_stk_mtch_suffix_s_m_postchainarg;auto.
             * cbn in heq_CEframeG_id,heq_CEfetchG_id,heq_lvloftop_m'.
               unfold transl_name,transl_variable.
               rewrite heq_CEfetchG_id,heq_CEframeG_id.
@@ -9540,7 +9540,76 @@ Proof.
             * unfold make_load.
               rewrite h_access_mode_cm_typ_nme.
               reflexivity.
-            * xx
+            * decomp h_and; exists x;split;eauto.
+              unfold build_loads in h_CM_eval_expr_x.
+              !inversion h_CM_eval_expr_x.
+              econstructor. all:cycle 1.
+              { eassumption. }
+              !inversion h_CM_eval_expr_vaddr.
+              econstructor. all:cycle 1.
+              { (* TODO: we should enforce eval_expr_Econst_inv_locenv to prove this. *)
+                !inversion h_CM_eval_expr_v2.
+                econstructor.
+                eassumption. }
+              { eassumption. }
+              change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl))
+                with (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (S lvl)).
+              eapply chained_stack_structure_decomp_S_2'.
+              -- apply chained_stack_structure_le  with (1:=h_chain_m_postchainarg).
+                 rewrite <- heq_sub.
+                 assert (S m'=S (Datatypes.length CE_sufx))%nat.
+                 { 
+                   erewrite <- exact_lvlG_lgth with (2:=heq_lvloftop_m');eauto.
+                   constructor.
+                   inversion h_inv_CE''_bld.
+                   inversion ci_exact_lvls0.
+                   assumption. }
+                 omega.
+              -- eassumption.
+              -- assumption.
+        - constructor.
+          + cbn.
+            apply h_match_env0.
+          + cbn.
+            !intros.
+            eapply h_match_env0.
+            eassumption.
+        - red.
+          cbn.
+          f_equal.
+          rewrite heq_lgth_CE_sufx.
+          erewrite (cut_until_exact_levelG _ _ _ _ _ _ h_stkcut_s_n).
+          reflexivity. 
+        - apply nodup_cons.
+          + apply h_match_env0.
+          + red.
+            !intros.
+            cbn in h_lst_in.
+            decomp h_lst_in.
+            * !inversion heq_pair.
+              constructor.
+            * exfalso;assumption.
+        - red.
+          constructor.
+          + 
+            unfold non_empty_intersection_frame.
+            lazy beta iota.
+            intro abs.
+            rewrite InA_alt in abs.
+            decomp abs.
+            cbn in H0.
+            red in H0.
+            decomp H0.
+            !inversion H0.
+          + apply h_match_env0.
+        - erewrite (cut_until_exact_levelG _ _ _ _ _ _ h_stkcut_s_n).
+          econstructor.
+          apply h_match_env0.
+        - xx
+          
+              
+              
+              
         -
             specialize h_reachable_enclosing_variables with (2:=h_CM_eval_expr_nme_t_nme_t_v).
             unfold build_loads in h_CM_eval_expr_nme_t_nme_t_v.
