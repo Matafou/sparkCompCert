@@ -9472,7 +9472,7 @@ Proof.
 
        (* The frame of the new procedure call is empty on bith side. *)
       (* the pre-copy_in env before copy_in match_env with the pre-copy_in env in spark. *)
-      assert (match_env st ((pb_lvl, [ ])::suffix_s) ((pb_lvl, []) :: CE_sufx)
+      !assert (match_env st ((pb_lvl, [ ])::suffix_s) ((pb_lvl, []) :: CE_sufx)
                         stkptr_proc locenv_postchainarg g m_postchainarg). {
         split.
         - red.
@@ -9605,7 +9605,32 @@ Proof.
         - erewrite (cut_until_exact_levelG _ _ _ _ _ _ h_stkcut_s_n).
           econstructor.
           apply h_match_env0.
-        - xx
+        - split.
+          + red.
+            !intros.
+            !!specialize (h_match_env0.(me_safe_cm_env).(me_stack_match_addresses)) as ?.
+            red in h_stk_mtch_addr_chaining_expr_from_caller_v_m_postchainarg.
+            edestruct h_stk_mtch_addr_chaining_expr_from_caller_v_m_postchainarg with (nme:=nme)(addr_nme:=nme_t).
+            * !functional inversion heq_transl_name.
+              !functional inversion heq_transl_variable.
+              cbn in heq_CEfetchG_id,heq_CEframeG_id.
+              rewrite heq_transl_variable.
+              unfold transl_name,transl_variable.
+              rewrite heq_CEfetchG_id,heq_CEframeG_id.
+!assert (CompilEnv.level_of_top CE_sufx = Some (Datatypes.length CE_sufx - 1)%nat). {
+                rewrite foo with (CE:=CE_sufx);auto.
+                - intro abs.
+                  subst CE_sufx.
+                  simpl in h_gt_m'_lvl_id.
+                  omega.
+                - apply CompilEnv.exact_levelG_sublist2 with (CE1:=CE_prefx).
+                  erewrite CompilEnv.cut_until_spec1 with (s:=CE);eauto. }              
+            simpl in heq_transl_name.
+        - red.
+          !intros.
+          simpl in heq_SfetchG_id.
+          eapply h_match_env0.(me_overflow);eauto. }
+          
           
               
               
