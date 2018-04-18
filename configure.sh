@@ -9,10 +9,16 @@ function usage {
     echo 
 
     echo "  builds the _CoqProject and makefile (coq_makefile -f _CoqProject) of the"
-    echo "  project amended with a specific \"tags\" target and adapted to the paths"
-    echo "  given in arguments."
+    echo "  project adapted to the paths given in arguments and amended with a few specific"
+    echo "  targets (mainly tags)."
+    echo "  Default paths are (see Config/config.in):"
+    cat < Config/config.in
+    echo
     echo "  NOTE: coq_makefile generates a warning about compcert directory not"
-    echo "    being a subdirectory. Don't pay attention."
+    echo "    being a subdirectory. Don't pay attention, this concerns make install"
+    echo "    that we don't use anyway."
+    echo "  NOTE: Compiler executable generation is currently broken, so -sireum option"
+    echo "  is useless for now."
 }
 for i in $*; do
     case $i in

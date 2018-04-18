@@ -1,4 +1,4 @@
 COQTAGS=coqtags.sh
-COMPCERT=..
-SPARK=spark
-SIREUM=sireum
+COMPCERT=../compcert
+SPARK=../spark
+SIREUM=../sireum
