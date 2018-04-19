@@ -9830,20 +9830,64 @@ Proof.
           assumption. }
 
     Lemma init_params_succeeds_and_preserve_match_env:
-  ∀ (lparams : list paramSpec) (st : symboltable) (CE CE' : CompilEnv.state) (initparams : Cminor.stmt),
-    invariant_compile CE st
-    → store_params st CE lparams =: initparams
-    → ∀ (astnum : astnum) (g : genv) (proc_t : function) (sp : Values.val) (e_chain : env)
-        (m : mem) (t2 : Events.trace) (e_chain' : env)(s:ST.state)  (s':ST.state) l l' sz sz' (m' : mem) x x' (lvl : nat) args,
+  ∀ (lparams : list paramSpec) (st : symboltable) (CE : CompilEnv.state) (initparams : Cminor.stmt),
+    store_params st CE lparams =: initparams
+    → ∀ (g : genv) (proc_t : function) (sp : Values.val) (e_chain : env)
+        (m : mem) (t2 : Events.trace) (e_chain' : env)(s:ST.state) l l' sz sz' (m' : mem) x x' (lvl : nat) args,
         Datatypes.length CE = lvl
+        → invariant_compile ((lvl,l)::CE) st
         → build_frame_lparams st (l,sz) lparams =: (l',sz')
         (* → build_compilenv st CE lvl lparams NullDecl =: CE' *)
         → chained_stack_structure m lvl sp
         → stack_localstack_aligned (Datatypes.length CE) e_chain g m sp
         → copyIn st s (lvl, x) lparams args (OK (lvl, x'))
         → exec_stmt g proc_t sp e_chain m initparams t2 e_chain' m' Out_normal
-        → match_env st s CE sp e_chain g m
-        → match_env st s' CE' sp e_chain' g m'.
+        → match_env st ((lvl,x)::s) ((lvl,l)::CE) sp e_chain g m
+        → match_env st ((lvl,x')::s) ((lvl,l')::CE) sp e_chain' g m'.
+    Proof.
+      intros  until CE.
+      rewrite store_params_ok.
+      Opaque build_frame_lparams.
+      !!functional induction function_utils.store_params st CE lparams;
+        try rewrite <- store_params_ok in *;cbn;!intros
+        ; try discriminate;eq_same_clear; up_type.
+      Transparent build_frame_lparams.
+      - !inversion h_exec_stmt_initparams_Out_normal.
+        !inversion h_copy_in.
+        simpl in heq_bld_frm.
+        !inversion heq_bld_frm.
+        assumption.
+      - 
+        !assert (invariant_compile ((lvl, l') :: CE) st). {
+          admit. }
+        
+        specialize h_forall_initparams with
+            (1:=heq_store_params) (2:=heq_length) (3:=h_inv_comp_st0).
+        rewrite build_frame_lparams_ok in heq_bld_frm.
+        !functional inversion heq_bld_frm.
+        rewrite <- build_frame_lparams_ok in *.
+        subst _res. subst lparam'. subst fram_sz.
+        rewrite add_to_frame_ok in heq_add_to_fr_nme.
+        !functional inversion heq_add_to_fr_nme.
+        subst.
+        xxx induction in the other direction?
+        destruct prm eqn:heq_prm; simpl in *.
+        rewrite <- heq_prm in *.
+        !!destruct (compute_size st parameter_subtype_mark) eqn:?; try now (cbn in *;discriminate).
+        cbn in heq_OK0.
+        
+        
+        
+        !inversion h_exec_stmt_initparams_Out_normal.
+
+        Lemma match_env_trans: forall st s CE sp locenv g m,
+          match_env st s CE sp locenv g m ->
+          match_env st s CE sp locenv' g m' ->
+          match_env st s CE sp locenv'' g m'' ->
+          
+        (* transitiviy avec  *)
+  
+    Qed.
 
 xx TODO: check this statement + do the same with build_frame_decl, so that we can have the same for build_compilenv.
 
