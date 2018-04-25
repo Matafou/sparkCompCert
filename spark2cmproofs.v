@@ -9830,17 +9830,18 @@ Proof.
           assumption. }
 
     Lemma init_params_succeeds:
-  ∀ (lparams : list paramSpec) (st : symboltable) (CE : CompilEnv.state) (initparams : Cminor.stmt),
-    store_params st CE lparams =: initparams
+  ∀ (lparams : list paramSpec) (st : symboltable)(lvl : nat) l (CE : CompilEnv.state) (initparams : Cminor.stmt),
+    store_params st ((lvl,l)::CE) lparams =: initparams
     → ∀ (g : genv) (proc_t : function) (sp : Values.val) (e_chain : env)
-        (m : mem) (s:ST.state) l l' sz sz' x x' (lvl : nat) args,
+        (m : mem) (bigs pref_s s:ST.state) l' sz sz' x x' args,
         Datatypes.length CE = lvl
+        → ST.cut_until bigs (Datatypes.length CE) pref_s s
         → invariant_compile ((lvl,l)::CE) st
         → build_frame_lparams st (l,sz) lparams =: (l',sz')
         (* → build_compilenv st CE lvl lparams NullDecl =: CE' *)
         → chained_stack_structure m lvl sp
         (* → stack_localstack_aligned (Datatypes.length CE) e_chain g m sp *)
-        → copyIn st s (lvl, x) lparams args (OK (lvl, x'))
+        → copyIn st bigs (lvl, x) lparams args (OK (lvl, x'))
         → match_env st ((lvl,x)::s) ((lvl,l)::CE) sp e_chain g m
         → exists e_chain' t2 m',
             exec_stmt g proc_t sp e_chain m initparams t2 e_chain' m' Out_normal.
@@ -9848,17 +9849,19 @@ Proof.
 Admitted.
 
     Lemma init_params_preserve_match_env:
-  ∀ (lparams : list paramSpec) (st : symboltable) (CE : CompilEnv.state) (initparams : Cminor.stmt),
-    store_params st CE lparams =: initparams
+  ∀ (lparams : list paramSpec) (st : symboltable) (lvl : nat) l (CE : CompilEnv.state) (initparams : Cminor.stmt),
+    store_params st ((lvl,l)::CE) lparams =: initparams
     → ∀ (g : genv) (proc_t : function) (sp : Values.val) (e_chain : env)
-        (m : mem) (t2 : Events.trace) (e_chain' : env)(s:ST.state) l l' sz sz' (m' : mem) x x' (lvl : nat) args,
+        (m : mem) (t2 : Events.trace) (e_chain' : env)(bigs pref_s s:ST.state)
+        l' sz sz' (m' : mem) x x'  args,
         Datatypes.length CE = lvl
+        → ST.cut_until bigs (Datatypes.length CE) pref_s s
         → invariant_compile ((lvl,l)::CE) st
         → build_frame_lparams st (l,sz) lparams =: (l',sz')
         (* → build_compilenv st CE lvl lparams NullDecl =: CE' *)
         → chained_stack_structure m lvl sp
         (* → stack_localstack_aligned ((lvl,l)::CE) e_chain g m sp *)
-        → copyIn st s (lvl, x) lparams args (OK (lvl, x'))
+        → copyIn st bigs (lvl, x) lparams args (OK (lvl, x'))
         → exec_stmt g proc_t sp e_chain m initparams t2 e_chain' m' Out_normal
         → match_env st ((lvl,x)::s) ((lvl,l)::CE) sp e_chain g m
         → match_env st ((lvl,x')::s) ((lvl,l')::CE) sp e_chain' g m'.
@@ -9866,7 +9869,9 @@ Admitted.
       intros  until CE.
       rewrite store_params_ok.
       Opaque build_frame_lparams.
-      !!functional induction function_utils.store_params st CE lparams;
+      remember ((lvl, l) :: CE) as bigCE.
+      revert l lvl CE HeqbigCE.
+      !!functional induction function_utils.store_params st bigCE lparams;
         try rewrite <- store_params_ok in *;cbn;!intros
         ; try discriminate;eq_same_clear; up_type.
       Transparent build_frame_lparams.
@@ -9874,9 +9879,10 @@ Admitted.
         !inversion h_copy_in.
         simpl in heq_bld_frm.
         !inversion heq_bld_frm.
+        subst.
         assumption.
       - 
-        !!specialize invariant_compile_subcons with (1:=h_inv_comp_st) as ?.
+        (* !!specialize invariant_compile_subcons with (1:=h_inv_comp_st) as ?. *)
         rewrite build_frame_lparams_ok in heq_bld_frm.
         !functional inversion heq_bld_frm.
         rewrite <- build_frame_lparams_ok in *.
@@ -9889,8 +9895,8 @@ Admitted.
         rewrite add_to_frame_ok in heq_add_to_fr_nme.
         !functional inversion heq_add_to_fr_nme;subst.
         rewrite <- add_to_frame_ok in *.
-        specialize h_forall_initparams
-          with (1:=heq_store_params) (4:=heq_build_frame_lparams).
+        specialize h_forall_l
+          with (2:=heq_store_params)(6:=heq_build_frame_lparams).
         !inversion h_copy_in;
           match goal with
           | H:parameter_mode prm = ?X, H':parameter_mode prm = ?Y |- _ =>
@@ -9915,44 +9921,118 @@ Admitted.
       - admit.
 Admitted.
 
-xx (* TODO: s ans s_suffixmust be defined int his statement and the two above. *)
+ (* TODO: s ans s_suffixmust be defined int his statement and the two above. *)
     Lemma init_params_succeeds_and_preserve_match_env:
-  ∀ (lparams : list paramSpec) (st : symboltable) (CE : CompilEnv.state) (initparams : Cminor.stmt),
-    store_params st CE lparams =: initparams
+  ∀ (lparams : list paramSpec) (st : symboltable)(lvl : nat) l (CE : CompilEnv.state) (initparams : Cminor.stmt),
+    store_params st ((lvl,l)::CE) lparams =: initparams
     → ∀ (g : genv) (proc_t : function) (sp : Values.val) (e_chain : env)
-        (m : mem) (s:ST.state) l l' sz sz' x x' (lvl : nat) args,
+        (m : mem) (bigs pref_s s:ST.state) l' sz sz' x x' args,
         Datatypes.length CE = lvl
+        → ST.cut_until bigs (Datatypes.length CE) pref_s s
         → invariant_compile ((lvl,l)::CE) st
         → build_frame_lparams st (l,sz) lparams =: (l',sz')
         (* → build_compilenv st CE lvl lparams NullDecl =: CE' *)
         → chained_stack_structure m lvl sp
-        → copyIn st s (lvl, x) lparams args (OK (lvl, x'))
+        → copyIn st bigs (lvl, x) lparams args (OK (lvl, x'))
         → match_env st ((lvl,x)::s) ((lvl,l)::CE) sp e_chain g m
         → exists e_chain' t2 m',
             exec_stmt g proc_t sp e_chain m initparams t2 e_chain' m' Out_normal
             ∧ match_env st ((lvl,x')::s) ((lvl,l')::CE) sp e_chain' g m'.
     Proof.
       !intros.
-      !!edestruct init_params_succeeds with (proc_t:=proc_t) ;eauto.
+      !!edestruct init_params_succeeds with (proc_t:=proc_t)(s:=s)(pref_s:=pref_s)(bigs:=bigs);eauto.
       decomp h_ex;eauto.
       exists x0, t2, m';split;auto.
       eapply init_params_preserve_match_env;eauto.
     Qed.
+    Lemma init_locals_succeeds_and_preserve_match_env:
+  ∀ (locals : decl) (st : symboltable)(lvl : nat) l (CE : CompilEnv.state)
+    (s_locvarinit : Cminor.stmt),
+    init_locals st ((lvl,l)::CE) locals =: s_locvarinit
+    → ∀ (g : genv) (proc_t : function) (sp : Values.val) (e_chain : env)
+        (m : mem) (s:ST.state) l' sz sz' x x',
+        Datatypes.length CE = lvl
+        → invariant_compile ((lvl,l)::CE) st
+        → build_frame_decl st (l,sz) locals =: (l',sz')
+        (* → build_compilenv st CE lvl lparams NullDecl =: CE' *)
+        → chained_stack_structure m lvl sp
+        → evalDecl st s (lvl,x) locals (OK (lvl,x'))
+        → match_env st ((lvl,x)::s) ((lvl,l)::CE) sp e_chain g m
+        → exists e_chain' t2 m',
+            exec_stmt g proc_t sp e_chain m s_locvarinit t2 e_chain' m' Out_normal
+            ∧ match_env st ((lvl,x')::s) ((lvl,l')::CE) sp e_chain' g m'.
+    Proof.
+    Admitted.
+
+    Lemma init_arg_locals_succeeds_and_preserve_match_env:
+      ∀ (locals : decl)(lparams : list paramSpec) (st : symboltable)(lvl : nat)
+        l (CE : CompilEnv.state)
+        (s_locvarinit : Cminor.stmt) (initparams : Cminor.stmt),
+        store_params st ((lvl,l)::CE) lparams =: initparams
+        → ∀ (g : genv) (proc_t : function) (sp : Values.val) (e_chain : env)
+            (m : mem) (s:ST.state) l' l'' sz sz' sz'' x x' x'' CE' args,
+          Datatypes.length CE = lvl
+          → invariant_compile ((lvl,l)::CE) st
+          → build_frame_lparams st (l,sz) lparams =: (l',sz')
+          → init_locals st ((lvl,l')::CE) locals =: s_locvarinit
+          → build_frame_decl st (l',sz') locals =: (l'',sz'')
+          → build_compilenv st CE lvl lparams locals =: (CE',sz'')
+          → chained_stack_structure m lvl sp
+          → copyIn st bigs (lvl, x) lparams args (OK (lvl, x'))
+          → evalDecl st s (lvl,x') locals (OK (lvl,x''))
+          → match_env st ((lvl,x)::s) ((lvl,l)::CE) sp e_chain g m
+          → exists e_chain' t2 m',
+              exec_stmt g proc_t sp e_chain m s_locvarinit t2 e_chain' m' Out_normal
+              ∧ match_env st ((lvl,x'')::s) CE' sp e_chain' g m'.
+    Proof.
+    Admitted.
+    destruct f1 as (f_lvl,f_frm).
+    assert (f_lvl=Datatypes.length CE_sufx). {
+      admit. (*easy lemma.*)
+    }
+    subst f_lvl.
+    !!specialize init_arg_locals_succeeds_and_preserve_match_env
+               with (1:=heq_store_prms_procedure_parameter_profile_s_parms)
+                    (* (4:=heq_bld_frm_procedure_parameter_profile) *)
+                    (5:=heq_init_lcl_procedure_declarative_part_s_locvarinit).
+                    (7:=heq_bldCE)
+                    (9:=h_eval_decl)
+                    (2:=eq_refl)
+    .
+    
+                    (2:=eq_refl) (3:=h_stkcut_s_n)
+
 
     destruct fr_prm.
     !!specialize init_params_succeeds_and_preserve_match_env
-               with (4:=heq_bld_frm_procedure_parameter_profile) (CE:=CE_sufx) (2:=eq_refl)
-                    (* (6:=h_copy_in) *)
+               with (1:=heq_store_prms_procedure_parameter_profile_s_parms)
+                    (2:=eq_refl) (3:=h_stkcut_s_n)
       as ?.
-    rewrite store_params_ok in heq_store_prms_procedure_parameter_profile_s_parms.
-    functional inversion heq_store_prms_procedure_parameter_profile_s_parms.
-    rewrite <- store_params_ok in *.
-    + subst.
+    (8:=h_match_env1)
+
+    !assert (invariant_compile ((Datatypes.length CE_sufx, [ ]) :: CE_sufx) st). {
+      admit. (* TODO:lemma *)
+    }
+    !assert (chained_stack_structure m_postchainarg (Datatypes.length CE_sufx) stkptr_proc). {
+      apply chained_stack_structure_le with (S (Datatypes.length CE_sufx));eauto. }
+    !!specialize init_params_succeeds_and_preserve_match_env
+               with
+                  (*1:=heq_store_prms_procedure_parameter_profile_s_parms*)
+                  (5:=heq_bld_frm_procedure_parameter_profile) (CE:=CE_sufx) (2:=eq_refl)
+                    (7:=h_copy_in) (3:=h_stkcut_s_n)(8:=h_match_env1)(4:=h_inv_comp_st)
+                    (proc_t := the_proc) (*6:=h_chain_m_postchainarg1*)
+      as ?.
       edestruct h_forall_initparams.
+    * eassumption.
       * simpl. reflexivity.
       * admit. (* TODO: lemma. *) 
       * eapply chained_stack_structure_le with (1:=h_chain_m_postchainarg);auto.
       * 
+    assert (exists s_parms', store_params st CE_sufx procedure_parameter_profile =:s_parms'). {
+      rewrite store_params_ok in heq_store_prms_procedure_parameter_profile_s_parms.
+      functional inversion heq_store_prms_procedure_parameter_profile_s_parms;subst;eauto;
+        rewrite <- store_params_ok in *.
+    + 
         
         eapply h_chain_m_postchainarg0.
       
