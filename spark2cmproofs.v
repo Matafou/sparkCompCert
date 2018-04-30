@@ -9829,42 +9829,82 @@ Proof.
         + cbn.
           assumption. }
 
+    (* FIXME: have something saying that
+       1) evaluation of real args match between sparka and cminor
+       2) evaluation of initialization expr also match.    
+       hopefully remove all about callingm callingCE callingsp callinglocenv.
+     *)
+    Lemma init_code_succeeds:
+      forall stbl enclosingCE astnum pnum lvl pbdy lparams decl0 statm CE stcksize
+             newlfundef locvarinit initparams init decl_t tlparams,
+        pbdy = mkprocBodyDecl astnum pnum lparams decl0 statm ->
+        build_compilenv stbl enclosingCE lvl lparams decl0 =: (CE, stcksize) ->
+        stcksize <= Ptrofs.max_unsigned ->
+        transl_declaration stbl CE (S lvl) decl0 =: newlfundef ->
+        init_locals stbl CE decl0 =: locvarinit ->
+        store_params stbl CE lparams =: initparams ->
+        init = Sseq initparams (Sseq locvarinit Sskip) ->
+        transl_decl_to_lident stbl decl0 = decl_t ->
+        transl_lparameter_specification_to_lident stbl lparams = tlparams ->
+        forall proc_t m sp g callinglocenv callingsp callingCE locenv x x' x'' bigs pref_s s l l' args
+               args_t args_t_v,
+          (* compilation of the arguments expressions passed to the procedure. *)
+          spark2Cminor.transl_paramexprlist stbl CE args lparams =: args_t -> 
+          ST.cut_until bigs lvl pref_s s ->
+          (* spark: storing args values and then local var init *)
+          copyIn stbl bigs (lvl, x) lparams args (OK (lvl, x')) ->
+          evalDecl stbl s (lvl, x') decl0 (OK (lvl,x'')) ->
+          (* Cminor: evaluating args *)
+          eval_exprlist g callingsp callinglocenv m args_t args_t_v ->
+          (* Cminor: and then setting local vars *)
+          Mem.alloc m 0 stcksize = (m, sp) -> (*  stcksize(fn_stackspace f) *)
+          set_locals decl_t (set_params args_t_v tlparams) = locenv -> (* FIXME f? *)
+          (* if match_env before calling: *)
+          match_env stbl bigs callingCE callingsp callinglocenv g m ->
+          (* and also when starting  *)
+          match_env stbl ((lvl,x)::s) ((lvl,l)::CE) sp locenv g m ->
+          exists locenv' t2 m',
+            exec_stmt g proc_t sp locenv m (Sseq initparams locvarinit) t2 locenv' m' Out_normal
+            ∧ match_env stbl ((lvl,x')::s) ((lvl,l')::CE) sp locenv' g m'.
+
+
     Lemma init_params_succeeds:
-  ∀ (lparams : list paramSpec) (st : symboltable)(lvl : nat) l (CE : CompilEnv.state) (initparams : Cminor.stmt),
-    store_params st ((lvl,l)::CE) lparams =: initparams
-    → ∀ (g : genv) (proc_t : function) (sp : Values.val) (e_chain : env)
-        (m : mem) (bigs pref_s s:ST.state) l' sz sz' x x' args,
-        Datatypes.length CE = lvl
-        → ST.cut_until bigs (Datatypes.length CE) pref_s s
-        → invariant_compile ((lvl,l)::CE) st
-        → build_frame_lparams st (l,sz) lparams =: (l',sz')
-        (* → build_compilenv st CE lvl lparams NullDecl =: CE' *)
-        → chained_stack_structure m lvl sp
-        (* → stack_localstack_aligned (Datatypes.length CE) e_chain g m sp *)
-        → copyIn st bigs (lvl, x) lparams args (OK (lvl, x'))
-        → match_env st ((lvl,x)::s) ((lvl,l)::CE) sp e_chain g m
-        → exists e_chain' t2 m',
-            exec_stmt g proc_t sp e_chain m initparams t2 e_chain' m' Out_normal.
-Proof.
-Admitted.
+      ∀ (lparams : list paramSpec) (st : symboltable)(lvl : nat) l
+        (CE : CompilEnv.state) (initparams : Cminor.stmt),
+        store_params st ((lvl,l)::CE) lparams =: initparams
+        → ∀ (g : genv) (proc_t : function) (sp : Values.val) (e_chain : env)
+            (m : mem) (bigs pref_s s:ST.state) l' sz sz' x x' args,
+          Datatypes.length CE = lvl
+          → ST.cut_until bigs (Datatypes.length CE) pref_s s
+          → invariant_compile ((lvl,l)::CE) st
+          → build_frame_lparams st (l,sz) lparams =: (l',sz')
+          (* → build_compilenv st CE lvl lparams NullDecl =: CE' *)
+          → chained_stack_structure m lvl sp
+          (* → stack_localstack_aligned (Datatypes.length CE) e_chain g m sp *)
+          → copyIn st bigs (lvl, x) lparams args (OK (lvl, x'))
+          → match_env st ((lvl,x)::s) ((lvl,l)::CE) sp e_chain g m
+          → exists e_chain' t2 m',
+              exec_stmt g proc_t sp e_chain m initparams t2 e_chain' m' Out_normal.
+    Proof.
+    Admitted.
 
     Lemma init_params_preserve_match_env:
-  ∀ (lparams : list paramSpec) (st : symboltable) (lvl : nat) l (CE : CompilEnv.state) (initparams : Cminor.stmt),
-    store_params st ((lvl,l)::CE) lparams =: initparams
-    → ∀ (g : genv) (proc_t : function) (sp : Values.val) (e_chain : env)
-        (m : mem) (t2 : Events.trace) (e_chain' : env)(bigs pref_s s:ST.state)
-        l' sz sz' (m' : mem) x x'  args,
-        Datatypes.length CE = lvl
-        → ST.cut_until bigs (Datatypes.length CE) pref_s s
-        → invariant_compile ((lvl,l)::CE) st
-        → build_frame_lparams st (l,sz) lparams =: (l',sz')
-        (* → build_compilenv st CE lvl lparams NullDecl =: CE' *)
-        → chained_stack_structure m lvl sp
-        (* → stack_localstack_aligned ((lvl,l)::CE) e_chain g m sp *)
-        → copyIn st bigs (lvl, x) lparams args (OK (lvl, x'))
-        → exec_stmt g proc_t sp e_chain m initparams t2 e_chain' m' Out_normal
-        → match_env st ((lvl,x)::s) ((lvl,l)::CE) sp e_chain g m
-        → match_env st ((lvl,x')::s) ((lvl,l')::CE) sp e_chain' g m'.
+      ∀ (lparams : list paramSpec) (st : symboltable) (lvl : nat) l (CE : CompilEnv.state) (initparams : Cminor.stmt),
+        store_params st ((lvl,l)::CE) lparams =: initparams
+        → ∀ (g : genv) (proc_t : function) (sp : Values.val) (e_chain : env)
+            (m : mem) (t2 : Events.trace) (e_chain' : env)(bigs pref_s s:ST.state)
+            l' sz sz' (m' : mem) x x'  args,
+          Datatypes.length CE = lvl
+          → ST.cut_until bigs (Datatypes.length CE) pref_s s
+          → invariant_compile ((lvl,l)::CE) st
+          → build_frame_lparams st (l,sz) lparams =: (l',sz')
+          (* → build_compilenv st CE lvl lparams NullDecl =: CE' *)
+          → chained_stack_structure m lvl sp
+          (* → stack_localstack_aligned ((lvl,l)::CE) e_chain g m sp *)
+          → copyIn st bigs (lvl, x) lparams args (OK (lvl, x'))
+          → exec_stmt g proc_t sp e_chain m initparams t2 e_chain' m' Out_normal
+          → match_env st ((lvl,x)::s) ((lvl,l)::CE) sp e_chain g m
+          → match_env st ((lvl,x')::s) ((lvl,l')::CE) sp e_chain' g m'.
     Proof.
       intros  until CE.
       rewrite store_params_ok.
