@@ -9831,23 +9831,23 @@ Proof.
 
     (* FIXME: have something saying that
        1) evaluation of real args match between sparka and cminor
-       2) evaluation of initialization expr also match.    
+       2) evaluation of initialization  also match.    
        hopefully remove all about callingm callingCE callingsp callinglocenv.
      *)
     Lemma init_code_succeeds:
-      forall stbl enclosingCE astnum pnum lvl pbdy lparams decl0 statm CE stcksize
-             newlfundef locvarinit initparams init decl_t tlparams,
+      ∀ stbl enclosingCE astnum pnum lvl pbdy lparams decl0 statm CE stcksize
+        newlfundef locvarinit initprms init decl_t tlparams,
         pbdy = mkprocBodyDecl astnum pnum lparams decl0 statm ->
         build_compilenv stbl enclosingCE lvl lparams decl0 =: (CE, stcksize) ->
         stcksize <= Ptrofs.max_unsigned ->
         transl_declaration stbl CE (S lvl) decl0 =: newlfundef ->
         init_locals stbl CE decl0 =: locvarinit ->
-        store_params stbl CE lparams =: initparams ->
-        init = Sseq initparams (Sseq locvarinit Sskip) ->
+        store_params stbl CE lparams =: initprms ->
+        init = Sseq initprms (Sseq locvarinit Sskip) ->
         transl_decl_to_lident stbl decl0 = decl_t ->
         transl_lparameter_specification_to_lident stbl lparams = tlparams ->
-        forall proc_t m sp g callinglocenv callingsp callingCE locenv x x' x'' bigs pref_s s l l' args
-               args_t args_t_v,
+        ∀ proc_t m sp g callinglocenv callingsp callingCE locenv x x' x''
+          bigs pref_s s l l' args args_t args_t_v,
           (* compilation of the arguments expressions passed to the procedure. *)
           spark2Cminor.transl_paramexprlist stbl CE args lparams =: args_t -> 
           ST.cut_until bigs lvl pref_s s ->
@@ -9859,13 +9859,16 @@ Proof.
           (* Cminor: and then setting local vars *)
           Mem.alloc m 0 stcksize = (m, sp) -> (*  stcksize(fn_stackspace f) *)
           set_locals decl_t (set_params args_t_v tlparams) = locenv -> (* FIXME f? *)
+          (* match_list x'' args_t_v  *)
           (* if match_env before calling: *)
           match_env stbl bigs callingCE callingsp callinglocenv g m ->
           (* and also when starting  *)
-          match_env stbl ((lvl,x)::s) ((lvl,l)::CE) sp locenv g m ->
-          exists locenv' t2 m',
-            exec_stmt g proc_t sp locenv m (Sseq initparams locvarinit) t2 locenv' m' Out_normal
-            ∧ match_env stbl ((lvl,x')::s) ((lvl,l')::CE) sp locenv' g m'.
+          match_env stbl ((lvl,x)::s) ((lvl,l)::CE) (Values.Vptr sp Ptrofs.zero) locenv g m ->
+          ∃ locenv' t2 m',
+            exec_stmt g proc_t (Values.Vptr sp Ptrofs.zero) locenv m (Sseq initprms locvarinit) t2 locenv' m' Out_normal
+            ∧ match_env stbl ((lvl,x'')::s) ((lvl,l')::CE) (Values.Vptr sp Ptrofs.zero) locenv' g m'.
+
+xxx Change the statement above.
 
 
     Lemma init_params_succeeds:
