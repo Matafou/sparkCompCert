@@ -9829,6 +9829,55 @@ Proof.
         + cbn.
           assumption. }
 
+    Lemma init_params_succeeds:
+      ∀ stbl astnum pnum lvl pbdy decl0 statm CE
+        newlfundef lparams initprms decl_t tlparams l,
+        pbdy = mkprocBodyDecl astnum pnum lparams decl0 statm ->
+        (* build_frame_lparams stbl (linit,stcksizeinit) lparams =: (l, stcksize) -> *)
+        (* build_compilenv stbl enclosingCE lvl lparams decl0 =: (CE, stcksize) -> *)
+        (* stcksize <= Ptrofs.max_unsigned -> *)
+        transl_declaration stbl CE (S lvl) decl0 =: newlfundef ->
+        store_params stbl CE lparams =: initprms ->
+        transl_decl_to_lident stbl decl0 = decl_t ->
+        transl_lparameter_specification_to_lident stbl lparams = tlparams ->
+        ∀ proc_t m sp g callinglocenv callingsp callingCE locenv x x' 
+          bigs pref_s s l' args args_t args_t_v,
+          (* compilation of the arguments expressions passed to the procedure. *)
+          spark2Cminor.transl_paramexprlist stbl CE args lparams =: args_t -> 
+          ST.cut_until bigs lvl pref_s s ->
+          (* spark: storing args values and then local var init *)
+          copyIn stbl bigs (lvl, x) lparams args (OK (lvl, x')) ->
+          (* Cminor: evaluating args *)
+          eval_exprlist g callingsp callinglocenv m args_t args_t_v ->
+          (* Cminor: and then setting local vars *)
+          (*Mem.alloc minit 0 stcksize = (m, sp) ->*) (*  stcksize(fn_stackspace f) *)
+          set_params args_t_v tlparams = locenv -> (* FIXME f? *)
+          (* match_list x'' args_t_v  *)
+          (* if match_env before calling: *)
+          match_env stbl bigs callingCE callingsp callinglocenv g m ->
+          (* and also when starting  *)
+          match_env stbl ((lvl,x)::s) ((lvl,l)::CE) (Values.Vptr sp Ptrofs.zero) locenv g m ->
+          ∃ locenv' t2 m',
+            exec_stmt g proc_t (Values.Vptr sp Ptrofs.zero) locenv m
+                      initprms t2 locenv' m' Out_normal
+            ∧ match_env stbl ((lvl,x')::s) ((lvl,l')::CE)
+                        (Values.Vptr sp Ptrofs.zero) locenv' g m'.
+Proof.
+  !intros.
+  induction lparams;!intros;up_type.
+  - !inversion h_copy_in.
+    rewrite store_params_ok in *.
+    functional inversion heq_store_prms_lparams_initprms.
+    rewrite <- store_params_ok in *.
+    subst lparams.
+    subst initprms.
+    exists locenv.
+    eexists.
+    exists m.
+    split.
+    + econstructor.
+    +
+
     (* FIXME: have something saying that
        1) evaluation of real args match between sparka and cminor
        2) evaluation of initialization  also match.    
@@ -9836,14 +9885,13 @@ Proof.
      *)
     Lemma init_code_succeeds:
       ∀ stbl enclosingCE astnum pnum lvl pbdy lparams decl0 statm CE stcksize
-        newlfundef locvarinit initprms init decl_t tlparams,
+        newlfundef locvarinit initprms decl_t tlparams,
         pbdy = mkprocBodyDecl astnum pnum lparams decl0 statm ->
         build_compilenv stbl enclosingCE lvl lparams decl0 =: (CE, stcksize) ->
         stcksize <= Ptrofs.max_unsigned ->
         transl_declaration stbl CE (S lvl) decl0 =: newlfundef ->
         init_locals stbl CE decl0 =: locvarinit ->
         store_params stbl CE lparams =: initprms ->
-        init = Sseq initprms (Sseq locvarinit Sskip) ->
         transl_decl_to_lident stbl decl0 = decl_t ->
         transl_lparameter_specification_to_lident stbl lparams = tlparams ->
         ∀ proc_t m sp g callinglocenv callingsp callingCE locenv x x' x''
@@ -9865,9 +9913,14 @@ Proof.
           (* and also when starting  *)
           match_env stbl ((lvl,x)::s) ((lvl,l)::CE) (Values.Vptr sp Ptrofs.zero) locenv g m ->
           ∃ locenv' t2 m',
-            exec_stmt g proc_t (Values.Vptr sp Ptrofs.zero) locenv m (Sseq initprms locvarinit) t2 locenv' m' Out_normal
-            ∧ match_env stbl ((lvl,x'')::s) ((lvl,l')::CE) (Values.Vptr sp Ptrofs.zero) locenv' g m'.
+            exec_stmt g proc_t (Values.Vptr sp Ptrofs.zero) locenv m
+                      (Sseq initprms locvarinit) t2 locenv' m' Out_normal
+            ∧ match_env stbl ((lvl,x'')::s) ((lvl,l')::CE)
+                        (Values.Vptr sp Ptrofs.zero) locenv' g m'.
+Proof.
+  !intros.
 
+Qed.
 xxx Change the statement above.
 
 
