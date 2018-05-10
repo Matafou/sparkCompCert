@@ -2,7 +2,7 @@ Require Import FunInd ZArith Sorted Relations SetoidList.
 Require Import compcert.common.Errors compcert.backend.Cminor
         compcert.lib.Integers compcert.common.Memory compcert.cfrontend.Ctypes.
 Require Import spark.symboltable spark.eval.
-Require Import sparkfrontend.function_utils sparkfrontend.LibHypsNaming
+Require Import sparkfrontend.function_utils sparkfrontend.LibHypsNaming sparkfrontend.LibTac
         sparkfrontend.spark2Cminor sparkfrontend.semantics_properties
         sparkfrontend.compcert_utils sparkfrontend.more_stdlib
         sparkfrontend.chained_structure sparkfrontend.spark_utils.
@@ -3031,6 +3031,9 @@ Proof.
     inversion h_NoDupA;auto.
 Qed.
 
+Tactic Notation "rew" constr(t') "then" tactic(tac) :=
+  try (rewrite <- t' in * ); tac; (try rewrite t' in * ).
+
 Lemma add_to_frame_nodup: forall stbl subtyp_mrk new_sz nme fram_sz new_fram,
     CompilEnv.fetches nme (fst fram_sz) = None
     -> add_to_frame stbl fram_sz nme subtyp_mrk = Errors.OK (new_fram, new_sz)
@@ -3038,9 +3041,8 @@ Lemma add_to_frame_nodup: forall stbl subtyp_mrk new_sz nme fram_sz new_fram,
     -> NoDupA eq_fst_idnum new_fram.
 Proof.
   !!intros until 0.
-  rewrite add_to_frame_ok.
-  !!functional induction (function_utils.add_to_frame stbl fram_sz nme subtyp_mrk);simpl;!intros;
-    try discriminate.
+  rew add_to_frame_ok then (idtac;!!functional induction (function_utils.add_to_frame stbl fram_sz nme subtyp_mrk);simpl;!intros;
+    try discriminate).
   !invclear heq_OK.
   constructor 2.
   - eapply fetches_none_notinA with (st:=sz) in heq_CEfetches_nme_cenv .
@@ -3865,10 +3867,9 @@ Proof.
   rename m'0 into lvl_max.
   (* done *)
   (* getting rid of erroneous storev parameter *)
-  rewrite <- cm_storev_ok in heq_storev_e_t_v_m'.
-  !functional inversion heq_storev_e_t_v_m';subst.
+  (* rewrite <- cm_storev_ok in heq_storev_e_t_v_m'. *)
+  rew cm_storev_ok then !functional inversion heq_storev_e_t_v_m';subst.
   set (loads_id:=(build_loads (lvl_max - lvl_id) δ_id)) in *.
-  rewrite cm_storev_ok in *.
   (* done *)
   assert (h_ofs_nonzero:4 <= Ptrofs.unsigned ofs). {
     eapply eval_build_loads_offset_non_null_var;eauto. }
@@ -3906,8 +3907,7 @@ Proof.
     subst other_id.
     simpl in heq_type_of_name.
     assert (chk = AST.Mint32). {
-      rewrite compute_chnk_ok in heq_compute_chnk.
-      !functional inversion heq_compute_chnk;subst;auto. }
+      rew compute_chnk_ok then !functional inversion heq_compute_chnk;subst;auto. }
     simpl in heq_compute_chnk.
     unfold compute_chnk_astnum in heq_compute_chnk.
 (*     unfold compute_chnk_id in heq_compute_chnk. *)
@@ -3947,8 +3947,7 @@ Proof.
          different, then conclude that the value stored in id' did
          not change. *)
     !assert (chk = AST.Mint32). {
-      rewrite function_utils.compute_chnk_ok in heq_compute_chnk.
-      functional inversion heq_compute_chnk; reflexivity. }
+      rew function_utils.compute_chnk_ok then functional inversion heq_compute_chnk; reflexivity. }
 
     (*xxxx NO MORE destruct (h_stk_cmpl_s_CE _ _ _ heq_transl_variable0) as [v_other_id_prev h_eval_name_other_id_val_prev]. *)
     generalize h_stk_mtch_addr_stkptr_m;!intros.
@@ -4890,8 +4889,8 @@ Lemma exec_store_params_preserve_forbidden_subproof:
       chained_stack_structure m' lvl sp ∧ unchange_forbidden st CE g astnum e_chain e_chain' sp m m'.
 Proof.
   !!intros until CE.
-  rewrite store_params_ok.
-  !!functional induction function_utils.store_params st CE lparams;try rewrite <- store_params_ok in *;cbn;!intros;try discriminate;eq_same_clear; up_type.
+  rew store_params_ok
+      then !!functional induction function_utils.store_params st CE lparams;try rewrite <- store_params_ok in *;cbn;!intros;try discriminate;eq_same_clear; up_type.
   - inversion h_exec_stmt_initparams_Out_normal.
     split.
     + subst.
@@ -5226,9 +5225,8 @@ Proof.
   revert initparams h_exct_lvlG_CE h_nonul_ofs_CE heq_store_prms_lparams_initparams astnum g proc_t
          sp e_chain m t2 e_postchain m' lvl heq_length h_aligned_g_m h_exec_stmt_initparams_Out_normal
          h_unch_forbid_m_m' h_chain_m_lvl_sp h_chain_m'_lvl_sp.
-  rewrite store_params_ok.
-  !!functional induction function_utils.store_params st CE lparams;
-    try rewrite <- store_params_ok in *;cbn;!intros;try discriminate.
+  rew store_params_ok then !!functional induction function_utils.store_params st CE lparams;
+    cbn;!intros;try discriminate.
   - !invclear heq_OK.
     inversion h_exec_stmt_initparams_Out_normal;subst.
     apply Mem.unchanged_on_refl.
@@ -5383,8 +5381,8 @@ Lemma exec_init_locals_preserve_forbidden_subproof:
       chained_stack_structure m' lvl sp ∧ unchange_forbidden st CE g astnum e_chain e_chain' sp m m'.
 Proof.
   !!intros until CE.
-  rewrite init_locals_ok.
-  !!functional induction function_utils.init_locals st CE decl;try rewrite <- init_locals_ok in * ;cbn;
+  rew init_locals_ok then
+    !!functional induction function_utils.init_locals st CE decl;cbn;
     !intros;try discriminate;eq_same_clear; up_type;
       split;try now (inversion h_exec_stmt_locvarinit_Out_normal; try red; try reflexivity;subst;try assumption).
   - inversion h_exec_stmt_locvarinit_Out_normal;subst.
@@ -5542,8 +5540,8 @@ Proof.
   revert locvarinit h_exct_lvlG_CE h_nonul_ofs_CE heq_init_lcl_decl_locvarinit astnum g proc_t sp
          e_chain m t2 e_postchain m' h_aligned_g_m lvl heq_length h_exec_stmt_locvarinit_Out_normal
          h_unch_forbid_m_m' h_chain_m_lvl_sp h_chain_m'_lvl_sp.
-  rewrite init_locals_ok.
-  !!functional induction function_utils.init_locals st CE decl;try rewrite <- init_locals_ok in *;cbn;!intros;try discriminate.
+  rew init_locals_ok then
+    !!functional induction function_utils.init_locals st CE decl;cbn;!intros;try discriminate.
   - !invclear heq_OK; inversion h_exec_stmt_locvarinit_Out_normal;subst. apply Mem.unchanged_on_refl.
   - !invclear heq_OK; inversion h_exec_stmt_locvarinit_Out_normal;subst; apply Mem.unchanged_on_refl.
   - rename x1 into objname_t.
@@ -5640,9 +5638,7 @@ Lemma build_compilenv_exact_lvl:
     CompilEnv.exact_levelG CE'.
 Proof.
   !intros.
-  rewrite <- build_compilenv_ok in heq_build_compilenv.
-  functional inversion heq_build_compilenv.
-  rewrite -> build_compilenv_ok in *.
+  rew build_compilenv_ok then functional inversion heq_build_compilenv.
   unfold stoszchainparam in *.
   simpl in *.
   constructor;auto.
@@ -5653,8 +5649,7 @@ Qed.
 Lemma compute_size_pos : forall st subtyp_mrk x, spark2Cminor.compute_size st subtyp_mrk =: x -> (x>0).
 Proof.
   !intros.
-  rewrite <- compute_size_ok in *.
-  !functional inversion heq_cmpt_size_subtyp_mrk.
+  rew compute_size_ok then !functional inversion heq_cmpt_size_subtyp_mrk.
   apply size_chunk_pos.
 Qed.
 
@@ -5694,8 +5689,7 @@ Proof.
   - rewrite heq_add_to_fr_nme in heq_bind.
     cbn [bind] in *.
     specialize (h_forall_sto' _ _ heq_bind).
-    rewrite function_utils.add_to_frame_ok in *.
-    !functional inversion heq_add_to_fr_nme;subst;cbn.
+    rew function_utils.add_to_frame_ok then !functional inversion heq_add_to_fr_nme;subst;cbn.
     cbn in h_forall_sto'.
     destruct h_forall_sto' as [IHr1 IHr3].
     subst new_size.
@@ -5735,8 +5729,7 @@ Proof.
   - rewrite heq_add_to_fr_nme in heq_bind.
     cbn [bind] in *.
     specialize (h_forall_sto' _ _ heq_bind).
-    rewrite function_utils.add_to_frame_ok in *.
-    !functional inversion heq_add_to_fr_nme;subst;cbn.
+    rew function_utils.add_to_frame_ok then !functional inversion heq_add_to_fr_nme;subst;cbn.
     subst new_size.
     subst new_cenv.
     cbn in h_forall_sto'.
@@ -5776,8 +5769,7 @@ Proof.
   - rewrite heq_add_to_fr_nme in heq_bind.
     cbn [bind] in *.
     specialize (h_forall_sto' _ _ heq_bind).
-    rewrite function_utils.add_to_frame_ok in *.
-    !functional inversion heq_add_to_fr_nme;subst;cbn.
+    rew function_utils.add_to_frame_ok then !functional inversion heq_add_to_fr_nme;subst;cbn.
     !assert (x0 >0).
     { eapply compute_size_pos;eauto. }
     cbn in h_forall_sto'.
@@ -5815,9 +5807,8 @@ Lemma build_frame_decl_mon_sz: forall st decl stosz stosz',
     snd stosz <= snd stosz'.
 Proof.
   !!intros until stosz.
-  rewrite build_frame_decl_ok.
-  !functional induction (function_utils.build_frame_decl st stosz decl);!intros ;try discriminate.
-  all: try rewrite <- build_frame_decl_ok in *.
+  rew build_frame_decl_ok
+  then !functional induction (function_utils.build_frame_decl st stosz decl);!intros ;try discriminate.
   - inversion heq_OK;reflexivity.
   - !invclear heq_OK.
     cbn.
@@ -5844,9 +5835,8 @@ Lemma build_frame_decl_mon: forall st stosz lparams sto' sz',
             k <= v < sz').
 Proof.
   !!intros until lparams.
-  rewrite build_frame_decl_ok.
-  !functional induction (function_utils.build_frame_decl st stosz lparams);!intros ;try discriminate.
-  all: try rewrite <- build_frame_decl_ok in *.
+  rew build_frame_decl_ok
+  then !functional induction (function_utils.build_frame_decl st stosz lparams);!intros ;try discriminate.
   - split;[split|].
     + inversion heq_OK;reflexivity.
     + inversion heq_OK;cbn in *;omega.
@@ -6064,20 +6054,18 @@ Lemma build_frame_lparams_no_null_offset:
         CompilEnv.fetches nme sto' = Some δ_nme ->
         n <= δ_nme.
 Proof.
-  rewrite build_frame_lparams_ok.
   intros stbl stosz lparams.
-  !!functional induction function_utils.build_frame_lparams stbl
-    stosz lparams;try discriminate;
-    try rewrite <- build_frame_lparams_ok in * ;simpl;!intros;subst.
+  rew build_frame_lparams_ok then
+    !!functional induction function_utils.build_frame_lparams stbl stosz lparams;try discriminate;
+    simpl;!intros;subst.
   - inversion heq_OK;subst.
     eauto.
-  - rewrite add_to_frame_ok in *.
-    !functional inversion heq_add_to_fr_nme.
-    rewrite <- add_to_frame_ok in *;subst.
+  - rew add_to_frame_ok then
+      !!!functional inversion heq_add_to_fr_nme.
     clear heq_add_to_fr_nme.
     subst new_size.
     subst new_cenv.
-    specialize h_forall_sto with (1:=heq_bld_frm_lparam')(2:=eq_refl)
+    specialize h_forall_sto with (1:=heq_build_frame_lparams)(2:=eq_refl)
                         (5:=heq_CEfetches_nme0_sto')(n:=n).
     eapply h_forall_sto;clear h_forall_sto.
     assert (x0>0).
@@ -6107,9 +6095,9 @@ Lemma build_frame_decl_no_null_offset:
         CompilEnv.fetches nme sto' = Some δ_nme ->
         n <= δ_nme.
 Proof.
-  rewrite build_frame_decl_ok.
   intros stbl stosz decl.
-  !!functional induction function_utils.build_frame_decl stbl
+  rew build_frame_decl_ok then
+    !!!functional induction function_utils.build_frame_decl stbl
     stosz decl;try discriminate;
     try rewrite <- build_frame_decl_ok in * ;simpl;!intros;subst.
   - inversion heq_OK;subst.
@@ -6139,11 +6127,9 @@ Lemma build_compilenv_no_null_offset:
       4 <= δ_nme.
 Proof.
   !!intros.
-  rewrite <- build_compilenv_ok in *.
-  !functional inversion heq_build_compilenv;subst.
-  rewrite build_compilenv_ok in *.
+  rew build_compilenv_ok then
+    !!!functional inversion heq_build_compilenv.
   subst stoszchainparam.
-  subst scope_lvl.
   up_type.
   clear heq_build_compilenv.
   destruct x.
@@ -6251,9 +6237,8 @@ Lemma build_compilenv_stack_no_null_offset:
     stack_no_null_offset CE'.
 Proof.
   !intros.
-  rewrite <- build_compilenv_ok  in heq_build_compilenv.
-  !functional inversion heq_build_compilenv;subst; rewrite build_compilenv_ok in *.
-  rewrite function_utils.build_frame_decl_ok in heq_build_frame_decl.
+  rew build_compilenv_ok then
+    !!!functional inversion heq_build_compilenv; rewrite build_compilenv_ok in *.
   !destruct x.
   subst stoszchainparam.
   red;red;!intros.
@@ -6369,13 +6354,12 @@ Proof.
   intros until sz.
   remember (l, sz) as locfrmZ. 
   revert l sz HeqlocfrmZ .
-  rewrite build_frame_lparams_ok.
-  !functional induction (function_utils.build_frame_lparams st locfrmZ prmprof);!intros;subst;try discriminate.
+  rew build_frame_lparams_ok then
+    !!!(functional induction (function_utils.build_frame_lparams st locfrmZ prmprof);!intros;try discriminate).
   - !invclear heq_OK.
     split;assumption.
-  - rewrite function_utils.add_to_frame_ok in heq_add_to_fr_nme.
-    !functional inversion heq_add_to_fr_nme;subst.
-    rewrite <- function_utils.add_to_frame_ok in *.
+  - rew function_utils.add_to_frame_ok then
+      !!!functional inversion heq_add_to_fr_nme.
     assert (x0 > 0).
     { unfold compute_size in heq_cmpt_size_subtyp_mrk.
       destruct compute_chnk_of_type;try discriminate.
@@ -6429,9 +6413,9 @@ Proof.
   intros until sz.
   remember (l, sz) as locfrmZ.
   revert l sz HeqlocfrmZ .
-  rewrite build_frame_decl_ok in *.
-  !!functional induction (function_utils.build_frame_decl st locfrmZ decl);!intros;subst ;try discriminate;
-  try rewrite <- build_frame_decl_ok in *.
+  rew build_frame_decl_ok then
+    !!!functional induction (function_utils.build_frame_decl st locfrmZ decl);!intros;subst ;try discriminate;
+      try rewrite <- build_frame_decl_ok in *.
   - split.
     + !invclear heq_OK.
       !invclear heq_pair.
@@ -6531,8 +6515,7 @@ Lemma build_compilenv_stack_no_overf:
     → all_addr_no_overflow CE'.
 Proof.
   !intros.
-  rewrite <- build_compilenv_ok  in heq_build_compilenv.
-  !functional inversion heq_build_compilenv;subst; rewrite build_compilenv_ok in *.
+  rew build_compilenv_ok then !!!functional inversion heq_build_compilenv.
   red.
   !intros.
   destruct x.
@@ -6563,12 +6546,11 @@ Proof.
   !!intros until 0.
   remember (init,z) as initz.
   revert init z Heqinitz.
-  rewrite build_frame_lparams_ok.
-  !functional induction (function_utils.build_frame_lparams st initz prmprof);!intros;subst;try discriminate;try rewrite <- build_frame_lparams_ok in *.
+  rew build_frame_lparams_ok
+  then !!!(functional induction (function_utils.build_frame_lparams st initz prmprof);
+         !intros;try discriminate).
   - inversion heq_OK;subst;auto.
-  - rewrite add_to_frame_ok in heq_add_to_fr_nme.
-    !functional inversion heq_add_to_fr_nme;subst.
-    rewrite <- add_to_frame_ok in *.
+  - rew add_to_frame_ok then !functional inversion heq_add_to_fr_nme;subst.
     unfold new_cenv,new_size in *.
     clear new_cenv new_size.
     specialize (h_forall_init _ _ eq_refl).
@@ -6597,9 +6579,8 @@ Proof.
   !!intros until 0.
   remember (init,z) as initz.
   revert init z Heqinitz lvl fr.
-  rewrite build_frame_decl_ok.
-  !functional induction (function_utils.build_frame_decl st initz decl);!intros;subst;try discriminate;
-    try rewrite <- build_frame_decl_ok in *.
+  rew build_frame_decl_ok then
+    !functional induction (function_utils.build_frame_decl st initz decl);!intros;subst;try discriminate.
   - inversion heq_OK;subst;auto.
     inversion heq_pair;subst;auto.
   - !invclear heq_OK;subst.
@@ -6635,14 +6616,12 @@ Lemma build_frame_lparams_mon_sz: forall st params stosz stosz',
     snd stosz <= snd stosz'.
 Proof.
   !!intros until stosz.
-  rewrite build_frame_lparams_ok.
-  !functional induction (function_utils.build_frame_lparams st stosz params);!intros.
-  all: try rewrite <- build_frame_lparams_ok in *.
+  rew build_frame_lparams_ok then
+    !!!functional induction (function_utils.build_frame_lparams st stosz params);!intros.
   - inversion heq_OK.
     reflexivity.
   - specialize (h_forall_stosz' stosz' heq_build_frame_lparams).
-    rewrite add_to_frame_ok in heq_add_to_fr_nme.
-    !functional inversion heq_add_to_fr_nme;subst;cbn in *.
+    rew add_to_frame_ok then !functional inversion heq_add_to_fr_nme;subst;cbn in *.
     pose proof compute_size_pos _ _ _ heq_cmpt_size_subtyp_mrk.
     unfold new_size in *.
     omega.
@@ -6659,8 +6638,8 @@ Lemma build_compilenv_preserve_invariant_compile:
     -> invariant_compile CE' st.
 Proof.
   !!(intros until 1).
-  rewrite <- build_compilenv_ok in heq_build_compilenv.
-  !!(functional inversion heq_build_compilenv;subst;intro; rewrite -> ?build_compilenv_ok in *;clear heq_build_compilenv).
+  rew build_compilenv_ok then
+    !!(functional inversion heq_build_compilenv;subst;intro;clear heq_build_compilenv).
   split;eauto.
   + constructor.
     eauto.
@@ -6706,10 +6685,9 @@ Lemma add_to_frame_sz: forall stbl fram_sz parname parsubtype p sz,
     -> snd p = snd fram_sz + sz.
 Proof.
   !!intros until 1.
-  rewrite add_to_frame_ok in heq_add_to_fr_parname.
-  functional inversion heq_add_to_fr_parname
-  ;rewrite ?add_to_frame_ok in *
-  ;subst;!intros.
+  rew add_to_frame_ok
+  then functional inversion heq_add_to_fr_parname
+       ;subst;!intros.
   subst new_size.
   subst new_cenv.
   rewrite H1 in heq_cmpt_size_parsubtype.
@@ -6726,10 +6704,8 @@ Lemma add_to_frame_correct: forall stbl fram_sz parname parsubtype p othername,
     -> CompilEnv.resides othername (fst p) = true.
 Proof.
   !!intros until 1.
-  rewrite add_to_frame_ok in heq_add_to_fr_parname.
-  functional inversion heq_add_to_fr_parname
-  ;rewrite <- ?add_to_frame_ok in *
-  ;subst;!intros.
+  rew add_to_frame_ok then
+    functional inversion heq_add_to_fr_parname ;subst;!intros.
   subst new_size.
   subst new_cenv.
   simpl.
@@ -6741,10 +6717,9 @@ Lemma add_to_frame_correct2: forall stbl fram_sz parname parsubtype p,
     -> CompilEnv.resides parname (fst p) = true.
 Proof.
   !!intros until 1.
-  rewrite add_to_frame_ok in heq_add_to_fr_parname.
-  functional inversion heq_add_to_fr_parname
-  ;rewrite <- ?add_to_frame_ok in *
-  ;subst;!intros.
+  rew add_to_frame_ok then
+    functional inversion heq_add_to_fr_parname
+    ;subst;!intros.
   subst new_size.
   subst new_cenv.
   simpl.
@@ -6757,10 +6732,8 @@ Lemma add_to_frame_correct_rev: forall stbl fram_sz parname parsubtype new_fram_
     -> CompilEnv.resides othername (fst fram_sz) = true.
 Proof.
   !!intros until 1.
-  rewrite add_to_frame_ok in heq_add_to_fr_parname.
-  functional inversion heq_add_to_fr_parname
-  ;rewrite <- ?add_to_frame_ok in *
-  ;subst;!intros.
+  rew add_to_frame_ok then
+    functional inversion heq_add_to_fr_parname ;subst;!intros.
   subst new_size.
   subst new_cenv.
   simpl.
@@ -6778,9 +6751,8 @@ Lemma build_frame_lparams_correct: forall lparam stbl fram_sz res,
                  -> CompilEnv.resides (parameter_name x) (fst res) = true.
 Proof.
   !!intros until fram_sz.
-  rewrite function_utils.build_frame_lparams_ok.
-  !!functional induction (function_utils.build_frame_lparams stbl fram_sz lparam); try discriminate;
-  try rewrite <- function_utils.build_frame_lparams_ok;!intros.
+  rew function_utils.build_frame_lparams_ok then
+    !!!functional induction (function_utils.build_frame_lparams stbl fram_sz lparam); try discriminate;!intros.
   - !destruct h_or.
     + inversion h_lst_in_x.
     + simpl in *.
@@ -6807,14 +6779,13 @@ Lemma build_frame_lparams_correct_rev: forall lparam stbl fram_sz res,
                      ∨ CompilEnv.resides nme (fst fram_sz) = true).
 Proof.
   !!intros until fram_sz.
-  rewrite function_utils.build_frame_lparams_ok.
-  !!(functional induction (function_utils.build_frame_lparams stbl fram_sz lparam); try discriminate;
-  try rewrite <- ?function_utils.build_frame_lparams_ok in *;intros).
+  rew function_utils.build_frame_lparams_ok then
+    !!(functional induction (function_utils.build_frame_lparams stbl fram_sz lparam); try discriminate;intros).
   - inversion heq_OK. 
     right;assumption.
   - up_type.
     remember {| parameter_astnum := _x; parameter_name := nme; parameter_subtype_mark := subtyp_mrk; parameter_mode := _x0 |}  as p.
-    specialize (h_forall_res _ heq_bld_frm_lparam' _  heq_resides).
+    specialize (h_forall_res _ heq_build_frame_lparams _  heq_resides).
     !!decompose [ex or and] h_forall_res.
     + left.
       exists x0;split;auto.
@@ -6839,10 +6810,9 @@ Lemma add_to_frame_correct3: forall stbl fram_sz parname parsubtype new_fr new_s
     -> CompilEnv.fetches othername new_fr = Some e.
 Proof.
   !!intros.
-  rewrite add_to_frame_ok in heq_add_to_fr_parname.
-  functional inversion heq_add_to_fr_parname
-  ;rewrite <- ?add_to_frame_ok in *
-  ;subst;!intros.
+  rew add_to_frame_ok 
+  then functional inversion heq_add_to_fr_parname
+       ;subst;!intros.
   subst.
   simpl.
   destruct (othername =? parname)%nat eqn:heq'.
@@ -6860,10 +6830,8 @@ Lemma add_to_frame_correct4: forall stbl fram_sz parname parsubtype new_fram_sz,
        ∧ CompilEnv.fetches parname (fst new_fram_sz) = Some (snd fram_sz).
 Proof.
   !!intros.
-  rewrite add_to_frame_ok in heq_add_to_fr_parname.
-  !! (functional inversion heq_add_to_fr_parname
-      ;rewrite <- ?add_to_frame_ok in *
-      ;subst;intros).
+  rew add_to_frame_ok then
+    !!! (functional inversion heq_add_to_fr_parname;intros).
   subst new_size.
   subst new_cenv.
   simpl.
@@ -6903,10 +6871,9 @@ Lemma add_to_frame_correct_none: forall stbl fram_sz parname parsubtype new_fr n
     -> CompilEnv.fetches othername new_fr = None.
 Proof.
   !!intros.
-  rewrite add_to_frame_ok in heq_add_to_fr_parname.
-  !!(functional inversion heq_add_to_fr_parname
-     ;rewrite <- ?add_to_frame_ok in *
-     ;subst;intros;subst).
+  rew add_to_frame_ok then
+    !!!(functional inversion heq_add_to_fr_parname
+       ;subst;intros).
   simpl.
   destruct (othername =? parname)%nat eqn:heq'.
   - apply beq_nat_true in heq'.
@@ -6921,16 +6888,14 @@ Lemma add_to_frame_correct_rev2: forall stbl fram_sz parameter_name parsubtype n
     -> CompilEnv.fetches othername (fst fram_sz) = Some e.
 Proof.
   !!intros.
-  rewrite add_to_frame_ok in heq_add_to_fr_parameter_name.
-  functional inversion heq_add_to_fr_parameter_name
-  ;rewrite <- ?add_to_frame_ok in *
-  ;subst;!intros.
+  rew add_to_frame_ok then
+    !!!(functional inversion heq_add_to_fr_parameter_name ;intros).
   simpl.
   subst.
   decomp h_and.
-  simpl in heq_CEfetches_othername_new_cenv.
+  simpl in heq_CEfetches_othername.
   rewrite <- Nat.eqb_neq in hneq_othername.
-  rewrite hneq_othername in heq_CEfetches_othername_new_cenv.
+  rewrite hneq_othername in heq_CEfetches_othername.
   assumption.  
 Qed.
 
@@ -6940,10 +6905,8 @@ Lemma add_to_frame_correct_none_rev: forall stbl fram_sz parameter_name parsubty
     -> CompilEnv.fetches othername (fst fram_sz) = None.
 Proof.
   !!intros.
-  rewrite add_to_frame_ok in heq_add_to_fr_parameter_name.
-  functional inversion heq_add_to_fr_parameter_name
-  ;rewrite <- ?add_to_frame_ok in *
-  ;subst;!intros.
+  rew add_to_frame_ok then
+    !!!functional inversion heq_add_to_fr_parameter_name;!intros.
   simpl.
   subst.
   functional inversion heq_CEfetches_othername_new_fr.
@@ -6980,8 +6943,8 @@ Lemma add_to_frame_fresh: forall stbl fram_sz lparam' subtyp_mrk prm x,
 Proof.
   !!intros until prm. 
   remember (parameter_name prm) as prn_nme.
-  rewrite add_to_frame_ok.
-  !!(functional induction (function_utils.add_to_frame stbl fram_sz prn_nme subtyp_mrk);intros;try discriminate).
+  rew add_to_frame_ok then
+    !!(functional induction (function_utils.add_to_frame stbl fram_sz prn_nme subtyp_mrk);intros;try discriminate).
   !invclear heq_OK.
   red. apply Forall_forall.
   !!intros prm0 ?.
@@ -7015,9 +6978,9 @@ Lemma build_frame_lparams_nodup: forall stbl lparam fram_sz res,
     -> NoDupA eq_fst_idnum (fst res).
 Proof.
   !!intros until fram_sz.
-  rewrite build_frame_lparams_ok.
-  !!functional induction (function_utils.build_frame_lparams stbl fram_sz lparam);simpl;!intros;
-    try discriminate;try rewrite <- ?build_frame_lparams_ok in *.
+  rew build_frame_lparams_ok then
+    !!functional induction (function_utils.build_frame_lparams stbl fram_sz lparam);simpl;!intros;
+      try discriminate.
   - !invclear heq_OK.
     assumption.
   - apply h_forall_res.
@@ -7101,10 +7064,10 @@ Proof.
       destruct x0;simpl;auto. }
   clear h.
   !!destruct h_and as [? h_forall_ord].
-  rewrite function_utils.build_frame_lparams_ok in *.
   revert h_incr_order h_fresh_prms_lparam res heq_bld_frm_lparam e x heq_CEfetches_x h_incr_order0  h_lst_forall h_upb.
+  rew function_utils.build_frame_lparams_ok then
   !!(functional induction (function_utils.build_frame_lparams stbl fram_sz lparam); try discriminate;
-     try rewrite <- ?function_utils.build_frame_lparams_ok in *;intros;up_type).
+     intros;up_type).
   - simpl in *.
     !invclear heq_OK.
     assumption.
@@ -7233,74 +7196,6 @@ Inductive transl_prm_value_list : list paramSpec -> store -> list Values.val -> 
     transl_prm_value_list (prm::lprm) ((parameter_name prm, x)::l) (x'::l'). 
 
 
-Definition transl_paramexprlist := Eval cbv beta delta [bind bind2 transl_paramexprlist] in transl_paramexprlist.
-
-Function function_utils_transl_paramexprlist (stbl : symboltable) (CE : compilenv) (el : list exp) (lparams : list paramSpec) {struct el} :
-  res (list expr) :=
-  let (l, l0) := (el, lparams) in
-  match l with
-  | nil => match l0 with
-           | nil => Errors.OK nil
-           | _ :: _ => Error (msg "Bad number of arguments")
-           end
-  | e1 :: e2 =>
-      match l0 with
-      | nil => Error (msg "Bad number of arguments")
-      | p1 :: p2 =>
-          match parameter_mode p1 with
-          | In =>
-              match transl_expr stbl CE e1 with
-              | Errors.OK x => match function_utils_transl_paramexprlist stbl CE e2 p2 with
-                        | Errors.OK x0 => Errors.OK (x :: x0)
-                        | Error msg => Error msg
-                        end
-              | Error msg => Error msg
-              end
-          | Out =>
-              match e1 with
-              | Literal _ _ => Error (msg "Out or In Out parameters should be names")
-              | Name _ nme =>
-                  match transl_name stbl CE nme with
-                  | Errors.OK x => match function_utils_transl_paramexprlist stbl CE e2 p2 with
-                            | Errors.OK x0 => Errors.OK (x :: x0)
-                            | Error msg => Error msg
-                            end
-                  | Error msg => Error msg
-                  end
-              | BinOp _ _ _ _ => Error (msg "Out or In Out parameters should be names")
-              | UnOp _ _ _ => Error (msg "Out or In Out parameters should be names")
-              end
-          | In_Out =>
-              match e1 with
-              | Literal _ _ => Error (msg "Out or In Out parameters should be names")
-              | Name _ nme =>
-                  match transl_name stbl CE nme with
-                  | Errors.OK x => match function_utils_transl_paramexprlist stbl CE e2 p2 with
-                            | Errors.OK x0 => Errors.OK (x :: x0)
-                            | Error msg => Error msg
-                            end
-                  | Error msg => Error msg
-                  end
-              | BinOp _ _ _ _ => Error (msg "Out or In Out parameters should be names")
-              | UnOp _ _ _ => Error (msg "Out or In Out parameters should be names")
-              end
-          end
-      end
-  end.
-
-
-Lemma transl_paramexprlist_ok : forall x y z, function_utils_transl_paramexprlist x y z = spark2Cminor.transl_paramexprlist x y z.
-Proof.
-  reflexivity.
-Qed.
-
-Ltac rename_tmp h th :=
-  match th with
-    | transl_paramexprlist _ _ _ _ = Error _ => fresh "eq_transl_params_ERR"
-    | transl_paramexprlist _ _ _ _ = (OK ?r) => fresh "eq_transl_params_" r
-    | _ => rename_hyp_decl h th
-  end.
-Ltac rename_sparkprf ::= rename_tmp.
 
 
 (* 
@@ -7366,46 +7261,43 @@ Proof.
   !intros.
   remember (OK (pb_lvl, sto')) as res_copy_in.
   remember (pb_lvl, sto) as pb_lvl_sto.
-  revert heq_transl_paramexprlist h_chain_m h_inv_comp_CE_st 
+  revert htrans_prmexprl h_chain_m h_inv_comp_CE_st 
          h_match_env Heqres_copy_in Heqpb_lvl_sto .
   revert spb ofs locenv g m sto pb_lvl args_t sto'.
   !induction h_copy_in; try discriminate;subst;repeat eq_same_clear;!intros.
   - subst.
-    rewrite <- transl_paramexprlist_ok in heq_transl_paramexprlist;
-      functional inversion heq_transl_paramexprlist;
-      subst;
-      rewrite ?transl_paramexprlist_ok in * ;
-      idtac.
+    rew transl_paramexprlist_ok then
+    !!!functional inversion htrans_prmexprl; idtac.
     inversion heq_OK;subst;clear heq_OK.
     exists  (@nil Values.val).
     constructor.
-  - rewrite <- transl_paramexprlist_ok in heq_transl_paramexprlist;
-      functional inversion heq_transl_paramexprlist;subst; rewrite ?transl_paramexprlist_ok in *;
+  - rew transl_paramexprlist_ok then
+      !!!functional inversion htrans_prmexprl;subst;
       match goal with
       | H:parameter_mode param = ?a , H': parameter_mode param = ?b |- _ => try now (rewrite H in H';discriminate H')
       end.
     !!edestruct h_forall_spb;clear h_forall_spb;eauto.
     + unfold push;simpl. reflexivity.
-    + assert (h_transl:=transl_expr_ok _ _ _ _ H9 _ _ _ _ _ _ h_eval_expr_e_e_v h_match_env).
+    + assert (h_transl:=transl_expr_ok _ _ _ _ heq_transl_expr _ _ _ _ _ _ h_eval_expr_e_e_v h_match_env).
       !!destruct h_transl as [v_t [? ?]].
       exists (x_v::x1);repeat split;eauto.
       econstructor;eauto.
-  - rewrite <- transl_paramexprlist_ok in heq_transl_paramexprlist;
-      functional inversion heq_transl_paramexprlist;subst; rewrite ?transl_paramexprlist_ok in *;
+  - rew transl_paramexprlist_ok then
+        !!!functional inversion htrans_prmexprl;subst;
       match goal with
       | H:parameter_mode param = ?a , H': parameter_mode param = ?b |- _ => try now (rewrite H in H';discriminate H')
       end.
     !!edestruct h_forall_spb;clear h_forall_spb;eauto.
     + unfold push;simpl. reflexivity.
-    + assert (h_transl:=transl_expr_ok _ _ _ _ H9 _ _ _ _ _ _ h_eval_expr_e h_match_env).
+    + assert (h_transl:=transl_expr_ok _ _ _ _ heq_transl_expr _ _ _ _ _ _ h_eval_expr_e h_match_env).
       !!destruct h_transl as [v_t [? ?]].
       exists (x_v::x1);repeat split;eauto.
       econstructor;eauto.
-  - !!(rewrite <- transl_paramexprlist_ok in heq_transl_paramexprlist;
-       functional inversion heq_transl_paramexprlist;subst; rewrite ?transl_paramexprlist_ok in *;
-      match goal with
-      | H:parameter_mode param = ?a , H': parameter_mode param = ?b |- _ => try now (rewrite H in H';discriminate H')
-      end).
+  - rew transl_paramexprlist_ok then
+          !!!functional inversion htrans_prmexprl;subst;
+            match goal with
+            | H:parameter_mode param = ?a , H': parameter_mode param = ?b |- _ => try now (rewrite H in H';discriminate H')
+            end.
     !!edestruct h_forall_spb;clear h_forall_spb;eauto.
     + unfold push;simpl. reflexivity.
     + rename x0 into le_t.
@@ -7448,11 +7340,11 @@ Proof.
       !inversion h_CM_eval_expr_load_addr_nme_load_addr_nme_v;subst.
       exists (nm_t_v::le_t_v).
       constructor;auto.
-  - !!(rewrite <- transl_paramexprlist_ok in heq_transl_paramexprlist;
-       functional inversion heq_transl_paramexprlist;subst; rewrite ?transl_paramexprlist_ok in *;
+  - rew transl_paramexprlist_ok then
+       !!!functional inversion htrans_prmexprl;subst;
        match goal with
        | H:parameter_mode param = ?a , H': parameter_mode param = ?b |- _ => try now (rewrite H in H';discriminate H')
-       end).
+       end.
     !!edestruct h_forall_spb;clear h_forall_spb;eauto.
     + unfold push;simpl. reflexivity.
     + rename x0 into le_t.
@@ -7496,11 +7388,11 @@ Proof.
       exists (nm_t_v::le_t_v).
       constructor;auto.
   - up_type.
-    !!(rewrite <- transl_paramexprlist_ok in heq_transl_paramexprlist;
-       functional inversion heq_transl_paramexprlist;subst; rewrite ?transl_paramexprlist_ok in *;
+    rew transl_paramexprlist_ok then
+       !!!functional inversion htrans_prmexprl;subst;
        match goal with
        | H:parameter_mode param = ?a , H': parameter_mode param = ?b |- _ => try now (rewrite H in H';discriminate H')
-       end).
+       end.
     !!edestruct h_forall_spb;clear h_forall_spb;eauto.
     + unfold push;simpl. reflexivity.
     + rename x0 into le_t.
@@ -7582,8 +7474,7 @@ Lemma compilenv_inv:
                                          /\ build_frame_decl stbl fr_prm decl = Errors.OK (sto, sz).
 Proof.
   intros stbl enclosingCE lvl lparams decl res heq_bldCE.
-  rewrite <- build_compilenv_ok in heq_bldCE.
-  !functional inversion heq_bldCE;subst.
+  rew build_compilenv_ok then !!!functional inversion heq_bldCE.
   eauto 10.
 Qed.
 
@@ -7677,7 +7568,7 @@ Ltac rename_wf_st h th :=
   match th with
   | wf_st ?st => fresh "wf_st_" st
   | wf_st _ => fresh "wf_st"
-  | _ => rename_tmp h th
+  | _ => rename_hyp_decl h th
   end.
 Ltac rename_sparkprf ::= rename_wf_st.
 
@@ -7748,10 +7639,8 @@ Proof.
   !induction h_exec_stmt_stmt_t_outc;!intros;
     match goal with
   | H: transl_stmt ?st ?CE ?stmt = _ |- _ => 
-    rewrite <- transl_stmt_ok in H;
-    !functional inversion H
-  end;
-    rewrite transl_stmt_ok in *;subst;
+    rew transl_stmt_ok then !functional inversion H
+  end ;subst;
       (match goal with |- ?chstactctruct ∧ ?unch => assert (hstruc_m':chstactctruct);[ | split;[assumption|]] end);!intros.
   (* Skip => chained_struct *)
   - assumption.
@@ -7796,9 +7685,8 @@ Proof.
       !!specialize transl_procsig_match_env_succeeds with (1:=h_wf_st_st) (2:=h_match_env) (3:=heq_transl_procsig_pnum) (4:=h_CM_eval_expr_a_a_v) (5:=heq_find_func_a_v_fd) as ?.
       decomp h_ex;up_type.
       rename h_forall_i into h_pbdy_chainarg_noclash.
-      rewrite transl_procedure_ok in heq_transl_proc_pbdy.
-      !functional inversion heq_transl_proc_pbdy;up_type.
-      rewrite <- transl_procedure_ok in *.
+      rew transl_procedure_ok then
+        !functional inversion heq_transl_proc_pbdy;up_type.
       rename x3 into initparams.
       rename x2 into locvarinit.
       rename x1 into bdy.
@@ -7824,9 +7712,7 @@ Proof.
 
       (* thus CE_sufx preserves the invariant. *)
       !assert (invariant_compile CE_proc st).
-      { rewrite <- build_compilenv_ok in heq_build_compilenv.
-        functional inversion heq_build_compilenv;subst.
-        rewrite build_compilenv_ok in heq_build_compilenv.
+      { rew build_compilenv_ok then !!!functional inversion heq_build_compilenv.
         eapply build_compilenv_preserve_invariant_compile;eauto.
         eapply invariant_compile_sublist.
         erewrite CompilEnv.cut_until_spec1;eauto. }
@@ -7903,8 +7789,7 @@ Proof.
           - omega.
           - assumption. }
         assert (Datatypes.length CE_proc = S (Datatypes.length CE_sufx)) as heq_lgth_CE_proc.
-        { rewrite <- build_compilenv_ok in heq_build_compilenv.
-          functional inversion heq_build_compilenv.
+        { rew build_compilenv_ok then functional inversion heq_build_compilenv.
           reflexivity. }
         (* Since the chaining param is not the translation of a spark
            variable, we stay in callers environment, that is: from
@@ -8029,9 +7914,8 @@ Proof.
               (* Then prove that nothing visible from there has change (use unchanged_on forbidden hyps)  *)
               red in h_aligned_g_m.
               !assert (δ_lvl ≤ Datatypes.length CE_sufx).
-              { rewrite <-build_compilenv_ok in heq_build_compilenv.
-                functional inversion heq_build_compilenv.
-                rewrite build_compilenv_ok in heq_build_compilenv;subst.
+              { rew build_compilenv_ok then
+                  functional inversion heq_build_compilenv.
                 cbn in h_le_δ_lvl.
                 omega. }
               specialize (h_aligned_g_m _ h_le_δ_lvl0).
@@ -8390,18 +8274,15 @@ Proof.
   !!intros until 1.
   Opaque transl_stmt.
   induction h_eval_stmt;simpl in *;intros ; rename_all_hyps ; eq_same_clear;
-  try (
-      let h := match goal with
-               | H: transl_stmt _ _ _ = _ |- _ => H
-               end in
-      rewrite <- transl_stmt_ok in h;
-      !functional inversion h;
-      subst;
-      try rewrite -> transl_stmt_ok in * ); eq_same_clear;
-    !!specialize chained_stack_struct_inv_sp_zero with (1:=h_chain_m_lvl_stkptr) as h_ex;decomp h_ex;
-      try match type of heq_stkptr with
-          | _ = ?x => subst stkptr; (set (stkptr:=x) in * )
-          end.
+  try (let h := match goal with
+                | H: transl_stmt _ _ _ = _ |- _ => H
+                end in
+       rew transl_stmt_ok then !!!functional inversion h);
+  subst ; eq_same_clear;
+  !!specialize chained_stack_struct_inv_sp_zero with (1:=h_chain_m_lvl_stkptr) as h_ex;decomp h_ex;
+    try match type of heq_stkptr with
+        | _ = ?x => subst stkptr; (set (stkptr:=x) in * )
+        end.
   all: swap 6 7. (* putting fun call at the end. *)
   (* Skip *)
   - eexists. eexists. eexists.
@@ -8967,10 +8848,8 @@ Proof.
             { simpl.
               !assert (Errors.OK p_sign = Errors.OK p_sig).
               { rewrite <- heq_transl_lprm_spec_procedure_parameter_profile_p_sig.
-                rewrite <- transl_procsig_ok in heq_transl_procsig_p.
-                !functional inversion heq_transl_procsig_p.
-                rewrite transl_procsig_ok in *.
-                subst.
+                rew transl_procsig_ok then
+                  !!!functional inversion heq_transl_procsig_p.
                 rewrite <- heq_transl_lprm_spec.
                 rewrite heq_fetch_proc in heq_fetch_proc_p.
                 inversion heq_fetch_proc_p.
@@ -8981,9 +8860,8 @@ Proof.
             specialize h with (1:=heq_transl_procsig_p) (2:=h_CM_eval_expr_paddr).
             decomp h.
             eelim (h_forall_i chaining_param);eauto.
-            rewrite <- transl_procsig_ok in heq_transl_procsig_p.
-            !functional inversion heq_transl_procsig_p.
-            rewrite transl_procsig_ok in *.
+            rew transl_procsig_ok then
+              !functional inversion heq_transl_procsig_p.
             subst.
             rewrite heq_fetch_proc in *.
             inversion heq_fetch_proc_p.
@@ -9007,9 +8885,7 @@ Proof.
         specialize chain_structure_cut with (1:=h_chain_m_lvl_stkptr) (g:=g) (e:=locenv) as h.
         decomp h.
         assert (heq_lgth_CE_sufx:Datatypes.length CE_sufx = lvl_p).
-        { rewrite <- transl_procsig_ok in heq_transl_procsig_p.
-          !functional inversion heq_transl_procsig_p.
-          rewrite transl_procsig_ok in *.
+        { rew transl_procsig_ok then !functional inversion heq_transl_procsig_p.
           subst.
           rewrite heq_fetch_proc in *.
           inversion heq_fetch_proc_p;auto. }
@@ -9830,21 +9706,22 @@ Proof.
           assumption. }
 
     Lemma init_params_succeeds:
-      ∀ stbl astnum pnum lvl pbdy decl0 statm CE
-        newlfundef lparams initprms decl_t tlparams l,
+      ∀ stbl astnum pnum lvl decl0 lparams pbdy statm CE  stcksizeinit stcksize
+        newlfundef  initprms decl_t tlparams l l',
         pbdy = mkprocBodyDecl astnum pnum lparams decl0 statm ->
-        (* build_frame_lparams stbl (linit,stcksizeinit) lparams =: (l, stcksize) -> *)
+        build_frame_lparams stbl (l,stcksizeinit) lparams =: (l', stcksize) ->
         (* build_compilenv stbl enclosingCE lvl lparams decl0 =: (CE, stcksize) -> *)
         (* stcksize <= Ptrofs.max_unsigned -> *)
         transl_declaration stbl CE (S lvl) decl0 =: newlfundef ->
         store_params stbl CE lparams =: initprms ->
         transl_decl_to_lident stbl decl0 = decl_t ->
         transl_lparameter_specification_to_lident stbl lparams = tlparams ->
-        ∀ proc_t m sp g callinglocenv callingsp callingCE locenv x x' 
-          bigs pref_s s l' args args_t args_t_v,
+        ∀ proc_t m sp g callinglocenv callingsp callingCE CE_prefx locenv x x' 
+          bigs pref_s s args args_t args_t_v,
           (* compilation of the arguments expressions passed to the procedure. *)
           spark2Cminor.transl_paramexprlist stbl CE args lparams =: args_t -> 
           ST.cut_until bigs lvl pref_s s ->
+          CompilEnv.cut_until callingCE lvl CE_prefx CE ->
           (* spark: storing args values and then local var init *)
           copyIn stbl bigs (lvl, x) lparams args (OK (lvl, x')) ->
           (* Cminor: evaluating args *)
@@ -9863,20 +9740,43 @@ Proof.
             ∧ match_env stbl ((lvl,x')::s) ((lvl,l')::CE)
                         (Values.Vptr sp Ptrofs.zero) locenv' g m'.
 Proof.
-  !intros.
   induction lparams;!intros;up_type.
   - !inversion h_copy_in.
-    rewrite store_params_ok in *.
-    functional inversion heq_store_prms_lparams_initprms.
-    rewrite <- store_params_ok in *.
-    subst lparams.
-    subst initprms.
+    rew store_params_ok then !!!functional inversion heq_store_prms.
     exists locenv.
     eexists.
     exists m.
     split.
     + econstructor.
-    +
+    + cbn in heq_bld_frm.
+      !inversion heq_bld_frm.
+      assumption.
+  - !inversion h_copy_in.
+    + specialize IHlparams with (10:=h_copy_in0)(8:=h_stkcut_bigs_lvl)(9:=h_CEcut_callingCE_lvl) (1:=eq_refl)
+                                (13:=h_match_env).
+       rew build_frame_lparams_ok then !functional inversion heq_bld_frm.
+      subst lparam' fram_sz _res.
+      rew add_to_frame_ok then !!!functional inversion heq_add_to_fr_nme.
+      specialize IHlparams with (1:=heq_build_frame_lparams)
+                              (2:=heq_transl_decl_decl0_newlfundef).
+      rew store_params_ok then !!!functional inversion heq_store_prms;
+        match goal with
+        | H: parameter_mode ?a = ?x, H': parameter_mode ?a = ?y |- _ => try now (rewrite H in H';discriminate)
+        end.
+      specialize IHlparams with (1:=heq_store_params)(2:=heq_transl_decl_to_lident)(3:=eq_refl).
+      rew transl_paramexprlist_ok then !!!functional inversion htrans_prmexprl;
+        match goal with
+        | H: parameter_mode ?a = ?x, H': parameter_mode ?a = ?y |- _ => try now (rewrite H in H';discriminate)
+        end.
+      specialize IHlparams with (1:=heq_transl_paramexprlist).
+      !!!inversion h_CM_eval_exprl_args_t_args_t_v.
+      specialize IHlparams with (1:=h_CM_eval_exprl_x5_vl)(2:=eq_refl).
+      up_type.
+      simpl in IHlparams.
+      
+
+
+      specialize IHlparams with (1:=heq_is).
 
     (* FIXME: have something saying that
        1) evaluation of real args match between sparka and cminor

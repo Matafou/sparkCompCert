@@ -1,12 +1,18 @@
 
 Require Import spark.eval.
 Require Import sparkfrontend.LibHypsNaming.
-Require Import Memory Errors.
+Require Import Memory Errors FunInd.
 Require Import Cminor.
 Require Import sparkfrontend.spark2Cminor.
 Require Import sparkfrontend.compcert_utils.
 Import Symbol_Table_Module.
 
+
+Tactic Notation "finv" hyp(t) "using" constr(t') :=
+  (try rewrite t' in t; functional inversion t; try rewrite <- t' in * ).
+
+Tactic Notation "rew" constr(t') "then" ltac(tac) :=
+  (try rewrite t' in *; tac; try rewrite <- t' in * ).
 
 Open Scope Z_scope.
 
@@ -531,7 +537,7 @@ match nme with
 | SelectedComponent _ _ _ => Error (msg "compute_chnk: records not implemented yet")
 end.
 
-Lemma compute_chnk_ok : forall x y, spark2Cminor.compute_chnk x y = compute_chnk x y.
+Lemma compute_chnk_ok : forall x y, compute_chnk x y = spark2Cminor.compute_chnk x y.
 Proof.
   reflexivity.
 Qed.
@@ -556,7 +562,7 @@ match cenv_sz return (res (prod CompilEnv.store Z)) with
     end
 end.
 
-Lemma add_to_frame_ok : spark2Cminor.add_to_frame = add_to_frame.
+Lemma add_to_frame_ok : add_to_frame = spark2Cminor.add_to_frame.
 Proof.
   reflexivity.
 Qed.
@@ -588,7 +594,7 @@ Function build_frame_lparams (stbl : Symbol_Table_Module.symboltable) (fram_sz :
   end.
 
 
-Lemma build_frame_lparams_ok : spark2Cminor.build_frame_lparams = build_frame_lparams.
+Lemma build_frame_lparams_ok : build_frame_lparams = spark2Cminor.build_frame_lparams.
 Proof.
   reflexivity.
 Qed.
@@ -619,7 +625,7 @@ Function build_frame_decl (stbl : Symbol_Table_Module.symboltable) (fram_sz : lo
       end
   end.
 
-Lemma build_frame_decl_ok : spark2Cminor.build_frame_decl = build_frame_decl.
+Lemma build_frame_decl_ok : build_frame_decl = spark2Cminor.build_frame_decl.
 Proof.
   reflexivity.
 Qed.
@@ -723,12 +729,12 @@ transl_declaration (stbl : Symbol_Table_Module.symboltable)
 Functional Scheme transl_procedure_ind2 := Induction for transl_procedure Sort Prop
 with transl_declaration_ind2 := Induction for transl_declaration Sort Prop.
 
-Lemma transl_declaration_ok : spark2Cminor.transl_declaration = transl_declaration.
+Lemma transl_declaration_ok : transl_declaration = spark2Cminor.transl_declaration.
 Proof.
   reflexivity.
 Qed.
 
-Lemma transl_procedure_ok : spark2Cminor.transl_procedure = transl_procedure.
+Lemma transl_procedure_ok : transl_procedure = spark2Cminor.transl_procedure.
 Proof.
   reflexivity.
 Qed.
@@ -780,7 +786,7 @@ res stmt :=
       end
   end.
 
-Lemma copy_out_params_ok : forall stbl CE lparams, spark2Cminor.copy_out_params stbl CE lparams = copy_out_params stbl CE lparams.
+Lemma copy_out_params_ok : forall stbl CE lparams, copy_out_params stbl CE lparams = spark2Cminor.copy_out_params stbl CE lparams.
 Proof.
   reflexivity.
 Qed.
@@ -815,7 +821,7 @@ res stmt :=
       end
   end.
 
-Lemma store_params_ok : forall stbl CE lparams, spark2Cminor.store_params stbl CE lparams = store_params stbl CE lparams.
+Lemma store_params_ok : forall stbl CE lparams, store_params stbl CE lparams = spark2Cminor.store_params stbl CE lparams.
 Proof.
   reflexivity.
 Qed.
@@ -859,7 +865,7 @@ Function init_locals (stbl : Symbol_Table_Module.symboltable) (CE : compilenv)
       end
   end.
 
-Lemma init_locals_ok : forall stbl CE decl, spark2Cminor.init_locals stbl CE decl = init_locals stbl CE decl.
+Lemma init_locals_ok : forall stbl CE decl, init_locals stbl CE decl = spark2Cminor.init_locals stbl CE decl.
 Proof.
   reflexivity.
 Qed.
@@ -916,3 +922,65 @@ Lemma add_ok : forall x y, add x y = Values.Val.add x y.
 Proof.
   reflexivity.
 Qed.
+
+(* Definition transl_paramexprlist := Eval cbv beta delta [bind bind2 transl_paramexprlist] in transl_paramexprlist. *)
+
+Function transl_paramexprlist (stbl : symboltable) (CE : compilenv) (el : list exp) (lparams : list paramSpec) {struct el} :
+  res (list expr) :=
+  let (l, l0) := (el, lparams) in
+  match l with
+  | nil => match l0 with
+           | nil => Errors.OK nil
+           | _ :: _ => Error (msg "Bad number of arguments")
+           end
+  | e1 :: e2 =>
+      match l0 with
+      | nil => Error (msg "Bad number of arguments")
+      | p1 :: p2 =>
+          match parameter_mode p1 with
+          | In =>
+              match transl_expr stbl CE e1 with
+              | Errors.OK x => match transl_paramexprlist stbl CE e2 p2 with
+                        | Errors.OK x0 => Errors.OK (x :: x0)
+                        | Error msg => Error msg
+                        end
+              | Error msg => Error msg
+              end
+          | Out =>
+              match e1 with
+              | Literal _ _ => Error (msg "Out or In Out parameters should be names")
+              | Name _ nme =>
+                  match transl_name stbl CE nme with
+                  | Errors.OK x => match transl_paramexprlist stbl CE e2 p2 with
+                            | Errors.OK x0 => Errors.OK (x :: x0)
+                            | Error msg => Error msg
+                            end
+                  | Error msg => Error msg
+                  end
+              | BinOp _ _ _ _ => Error (msg "Out or In Out parameters should be names")
+              | UnOp _ _ _ => Error (msg "Out or In Out parameters should be names")
+              end
+          | In_Out =>
+              match e1 with
+              | Literal _ _ => Error (msg "Out or In Out parameters should be names")
+              | Name _ nme =>
+                  match transl_name stbl CE nme with
+                  | Errors.OK x => match transl_paramexprlist stbl CE e2 p2 with
+                            | Errors.OK x0 => Errors.OK (x :: x0)
+                            | Error msg => Error msg
+                            end
+                  | Error msg => Error msg
+                  end
+              | BinOp _ _ _ _ => Error (msg "Out or In Out parameters should be names")
+              | UnOp _ _ _ => Error (msg "Out or In Out parameters should be names")
+              end
+          end
+      end
+  end.
+
+
+Lemma transl_paramexprlist_ok : forall x y z, transl_paramexprlist x y z = spark2Cminor.transl_paramexprlist x y z.
+Proof.
+  reflexivity.
+Qed.
+

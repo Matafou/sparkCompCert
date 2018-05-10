@@ -1,4 +1,4 @@
-Require Import sparkfrontend.LibHypsNaming  Errors
+Require Import sparkfrontend.LibTac sparkfrontend.LibHypsNaming  Errors
         Cminor compcert.lib.Integers sparkfrontend.compcert_utils sparkfrontend.more_stdlib.
 Require Import SetoidList Omega.
 Import Memory.

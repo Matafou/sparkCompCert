@@ -3,7 +3,7 @@
 * Author: Pierre Courtieu                                                 *
 * Distributed under the terms of the LGPL-v3 license                      *
 ***************************************************************************)
-
+Require Import TacNewHyps.
 (** This file is a set of tactical (mainly "!! t" where t is a tactic)
     and tactics (!intros, !destruct etc), that automatically rename
     new hypothesis after applying a tactic. The names chosen for
@@ -59,9 +59,8 @@ Ltac rename_hyp_prefx h ht :=
   let res := rename_hyp h ht in
   fresh "h_" res.
 
-(** ** The default fallback renaming strategy 
-  This is used if the user-defined renaming scheme fails to give a name
-  to a hypothesis. [th] is the type of the hypothesis. *)
+(** ** Calls the (user-defined) rename_hyp + and fallbacks to some default namings if needed.
+    [h] is the hypothesis (ident) to rename, [th] is its type. *)
 Ltac fallback_rename_hyp h th :=
   match th with
     | _ => rename_hyp h th
@@ -149,6 +148,8 @@ Ltac fallback_rename_hyp h th :=
       fresh "forall_" z
   end.
 
+(* All hyps are prefixed by "h_" except equalities and non-equalities which
+   are prefixed by "heq_" "hneq" respectively. *)
 Inductive HypPrefixes :=
   | HypNone
   | HypH_
@@ -179,9 +180,6 @@ Ltac add_prefix h th nme :=
 Ltac fallback_rename_hyp_prefx h th :=
   let res := fallback_rename_hyp h th in
   add_prefix h th res.
-  (* fresh "h_" res. *)
-
-
 
 (* Add this if you want hyps of typr ~ P to be renamed like if of type
    P but prefixed by "neg_" *)
@@ -195,174 +193,44 @@ Ltac rename_hyp_neg h th :=
   | _ => fail
   end.
 
-(* Credit for the harvesting of hypothesis: Jonathan Leivant *)
-Ltac harvest_hyps harvester := constr:(ltac:(harvester; constructor) : True).
-
-Ltac revert_clearbody_all := 
-  repeat lazymatch goal with H:_ |- _ => try clearbody H; revert H end.
-
-Ltac all_hyps := harvest_hyps revert_clearbody_all.
-
-Ltac next_hyp hs step last := 
-  lazymatch hs with 
-  | (?hs' ?H) => step H hs'
-  | _ => last
+Ltac autorename H :=
+  match type of H with
+  | ?th => 
+    let dummy_name := fresh "dummy" in
+    rename H into dummy_name; (* this renaming makes the renaming more or less
+                                 idempotent, it is backtracked if the
+                                 rename_hyp below fails. *)
+    let newname := fallback_rename_hyp_prefx dummy_name th in
+    rename dummy_name into newname
+  | _ => idtac (* "no renaming pattern for " H *)
   end.
-
-Ltac map_hyps tac hs :=
-  idtac;
-  let rec step H hs := next_hyp hs step idtac; tac H in
-  next_hyp hs step idtac.
-
-(* Renames hypothesis H if it is not in old_hyps. Use user defined
-   renaming scheme, and fall back to the default one of it fails. *)
-Ltac rename_if_not_old old_hyps H :=
-  lazymatch old_hyps with 
-  | context[H] => idtac
-  | _ =>
-    match type of H with
-(*    | ?th => 
-      let dummy_name := fresh "dummy" in
-      rename H into dummy_name; (* this renaming makes the renaming more or less
-                                   idempotent, it is backtracked if the
-                                   rename_hyp below fails. *)
-        let newname := rename_hyp dummy_name th in
-        rename dummy_name into newname*)
-    | ?th => 
-      let dummy_name := fresh "dummy" in
-      rename H into dummy_name; (* this renaming makes the renaming more or less
-                                   idempotent, it is backtracked if the
-                                   rename_hyp below fails. *)
-        let newname := fallback_rename_hyp_prefx dummy_name th in
-        rename dummy_name into newname
-    | _ => idtac (* "no renaming pattern for " H *)
-    end
-  end.
-
-Ltac rename_new_hyps tac :=
-  let old_hyps := all_hyps in
-  let renam H := rename_if_not_old old_hyps H in
-  tac;
-  let new_hyps := all_hyps in
-  map_hyps renam new_hyps.
-
-Ltac rename_all_hyps :=
-  let renam H := rename_if_not_old (I) H in
-  let hyps := all_hyps in
-  map_hyps renam hyps.
-
-Ltac autorename H := rename_if_not_old (I) H.
+  
+Ltac rename_new_hyps tac := tac_new_hyps tac autorename.
 
 Tactic Notation "!!" tactic3(Tac) := (rename_new_hyps Tac).
 Tactic Notation "!!" tactic3(Tac) constr(h) :=
   (rename_new_hyps (Tac h)).
 
-Ltac subst_if_not_old old_hyps H :=
-  match old_hyps with
-  | context [H] => idtac
-  | _ => 
-    match type of H with
-    | ?x = ?y => subst x
-    | ?x = ?y => subst y
-    | _ => idtac
-    end
+Ltac rename_all_hyps :=
+  let renam H := autorename H in
+  let hyps := all_hyps in
+  map_hyps renam hyps.
+
+
+(* subst with H if possible *)
+Ltac substHyp H :=
+  match type of H with
+  | ?x = ?y => subst x + subst y
   end.
-
-Ltac subst_new_hyps tac :=
-  let old_hyps := all_hyps in
-  let substnew H := subst_if_not_old old_hyps H in
-  tac
-  ; let new_hyps := all_hyps in
-    map_hyps substnew new_hyps.
-
-(* do we need a syntax for this. *)
-(* Tactic Notation "" tactic3(Tac) := subst_new_hyps Tac. *)
+(* subst with all new hyps if ossible after applying tactic tac *)
+Ltac subst_new_hyps tac := tac_new_hyps tac substHyp.
 
 (* !!! tac performs tac, then subst with new hypothesis, then rename
-remaining new hyps. *)
+   remaining new hyps. *)
 Tactic Notation "!!!" tactic3(Tac) := !! (subst_new_hyps Tac).
-
 
 (** ** Renaming Tacticals *)
 
-(** [!! tactic] (resp. [!! tactic h] and []:: tactic h1 h2) performs
-  [tactic] (resp. [tactic h] and [tactic h1 h2]) and renames all new
-  hypothesis. During the process all previously known hypothesis (but
-  [h], [h1] and [h2]) are marked. It may happen that this mark get in
-  the way during the execution of <<tactic>>. We might try to find a
-  better way to mark hypothesis. *)
-
-(* Tactic Notation "!!" tactic3(T) := idall; T ; rename_hyps. *)
-(* Tactic Notation "!!" tactic3(T) constr(h) := *)
-(*   idall; try unid h; (T h) ; try id_ify h; rename_hyps. *)
-(* begin hide *)
-(* Tactic Notation "!!" tactic3(T) constr(h) constr(h2) := *)
-(*   idall; try unid h;try unid h2; (T h h2) ; *)
-(*   try id_ify h;try id_ify h2; rename_hyps. *)
-(* end hide *)
-
-(** ** Specific redefinition of usual tactics. *)
-
-(** Note that for example !!induction h doesn not work because
- "destruct" is not a ltac function by itself, it is already a
- notation. Hence the special definitions below for this kind of
- tactics: induction ddestruct inversion etc. *)
-
-
-Ltac decomp_ex h :=
-  match type of h with
-  | @ex _ (fun x => _) => let x' := fresh x in let h1 := fresh in destruct h as [x' h1]; decomp_ex h1
-  | @sig _ (fun x => _) => let x' := fresh x in let h1 := fresh in destruct h as [x' h1]; decomp_ex h1
-  | @sig2 _ (fun x => _) (fun _ => _) => let x' := fresh x in
-                                         let h1 := fresh in 
-                                         let h2 := fresh in
-                                         destruct h as [x' h1 h2];
-                                         decomp_ex h1;
-                                         decomp_ex h2
-  | @sigT _ (fun x => _) => let x' := fresh x in let h1 := fresh in destruct h as [x' h1]; decomp_ex h1
-  | @sigT2 _ (fun x => _) (fun _ => _) => let x' := fresh x in
-                                          let h1 := fresh in
-                                          let h2 := fresh in
-                                          destruct h as [x' h1 h2]; decomp_ex h1; decomp_ex h2
-  | and _ _ => let h1 := fresh in let h2 := fresh in destruct h as [h1 h2]; decomp_ex h1; decomp_ex h2
-  | or _ _ => let h' := fresh in destruct h as [h' | h']; [decomp_ex h' | decomp_ex h' ]
-  | _ => idtac
-  end.
-
-
-
-(* decompose and ex and or at once. TODO: generalize. *)
-(* clear may fail if h is not a hypname *)
-(* Tactic Notation "decomp" hyp(h) :=
-   (!! (idtac;decomp_ex h)). *) (* Why do I need this idtac? Without it no rename happens. *)
-
- Tactic Notation "decomp" constr(c) :=
-   match goal with
-   | _ => 
-     let h := fresh "h_decomp" in
-     pose proof c as h;
-     (!! (idtac;decomp_ex c)); try clear h (* Why do I need this idtac? Without it no rename happens. *)
-   end.
-(*
-Lemma foo : forall x, { aa:nat | (aa = x /\ x=aa) & (aa = aa /\ aa= x) } -> False.
-Proof.
-  intros x H. 
-  decomp H.
-Abort.
-
-Lemma foo : { aa:False & True  } -> False.
-Proof.
-  intros H. 
-  decomp H.
-Abort.
-
-
-Lemma foo : { aa:False & True & False  } -> False.
-Proof.
-  intros H. 
-  decomp H.
-Abort.
-*)
 
 Tactic Notation "!induction" constr(h) := !! (induction h).
 Tactic Notation "!functional" "induction" constr(h) :=
@@ -402,31 +270,6 @@ Tactic Notation "!intros" ident(id1) ident(id2) ident(id3) ident(id4) ident(id5)
   := intros id1 id2 id3 id4 id5 id6; !!intros.
 
 
-(** Some more tactic not specially dedicated to renaming. *)
-
-(* This performs the map from "top" to "bottom" (from older to younger hyps). *)
-Ltac map_hyps_rev tac hs :=
-  idtac;
-  let rec step H hs := tac H ; next_hyp hs step idtac in
-  next_hyp hs step idtac.
-
-Ltac map_all_hyps tac := map_hyps tac all_hyps.
-Ltac map_all_hyps_rev tac := map_hyps_rev tac all_hyps.
-
-(* A tactic which moves up a hypothesis if it sort is Type or Set. *)
-Ltac move_up_types H := match type of H with
-                        | ?T => match type of T with
-                                | Prop => idtac
-                                | Set => move H at top
-                                | Type => move H at top
-                                end
-                        end.
-
-(* Iterating the tactic on all hypothesis. Moves up all Set/Type
-   variables to the top. Really useful with [Set Compact Context]
-   which is no yet commited in coq-trunk. *)
-Ltac up_type := map_all_hyps_rev move_up_types.
-
 (* A full example: *)
 (*
 Ltac rename_hyp_2 h th :=
@@ -439,6 +282,7 @@ Ltac rename_hyp ::= rename_hyp_2.
 Lemma foo: forall x y,
     x <= y -> 
     x = y -> 
+    ~x = y -> 
     ~1 < 0 ->
     (0 < 1 -> ~(true=false)) ->
     (forall w w',w < w' -> ~(true=false)) ->
@@ -447,6 +291,9 @@ Lemma foo: forall x y,
   (* auto naming at intro: *)
  !intros.
  Undo.
+  (* auto naming + subst when possible at intro: *)
+ !!!intros.
+ Undo.
  (* intros first, rename after: *)
  intros.
  rename_all_hyps.
@@ -454,7 +301,7 @@ Lemma foo: forall x y,
  (* intros first, rename some hyp only: *)
  intros.
  autorename H0.
- (* put !! before a tactic to rename all new hyps: *)
+ (* put !! before a (composed)tactic to rename all new hyps: *)
  rename_all_hyps.
  !!destruct h_le_x_y eqn:?.
  - auto with arith.

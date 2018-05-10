@@ -489,7 +489,7 @@ Fixpoint transl_lparameter_specification_to_ltype
 
 Definition transl_paramid := transl_num.
 
-Fixpoint transl_lparameter_specification_to_lident
+Function transl_lparameter_specification_to_lident
          (stbl:symboltable) (lpspec:list paramSpec): (list AST.ident) :=
   match lpspec with
     | nil => nil
@@ -500,7 +500,7 @@ Fixpoint transl_lparameter_specification_to_lident
   end.
 
 
-Fixpoint transl_decl_to_lident (stbl:symboltable) (decl:decl): list AST.ident :=
+Function transl_decl_to_lident (stbl:symboltable) (decl:decl): list AST.ident :=
   match decl with
     | NullDecl => nil
     | SeqDecl _ decl1 decl2 =>
