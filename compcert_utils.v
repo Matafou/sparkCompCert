@@ -1,4 +1,4 @@
-From sparkfrontend Require Import LibHypsNaming more_stdlib.
+From sparkfrontend Require Import LibHypsNaming LibTac more_stdlib.
 From compcert Require Import Memory Ctypes.
 Require Import ZArith Memory Cminor Integers Errors.
 Open Scope Z_scope.
@@ -252,7 +252,7 @@ Lemma map_get_set_same_nodup :
     (forall i, List.In i l -> i <> k) ->
     Maps.PTree.get k (set_locals l (Maps.PTree.set k v m)) = Some v.
 Proof.
-  !!induction l;cbn;!intros.
+  !induction l;cbn;!intros.
   - apply Maps.PTree.gss.
   - rename h_forall_i into h_diff.
     rewrite Maps.PTree.gso.

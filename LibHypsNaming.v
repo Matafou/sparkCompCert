@@ -207,9 +207,8 @@ Ltac autorename H :=
   
 Ltac rename_new_hyps tac := tac_new_hyps tac autorename.
 
-Tactic Notation "!!" tactic3(Tac) := (rename_new_hyps Tac).
-Tactic Notation "!!" tactic3(Tac) constr(h) :=
-  (rename_new_hyps (Tac h)).
+Tactic Notation (at level 3) "!!" tactic3(Tac) := (rename_new_hyps Tac).
+Tactic Notation (at level 0) "!" tactic(Tac) := (rename_new_hyps Tac).
 
 Ltac rename_all_hyps :=
   let renam H := autorename H in
@@ -217,47 +216,26 @@ Ltac rename_all_hyps :=
   map_hyps renam hyps.
 
 
-(* subst with H if possible *)
-Ltac substHyp H :=
-  match type of H with
-  | ?x = ?y => subst x + subst y
-  end.
-(* subst with all new hyps if ossible after applying tactic tac *)
-Ltac subst_new_hyps tac := tac_new_hyps tac substHyp.
-
-(* !!! tac performs tac, then subst with new hypothesis, then rename
-   remaining new hyps. *)
-Tactic Notation "!!!" tactic3(Tac) := !! (subst_new_hyps Tac).
-
 (** ** Renaming Tacticals *)
+(** Note that for example !!induction h doesn not work because
+    "destruct" is not a ltac function by itself, it is already a
+    notation. Hence the special definitions below for this kind of
+    tactics: induction ddestruct inversion etc. *)
 
 
-Tactic Notation "!induction" constr(h) := !! (induction h).
-Tactic Notation "!functional" "induction" constr(h) :=
-   !! (functional induction h).
-Tactic Notation "!functional" "inversion" constr(h) :=
-  !! (functional inversion h).
-Tactic Notation "!destruct" constr(h) := !! (destruct h).
+(* Tactic Notation "!induction" constr(h) := ! (induction h). *)
+(* Tactic Notation "!functional" "induction" constr(h) := *)
+   (* !! (functional induction h). *)
+(* Tactic Notation "!functional" "inversion" constr(h) := *)
+  (* !! (functional inversion h). *)
+(* Tactic Notation "!destruct" constr(h) := !! (destruct h). *)
 
-Tactic Notation "!destruct" constr(h) "!eqn:" ident(id) :=
-  (!!(destruct h eqn:id; revert id));intro id.
-Tactic Notation "!destruct" constr(h) "!eqn:?" := (!!(destruct h eqn:?)).
+(* Tactic Notation "!destruct" constr(h) "!eqn:?" := (!(destruct h eqn:?)). *)
+(* Tactic Notation "!intros" "until" ident(id) := intros until id; !intros. *)
 
-Tactic Notation "!inversion" hyp(h) := !!! (inversion h).
-Tactic Notation "!invclear" hyp(h) := !!! (inversion h;clear h).
-Tactic Notation "!assert" constr(h) := !! (assert h).
+(* Tactic Notation "!intros" simple_intropattern(id1) := ! intro id1. *)
 
-Tactic Notation "!intros" := !!intros.
-
-Tactic Notation "!intro" := !!intro.
-
-Tactic Notation "!intros" "until" ident(id)
-  := intros until id; !intros.
-
-Tactic Notation "!intros" simple_intropattern(id1)
-  := !! intro id1.
-
-Tactic Notation "!intros" ident(id1) ident(id2)
+(*Tactic Notation "!intros" ident(id1) ident(id2)
   := intros id1 id2; !intros.
 Tactic Notation "!intros" ident(id1) ident(id2) ident(id3)
   := intros id1 id2 id3; !!intros.
@@ -268,7 +246,7 @@ Tactic Notation "!intros" ident(id1) ident(id2) ident(id3) ident(id4) ident(id5)
   := intros id1 id2 id3 id4 id5; !!intros.
 Tactic Notation "!intros" ident(id1) ident(id2) ident(id3) ident(id4) ident(id5) ident(id6)
   := intros id1 id2 id3 id4 id5 id6; !!intros.
-
+*)
 
 (* A full example: *)
 (*
@@ -292,7 +270,7 @@ Lemma foo: forall x y,
  !intros.
  Undo.
   (* auto naming + subst when possible at intro: *)
- !!!intros.
+ !!intros.
  Undo.
  (* intros first, rename after: *)
  intros.
@@ -302,8 +280,10 @@ Lemma foo: forall x y,
  intros.
  autorename H0.
  (* put !! before a (composed)tactic to rename all new hyps: *)
- rename_all_hyps.
- !!destruct h_le_x_y eqn:?.
+ revert H6.
+ !destruct H eqn:?;intro.
+ Undo.
+ !!destruct H eqn:?;intro.
  - auto with arith.
  - auto with arith.
 Qed.

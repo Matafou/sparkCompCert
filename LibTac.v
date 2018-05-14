@@ -1,7 +1,66 @@
 Require Import TacNewHyps.
 Require Import LibHypsNaming.
 Require Import LibDecomp.
+(* Some tactics used in sparkCompcert. Mostly about autorenaming. *)
+
+(* Same tactic as LibDecomp.decomp_logical but make sure the name of
+   the hypothesis decomposed is not recycled during the process, so
+   that all generated hypothesis are detected as such. *)
+Ltac decompose_clear c :=
+  let h := fresh "h_decomp" in
+  pose proof c as h;
+  decomp_logicals c; try clear h.
+
+(* decompose + rename new hyps. *)
 Tactic Notation "decomp" constr(c) := (!!decompose_clear c).
+
+(* Iterating the tactic on all hypothesis. Moves up all Set/Type
+   variables to the top. Really useful with [Set Compact Context]
+   which is no yet commited in coq-trunk. *)
+Ltac up_type := map_all_hyps_rev move_up_types.
+
+(* rew foo with tac first rewrite everywhere with t' (right to left),
+then applies tac and then rewrite eveywhere in the other direction.
+this is useful when some tactic needs the goal (or a hypothesis to be
+in a certain form but you don't want to keep this form in your goal. *)
+Tactic Notation "rew" constr(t') "with"  tactic(tac) :=
+  try (rewrite <- t' in * ); tac; (try rewrite t' in * ).
+
+(* subst with all new hyps if ossible after applying tactic tac *)
+(* Ltac subst_new_hyps tac := onNewHypsOf ltac:tac do substHyp. *)
+
+(* !!! tac performs tac, then subst with new hypothesis when possible,
+   then rename remaining new hyps. *)
+Tactic Notation "!!!" tactic3(Tac) := !!(tac_new_hyps Tac substHyp).
+
+(* in sparkCompcert !inversion always tries to subst. *)
+Tactic Notation "!inversion" hyp(h) := !!! (inversion h).
+Tactic Notation "!invclear" hyp(h) := !!! (inversion h;clear h).
+
+(* Example of !!! *)
+(* Ltac rename_hyp_2 h th :=
+  match th with
+  | true = false => fresh "trueEQfalse"
+  end.
+
+Ltac rename_hyp ::= rename_hyp_2.
+
+Lemma foo: forall x y,
+    x <= y -> 
+    x = y -> 
+    ~x = y -> 
+    ~1 < 0 ->
+    (0 < 1 -> ~(true=false)) ->
+    (forall w w',w < w' -> ~(true=false)) ->
+    (0 < 1 -> ~(1<0)) ->
+    (0 < 1 -> 1<0) -> 0 < 1.
+  (* auto naming + subst when possible at intro: *)
+ !!!intros.
+ Undo.
+ auto with arith.
+Qed.
+*)
+(* Examples of decomp *)
 (*
 Lemma foo : forall x, { aa:nat | (aa = x /\ x=aa) & (aa = aa /\ aa= x) } -> False.
 Proof.
@@ -22,28 +81,4 @@ Proof.
   decomp H.
 Abort.
 *)
-  
-(** Some more tactic not specially dedicated to renaming. *)
 
-(* This performs the map from "top" to "bottom" (from older to younger hyps). *)
-Ltac map_hyps_rev tac hs :=
-  idtac;
-  let rec step H hs := tac H ; next_hyp hs step idtac in
-  next_hyp hs step idtac.
-
-Ltac map_all_hyps tac := map_hyps tac all_hyps.
-Ltac map_all_hyps_rev tac := map_hyps_rev tac all_hyps.
-
-(* A tactic which moves up a hypothesis if it sort is Type or Set. *)
-Ltac move_up_types H := match type of H with
-                        | ?T => match type of T with
-                                | Prop => idtac
-                                | Set => move H at top
-                                | Type => move H at top
-                                end
-                        end.
-
-(* Iterating the tactic on all hypothesis. Moves up all Set/Type
-   variables to the top. Really useful with [Set Compact Context]
-   which is no yet commited in coq-trunk. *)
-Ltac up_type := map_all_hyps_rev move_up_types.

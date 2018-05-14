@@ -132,9 +132,9 @@ Qed.
 
 Lemma stack_NoDupA_prefix: forall A R, forall CE1 CE2 : list A, NoDupA R (CE1 ++ CE2) -> NoDupA R CE1.
 Proof.
-  !!intros until CE2.
+  !intros until CE2.
   revert CE1.
-  !!induction CE2;!intros.
+  !induction CE2;!intros.
   - rewrite app_nil_r in h_NoDupA.
     assumption.
   - apply h_forall_CE1.
@@ -143,7 +143,7 @@ Qed.
   
 
 Lemma stack_NoDupA_sublist: forall A R, forall CE1 CE2 : list A, NoDupA R (CE1 ++ CE2) -> NoDupA R CE2.
-  !!induction CE1;!intros.
+  !induction CE1;!intros.
   - cbn in h_NoDupA.
     assumption.
   - inversion h_NoDupA.

@@ -1,5 +1,5 @@
-Require Import sparkfrontend.LibHypsNaming.
-Require Import Errors.
+Require Import sparkfrontend.LibHypsNaming sparkfrontend.LibTac.
+Require Import Errors FunInd.
 Require Import eval.
 From sparkfrontend Require more_stdlib function_utils spark2Cminor  spark_utils.
 Import more_stdlib function_utils spark2Cminor.

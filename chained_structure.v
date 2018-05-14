@@ -184,8 +184,8 @@ Lemma build_loads__decomp_S: forall m b0 g e b,
                          (Eload AST.Mint32 (Econst (Oaddrstack Ptrofs.zero))) sp'
         /\ Cminor.eval_expr g sp' e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) v.
 Proof.
-  !intros until n.
-  revert v b H h_CM_eval_expr_v.
+  !intros.
+  revert v b h_CM_eval_expr h_CM_eval_expr_v.
   !induction n.
   - !intros.
     cbn in *.

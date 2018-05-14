@@ -7,13 +7,6 @@ Require Import sparkfrontend.spark2Cminor.
 Require Import sparkfrontend.compcert_utils.
 Import Symbol_Table_Module.
 
-
-Tactic Notation "finv" hyp(t) "using" constr(t') :=
-  (try rewrite t' in t; functional inversion t; try rewrite <- t' in * ).
-
-Tactic Notation "rew" constr(t') "then" ltac(tac) :=
-  (try rewrite t' in *; tac; try rewrite <- t' in * ).
-
 Open Scope Z_scope.
 
 (* *** Hack to workaround a current limitation of Functional Scheme wrt to Function. *)
@@ -939,7 +932,7 @@ Function transl_paramexprlist (stbl : symboltable) (CE : compilenv) (el : list e
       | p1 :: p2 =>
           match parameter_mode p1 with
           | In =>
-              match transl_expr stbl CE e1 with
+              match spark2Cminor.transl_expr stbl CE e1 with
               | Errors.OK x => match transl_paramexprlist stbl CE e2 p2 with
                         | Errors.OK x0 => Errors.OK (x :: x0)
                         | Error msg => Error msg
