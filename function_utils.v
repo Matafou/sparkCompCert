@@ -786,6 +786,15 @@ Qed.
 
 (* Definition store_params:= Eval lazy beta iota delta [store_params bind] in store_params. *)
 
+(* We hide the parameter_mode stuff, for convenience in proofs. *)
+
+Definition indirection_according_to_mode mode x id :=
+  match mode with
+  | In => Evar id
+  | Out => Eload x (Evar id)
+  | In_Out => Eload x (Evar id)
+  end .
+
 Function store_params (stbl : Symbol_Table_Module.symboltable) (CE : compilenv)
              (lparams : list paramSpec) {struct lparams} : 
 res stmt :=
@@ -800,11 +809,7 @@ res stmt :=
               match transl_name stbl CE (Identifier 0%nat (parameter_name prm)) with
               | OK x1 =>
                   let rexp :=
-                    match parameter_mode prm with
-                    | In => Evar id
-                    | Out => Eload x (Evar id)
-                    | In_Out => Eload x (Evar id)
-                    end in
+                  indirection_according_to_mode (parameter_mode prm) x id in
                   OK (Sseq (Sstore x x1 rexp) x0)
               | Error msg => Error msg
               end
@@ -976,4 +981,3 @@ Lemma transl_paramexprlist_ok : forall x y z, transl_paramexprlist x y z = spark
 Proof.
   reflexivity.
 Qed.
-
