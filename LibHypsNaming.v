@@ -262,10 +262,11 @@ Lemma foo: forall x y,
     x = y -> 
     ~x = y -> 
     ~1 < 0 ->
+    forall z t:nat,
     (0 < 1 -> ~(true=false)) ->
     (forall w w',w < w' -> ~(true=false)) ->
     (0 < 1 -> ~(1<0)) ->
-    (0 < 1 -> 1<0) -> 0 < 1.
+    (0 < 1 -> 1<0) -> 0 < z.
   (* auto naming at intro: *)
  !intros.
  Undo.
@@ -279,8 +280,11 @@ Lemma foo: forall x y,
  (* intros first, rename some hyp only: *)
  intros.
  autorename H0.
+ Undo 3.
  (* put !! before a (composed)tactic to rename all new hyps: *)
- revert H6.
+ intros;; (fun h => substHyp h||(move_up_types h;autorename h)).
+ Undo.
+ intros.
  !destruct H eqn:?;intro.
  Undo.
  !!destruct H eqn:?;intro.

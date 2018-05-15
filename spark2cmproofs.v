@@ -9485,6 +9485,10 @@ Proof.
                       (Values.Vptr sp Ptrofs.zero) locenv' g m').
     { decomp h_ex. 
       exists locenv', t2, m'.
+      split.
+      - econstructor.
+        + eassumption.
+        + 
       
 
     }

@@ -55,7 +55,16 @@ Ltac tac_if_not_old tac old_hyps H :=
   | _ => tac H + idtac (* never fail, this could be configurable *)
   end.
 
-(* Applies tac and then aftertac to each new hypothesis *)
+(* Applies tac and then aftertac to each new hypothesis newer first (for
+   instance if reverting hyps this is probably better) *)
+Ltac tac_new_hyps_rev tac aftertac :=
+  let old_hyps := all_hyps in
+  let substnew H := tac_if_not_old aftertac old_hyps H in
+  tac ;
+  let new_hyps := all_hyps in
+  map_hyps_rev substnew new_hyps.
+
+(* Applies tac and then aftertac to each new hypothesis older first *)
 Ltac tac_new_hyps tac aftertac :=
   let old_hyps := all_hyps in
   let substnew H := tac_if_not_old aftertac old_hyps H in
@@ -66,6 +75,12 @@ Ltac tac_new_hyps tac aftertac :=
 Tactic Notation (at level 3) "onAllHyps" tactic(Tac) := (map_all_hyps Tac).
 Tactic Notation (at level 3) "onAllHypsRev" tactic(Tac) := (map_all_hyps_rev Tac).
 Tactic Notation (at level 3) "onNewHypsOf" tactic(Tac) "do" tactic3(Tac2) := (tac_new_hyps Tac Tac2).
+Tactic Notation (at level 3) "onNewHypsOfRev" tactic(Tac) "do" tactic3(Tac2) := (tac_new_hyps_rev Tac Tac2).
+
+(* Tactical "tac1;;tac2" means apply "tac1" to the goal, then apply "(tac2
+   h)" to each subgoal for each new hyp h. *)
+Tactic Notation (at level 4) tactic4(tac1) ";;" tactic3(tac2) := (tac_new_hyps tac1 tac2).
+Tactic Notation (at level 4) tactic4(tac1) ";!;" tactic3(tac2) := (tac_new_hyps_rev tac1 tac2).
 
 (* Some usual tactics one may want to use with onNewHypsOf: *)
 (* subst. *)
@@ -93,6 +108,13 @@ Ltac move_up_types H := match type of H with
                                 end
                         end.
 
+Ltac subst_or_move_up H := (substHyp H + move_up_types H).
+
+
+(* Typical use, subst with all hyps created by inversion, and move
+Type-sorted hyps to the top of the goal:
+
+inversion H ;; subst_or_move_up. *)
 
 (* See also LibHypsNaming.v for a generic tactic for auto naming new
    hypothesis. *)
@@ -113,6 +135,10 @@ Proof.
   onNewHypsOf (destruct x eqn:heq;intros) do (fun h => substHyp h).
   Undo.
   onNewHypsOf (destruct x eqn:heq;intros) do substHyp.
+  Undo.
+  onNewHypsOf (destruct x eqn:heq;intros) do revertHyp.
+  Undo.
+  onNewHypsOf (destruct x eqn:heq;intros) do (fun h => substHyp h || move_up_types h).
   Undo.
   onNewHypsOf (destruct x eqn:heq;intros) do subst_or_revert.
 Abort.

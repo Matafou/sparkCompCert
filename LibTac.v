@@ -33,12 +33,21 @@ Tactic Notation "rew" constr(t') "with"  tactic(tac) :=
    then rename remaining new hyps. *)
 Tactic Notation "!!!" tactic3(Tac) := !!(tac_new_hyps Tac substHyp).
 
+(* Same + move hyp to the top of the goal if it is Type-sorted *)
+Tactic Notation (at level 4) "!!!!" tactic4(tac1) :=
+  (tac1 ;; (fun h => substHyp h||(move_up_types h;autorename h))).
+
+(* subst or revert, revert is done from older to newer *)
+Tactic Notation (at level 4) "??" tactic4(tac1) :=
+  (tac1 ;; substHyp ;!; revertHyp).
+
 (* in sparkCompcert !inversion always tries to subst. *)
 Tactic Notation "!inversion" hyp(h) := !!! (inversion h).
 Tactic Notation "!invclear" hyp(h) := !!! (inversion h;clear h).
 
-(* Example of !!! *)
-(* Ltac rename_hyp_2 h th :=
+(* Example of !!! and ?? *)
+(*
+Ltac rename_hyp_2 h th :=
   match th with
   | true = false => fresh "trueEQfalse"
   end.
@@ -50,15 +59,18 @@ Lemma foo: forall x y,
     x = y -> 
     ~x = y -> 
     ~1 < 0 ->
+    forall z t:nat,
     (0 < 1 -> ~(true=false)) ->
     (forall w w',w < w' -> ~(true=false)) ->
     (0 < 1 -> ~(1<0)) ->
-    (0 < 1 -> 1<0) -> 0 < 1.
+    (0 < 1 -> 1<0) -> 0 < z.
   (* auto naming + subst when possible at intro: *)
- !!!intros.
- Undo.
- auto with arith.
-Qed.
+  ??intros.
+  Undo.
+  !!!intros.
+  Undo.
+  !!!!intros.
+Admitted.
 *)
 (* Examples of decomp *)
 (*

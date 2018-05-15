@@ -456,7 +456,7 @@ Proof.
     replace (n' + S n'')%nat with (S n' + n'')%nat in h_CM_eval_expr; try omega.
     specialize (h_forall_n' h_CM_eval_expr).
     decomp h_forall_n'.
-    !!pose proof chained_stack_structure_decomp_S_2 n' m sp' h_chain_m1 g e (Values.Vptr b Ptrofs.zero) h_CM_eval_expr1.
+    !specialize chained_stack_structure_decomp_S_2 with (1:=h_chain_m1)(2:=h_CM_eval_expr1) as ?. 
     decomp h_ex.
     exists sp'0;split;[|split;[|split]];eauto.
     + replace (n' + S n'')%nat with (S n' + n'')%nat; try omega.
