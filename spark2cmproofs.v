@@ -997,6 +997,15 @@ Inductive strong_stack_match_CE: STACK.state → compilenv → Prop :=
     stack_match_CE ((lvl,sto)::s) ((lvl,stoCE)::CE) ->
     strong_stack_match_CE ((lvl,sto)::s) ((lvl,stoCE)::CE).
 
+Ltac rename_stck_matchCE H th :=
+  match th with
+  | stack_match_CE ?s ?CE => fresh "stk_mtch_CE_" s "_" CE
+  | stack_match_CE ?s _ => fresh "stk_mtch_CE_" s
+  | stack_match_CE _ _ => fresh "stk_mtch_CE"
+  | _ => rename_hyp2' H th
+  end.
+
+Ltac rename_sparkprf ::= rename_stck_matchCE.
 
 Lemma nodup_stack_match_CE_strong:
   forall s CE,
@@ -1018,9 +1027,9 @@ Proof.
       * eapply STACK.stack_NoDup_G_cons;eauto.
       * eapply CompilEnv.stack_NoDup_G_cons ;eauto.
       * red;!intros.
-        red in H4.
-        specialize (H4 nme lvl).
-        destruct H4 as [h1 h2].
+        red in h_stk_mtch_CE.
+        specialize (h_stk_mtch_CE nme lvl).
+        destruct h_stk_mtch_CE as [h1 h2].
         split;!intros.
         -- specialize (h1 sto).
            !assert (STACK.frameG nme ((Datatypes.length s, s1) :: s) = Some (lvl, sto)).
@@ -1065,10 +1074,10 @@ Proof.
               intros.
               omega.
            ++ eauto.
-    + rewrite heq_length in H4.
+    + rewrite heq_length in h_stk_mtch_CE.
       assumption.
 Qed.
-  
+
 
 (* A name present in CE is translated to some expression that evaluates
    correctly to an address. *)
@@ -1087,6 +1096,15 @@ Inductive strong_stack_match_addresses stbl:compilenv → Values.val → env →
     stack_match_addresses stbl ((lvl,stoCE)::CE) v' locenv' g m ->
     strong_stack_match_addresses stbl ((lvl,stoCE)::CE) v' locenv' g m.
 
+Ltac rename_stck_matchaddr H th :=
+  match th with
+  | stack_match_addresses _ _ ?CE _ _ ?m => fresh "stk_mtch_addr_" CE "_" m
+  | stack_match_addresses _ _ ?CE _ _ _ => fresh "stk_mtch_addr_" CE
+  | stack_match_addresses _ _ _ _ _ _ => fresh "stk_mtch_addr"
+  | _ => rename_stck_matchCE H th
+  end.
+
+Ltac rename_sparkprf ::= rename_stck_matchaddr.
 
 Lemma nodup_stack_match_address_strong:
   forall st CE sp locenv g m,
@@ -1098,7 +1116,7 @@ Lemma nodup_stack_match_address_strong:
 Proof.
   induction CE;!intros.
   - now constructor.
-  - rename H2 into h_stack_match_addr.
+  - rename h_stk_mtch_addr_sp_m into h_stack_match_addr.
     destruct a.
     !inversion h_chain_m;subst;up_type.
     econstructor 2;eauto.
@@ -1212,6 +1230,18 @@ Inductive strong_stack_match stbl: STACK.state → compilenv → Values.val → 
 Definition all_addr_no_overflow CE := forall id δ,
     CompilEnv.fetchG id CE = Some δ -> 0 <= δ < Ptrofs.modulus.
 
+Ltac rename_stck_match H th :=
+  match th with
+  | all_addr_no_overflow ?x => fresh "bound_addr_" x
+  | all_addr_no_overflow _ => fresh "bound_addr"
+  | stack_match_addresses _ _ ?CE _ _ ?m => fresh "stk_mtch_addr_" CE "_" m
+  | stack_match_addresses _ _ ?CE _ _ _ => fresh "stk_mtch_addr_" CE
+  | stack_match_addresses _ _ _ _ _ _ => fresh "stk_mtch_addr"
+  | _ => rename_stck_matchaddr H th
+  end.
+
+Ltac rename_sparkprf ::= rename_stck_match.
+
 Proposition all_addr_nooverf_cons : forall x CE,
     CompilEnv.NoDup_G (x :: CE) ->
     all_addr_no_overflow (x:: CE) -> all_addr_no_overflow CE.
@@ -1237,7 +1267,7 @@ Lemma transl_name_nodup_cons : forall st CE nme lvl n fr,
     transl_name st (fr::CE) nme = Errors.OK (build_loads (S lvl) n).
 Proof.
   !intros.
-  rename H into h_no_overf.
+  rename  into h_no_overf.
   red in h_nodup_G_CE.
   !functional inversion heq_transl_name;subst.
   specialize transl_variable_nodup_resideG with (1:=heq_transl_variable);!intro.
@@ -1687,7 +1717,7 @@ Definition strong_match_env_2 (st : symboltable) (s : STACK.state) (CE : compile
 (** Hypothesis renaming stuff *)
 Ltac rename_hyp3 h th :=
   match th with
-  | _ => rename_hyp2' h th
+  | _ => rename_stck_match h th
   | upper_bound ?fr ?sz => fresh "upb_" fr "_" sz
   | upper_bound ?fr _ => fresh "upb_" fr
   | upper_bound _ _ => fresh "upb"
@@ -1696,16 +1726,8 @@ Ltac rename_hyp3 h th :=
   (* | all_addr_no_overflow _ => fresh "alladdr_nooverf" *)
   | all_frm_increasing ?x => fresh "allincr_" x
   | all_frm_increasing _ => fresh "allincr"
-  | all_addr_no_overflow ?x => fresh "bound_addr_" x
-  | all_addr_no_overflow _ => fresh "bound_addr"
   | stack_match _ ?s _ _ _ _ ?m => fresh "stk_mtch_" s "_" m
   | stack_match _ _ _ _ _ _ _ => fresh "stk_mtch"
-  | stack_match_addresses _ _ ?CE _ _ ?m => fresh "stk_mtch_addr_" CE "_" m
-  | stack_match_addresses _ _ ?CE _ _ _ => fresh "stk_mtch_addr_" CE
-  | stack_match_addresses _ _ _ _ _ _ => fresh "stk_mtch_addr"
-  | stack_match_CE ?s ?CE => fresh "stk_mtch_CE_" s "_" CE
-  | stack_match_CE ?s _ => fresh "stk_mtch_CE_" s
-  | stack_match_CE _ _ => fresh "stk_mtch_CE"
   | stack_match_lgth ?s ?CE => fresh "stk_mtch_lgth_" s "_" CE
   | stack_match_lgth ?s _ => fresh "stk_mtch_lgth_" s
   | stack_match_lgth _ _ => fresh "stk_mtch_lgth"
