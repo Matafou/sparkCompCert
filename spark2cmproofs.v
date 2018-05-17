@@ -9426,7 +9426,7 @@ Proof.
            build_compilenv stbl enclosingCE lvl lparams decl0 =: (CE, stcksize) -> *)
         (* stcksize <= Ptrofs.max_unsigned -> *)
         transl_declaration stbl CE (S lvl) decl0 =: newlfundef ->
-        store_params stbl CE lparams =: initprms ->
+        store_params stbl ((lvl,l)::CE) lparams =: initprms ->
         transl_decl_to_lident stbl decl0 = decl_t ->
         transl_lparameter_specification_to_lident stbl lparams = tlparams ->
         ∀ proc_t m sp g callinglocenv callingsp callingCE CE_prefx locenv x x' 
@@ -9471,29 +9471,40 @@ Proof.
   - match goal with |- context [?x::lparam'] => set (a:=x) in * end; up_type.
     rew store_params_ok with !!!functional inversion heq_store_prms;up_type.
     !enough (
-        ∃ (locenv_fst : env) (t_fst : Events.trace) (m_fst:mem) (locenv' : env) (t2 : Events.trace) (m' : mem), 
+        ∃ (locenv_fst : env) (t_fst : Events.trace) (m_fst:mem), 
           exec_stmt
             g proc_t (Values.Vptr sp Ptrofs.zero)
             (set_params args_t_v (transl_lparameter_specification_to_lident stbl (a :: lparam'))) m
             (Sstore x1 x3 rexp) t_fst locenv_fst m_fst Out_normal
           (* ∧ match_env stbl ((lvl, x') :: s) ((lvl, l') :: CE) *)
                       (* (Values.Vptr sp Ptrofs.zero) locenv' g m' *)
-          ∧ exec_stmt
+          ∧  ∃ (locenv' : env) (t2 : Events.trace) (m' : mem),
+            exec_stmt
               g proc_t (Values.Vptr sp Ptrofs.zero) locenv_fst m_fst
               x2 t2 locenv' m' Out_normal
-          ∧ match_env stbl ((lvl, x') :: s) ((lvl, l') :: CE)
-                      (Values.Vptr sp Ptrofs.zero) locenv' g m').
+            ∧ match_env stbl ((lvl, x') :: s) ((lvl, l') :: CE)
+                        (Values.Vptr sp Ptrofs.zero) locenv' g m').
     { decomp h_ex. 
-      exists locenv', t2, m'.
+      exists locenv', (Events.Eapp t_fst t2), m'.
       split.
       - econstructor.
         + eassumption.
-        + 
-      
-
-    }
-
-
+        + eassumption.
+        + reflexivity.
+      - assumption. }
+    do 3 eexists.
+    split.
+    
+    + admit.
+      (*!specialize (h_match_env0.(me_stack_match)) as ?.
+      red in h_stk_mtch.
+      specialize h_stk_mtch with (1:=heq_transl_name).
+      !!!!inversion h_copy_in.
+      !!!!functional inversion heq_transl_name.
+      !!!!functional inversion heq_transl_variable.
+      econstructor.
+      *)
+    + 
 
     !!!inversion h_copy_in;
       match goal with
