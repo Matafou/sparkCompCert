@@ -1038,7 +1038,7 @@ Proof.
            !assert (STACK.frameG nme ((Datatypes.length s, s1) :: s) = Some (lvl, sto)).
            { !assert (STACK.resideG nme s = true).
              { eapply STACK.frameG_resideG_1;eauto. }
-             specialize STACK.nodup_G_cons with (1:=h_stk_nodupG) (2:=heq_resideG);intro h.
+             specialize STACK.nodup_G_cons with (1:=h_nodupG) (2:=heq_resideG);intro h.
              cbn.
              cbn in h.
              rewrite h.
@@ -1235,8 +1235,18 @@ Definition all_addr_no_overflow CE := forall id δ,
 
 Ltac rename_stck_match H th :=
   match th with
-  | all_addr_no_overflow ?x => fresh "bound_addr_" x
-  | all_addr_no_overflow _ => fresh "bound_addr"
+  | stack_no_null_offset ?CE => fresh "nonul_ofs_" CE
+  | stack_no_null_offset _ => fresh "nonul_ofs"
+  | stack_complete _ ?s ?CE => fresh "stk_cmpl_" s "_" CE
+  | stack_complete _ ?s _ => fresh "stk_cmpl_" s
+  | stack_complete _ _ _ => fresh "stk_cmpl"
+  | all_addr_no_overflow ?x => fresh "no_overf_" x
+  | all_addr_no_overflow _ => fresh "no_overf"
+  | stack_match _ ?s _ _ _ _ ?m => fresh "stk_mtch_" s "_" m
+  | stack_match _ _ _ _ _ _ _ => fresh "stk_mtch"
+  | stack_match_lgth ?s ?CE => fresh "stk_mtch_lgth_" s "_" CE
+  | stack_match_lgth ?s _ => fresh "stk_mtch_lgth_" s
+  | stack_match_lgth _ _ => fresh "stk_mtch_lgth"
   | stack_match_addresses _ _ ?CE _ _ ?m => fresh "stk_mtch_addr_" CE "_" m
   | stack_match_addresses _ _ ?CE _ _ _ => fresh "stk_mtch_addr_" CE
   | stack_match_addresses _ _ _ _ _ _ => fresh "stk_mtch_addr"
@@ -1382,8 +1392,8 @@ Proof.
       now inversion heq_length. }
     { red.
       !intros.
-      red in h_bound_addr_CE.
-      eapply h_bound_addr_CE with (id:=id);eauto.
+      red in h_no_overf_CE.
+      eapply h_no_overf_CE with (id:=id);eauto.
       eapply CompilEnv.nodupG_fetchG_cons;eauto. } 
     { eapply STACK.stack_NoDup_G_cons;eauto. }
     { eapply CompilEnv.stack_NoDup_G_cons;eauto. }
@@ -1728,13 +1738,7 @@ Ltac rename_hyp3 h th :=
   (* | all_addr_no_overflow _ => fresh "alladdr_nooverf" *)
   | all_frm_increasing ?x => fresh "allincr_" x
   | all_frm_increasing _ => fresh "allincr"
-  | stack_match_lgth ?s ?CE => fresh "stk_mtch_lgth_" s "_" CE
-  | stack_match_lgth ?s _ => fresh "stk_mtch_lgth_" s
-  | stack_match_lgth _ _ => fresh "stk_mtch_lgth"
   | stack_match_functions _ _ _ _ _ _ => fresh "stk_mtch_fun"
-  | stack_complete _ ?s ?CE => fresh "stk_cmpl_" s "_" CE
-  | stack_complete _ ?s _ => fresh "stk_cmpl_" s
-  | stack_complete _ _ _ => fresh "stk_cmpl"
   | stack_separate _ ?CE _ _ _ ?m => fresh "separate_" CE "_" m
   | stack_separate _ _ _ _ _ ?m => fresh "separate_" m
   | stack_separate _ ?CE _ _ _ _ => fresh "separate_" CE
@@ -1874,10 +1878,10 @@ Ltac rename_stack_push_all_new h th :=
   | stack_push_all_new ?sto ?CE => fresh "stckpushallnew_" sto "_" CE
   | stack_push_all_new ?sto _ => fresh "stckpushallnew_" sto
   | stack_push_all_new _ _ => fresh "stckpushallnew"
-  | invariant_to_locenv _ _ ?m ?e => fresh "inv_locenv_" m "_" e
-  | invariant_to_locenv _ _ _ ?e => fresh "inv_locenv_" e
-  | invariant_to_locenv _ _ ?m _ => fresh "inv_locenv_" m
-  | invariant_to_locenv _ _ ?m _ => fresh "inv_locenv" 
+  | invariant_to_locenv _ _ ?m ?e => fresh "inv_to_locenv_" m "_" e
+  | invariant_to_locenv _ _ ?m ?e => fresh "inv_to_locenv_" m
+  | invariant_to_locenv _ _ ?m ?e => fresh "inv_to_locenv_" e
+  | invariant_to_locenv _ _ ?m ?e => fresh "inv_to_locenv_" m "_" e
   | _ => rename_hyp_strong h th
   end.
 Ltac rename_sparkprf ::= rename_stack_push_all_new.
@@ -1888,10 +1892,10 @@ Lemma all_addr_no_overflow_sublist: forall x CE,
     -> all_addr_no_overflow CE.
 Proof.
   !intros.
-  red in h_bound_addr.
+  red in h_no_overf.
   red.
   !intros.
-  apply h_bound_addr with id.
+  apply h_no_overf with id.
   cbn.
   !destruct (CompilEnv.fetch id x) eqn:?.
   - apply CompilEnv.fetch_ok in heq_CEfetch_id_x.
@@ -2022,6 +2026,7 @@ Proof.
   red.
   !intros.
   red in h_nonul_ofs.
+  red in h_CEnodupG.
   red.
   !intros.
   eapply h_nonul_ofs with nme.
@@ -2214,7 +2219,7 @@ Lemma eval_expr_build_loads_inv_locenv :  forall δ_lvl g sp locenv m base nme_t
 Proof.
   intros δ_lvl.
   !induction δ_lvl;simpl;intros.
-  - eapply h_inv_locenv_m_base;eauto.
+  - eapply h_inv_to_locenv_m_base;eauto.
   - inversion h_CM_eval_expr_nme_t_v.
     econstructor;eauto.
 Qed.
@@ -2808,8 +2813,8 @@ Proof.
   !functional inversion heq_transl_variable;subst.
   !assert (ofs=(Ptrofs.repr δ_nme)). {
     !assert (δ_nme mod Ptrofs.modulus = δ_nme).
-    { red in h_bound_addr_CE.
-      specialize h_bound_addr_CE with (1:=heq_CEfetchG_nme_CE).
+    { red in h_no_overf_CE.
+      specialize h_no_overf_CE with (1:=heq_CEfetchG_nme_CE).
       apply Z.mod_small.
       assumption. }
     eapply (eval_build_loads_offset (Datatypes.length CE) g stkptr locenv m (m' - lvl_nme) _ b ofs  heq_modulo h_aligned_g_m);auto with arith.
@@ -2821,8 +2826,8 @@ Proof.
   red in h_nonul_ofs_CE.
   red in h_nonul_ofs_CE.
   specialize h_nonul_ofs_CE with (1:=heq_CEfetchG_nme_CE).
-  red in h_bound_addr_CE.
-  specialize h_bound_addr_CE with (1:=heq_CEfetchG_nme_CE).
+  red in h_no_overf_CE.
+  specialize h_no_overf_CE with (1:=heq_CEfetchG_nme_CE).
   rewrite Ptrofs.unsigned_repr;auto.
   split;try omega.
   unfold Ptrofs.max_unsigned.
