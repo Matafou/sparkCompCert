@@ -9532,7 +9532,7 @@ Proof.
             (Sstore x1 x3 rexp) t_fst locenv_fst m_fst Out_normal
           (* ∧ match_env stbl ((lvl, x') :: s) ((lvl, l') :: CE) *)
                       (* (Values.Vptr sp Ptrofs.zero) locenv' g m' *)
-          ∧  ∃ (locenv' : env) (t2 : Events.trace) (m' : mem),
+          ∧ ∃ (locenv' : env) (t2 : Events.trace) (m' : mem),
             exec_stmt
               g proc_t (Values.Vptr sp Ptrofs.zero) locenv_fst m_fst
               x2 t2 locenv' m' Out_normal
@@ -9546,9 +9546,24 @@ Proof.
         + eassumption.
         + reflexivity.
       - assumption. }
-    do 3 eexists.
-    split.
-    
+
+    assert (
+      ∃ (locenv_fst : env) (t_fst : Events.trace) (m_fst : mem), 
+        exec_stmt g proc_t (Values.Vptr sp Ptrofs.zero)
+                  (set_params args_t_v (transl_lparameter_specification_to_lident stbl (a :: lparam'))) m (Sstore x1 x3 rexp) t_fst locenv_fst
+                  m_fst Out_normal
+        ∧ (exec_stmt g proc_t (Values.Vptr sp Ptrofs.zero)
+                    (set_params args_t_v (transl_lparameter_specification_to_lident stbl (a :: lparam'))) m (Sstore x1 x3 rexp) t_fst locenv_fst
+                    m_fst Out_normal ->
+    (∃ (locenv' : env) (t2 : Events.trace) (m' : mem), 
+        exec_stmt g proc_t (Values.Vptr sp Ptrofs.zero) locenv_fst m_fst x2 t2 locenv' m' Out_normal
+        ∧ match_env stbl ((lvl, x') :: s) ((lvl, l') :: CE) (Values.Vptr sp Ptrofs.zero) locenv' g m'))). {
+      cbn in heq_transl_name.
+      !!!! functional inversion heq_transl_name.
+      !!!! rew add_to_frame_ok with functional inversion heq_add_to_fr_nme.
+      do 3 eexists .
+      split.
+      
     + admit.
       (*!specialize (h_match_env0.(me_stack_match)) as ?.
       red in h_stk_mtch.
@@ -9558,7 +9573,20 @@ Proof.
       !!!!functional inversion heq_transl_variable.
       econstructor.
       *)
-    + 
+    + !intro.
+      !!!!inversion h_exec_stmt.
+      rewrite heq.
+      eapply h_forall_astnum. (* eauo here goes in a dead-end *)
+      * eassumption.
+      * reflexivity.
+      * reflexivity.
+      * xxx
+
+      rewrite <- heq_E0 in *.
+      decomp h_ex.
+      do 3 eexists.
+      split.
+      * 
 
     !!!inversion h_copy_in;
       match goal with
