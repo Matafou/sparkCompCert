@@ -207,46 +207,51 @@ Ltac autorename H :=
   
 Ltac rename_new_hyps tac := tac_new_hyps tac autorename.
 
-Tactic Notation (at level 3) "!!" tactic3(Tac) := (rename_new_hyps Tac).
-Tactic Notation (at level 0) "!" tactic(Tac) := (rename_new_hyps Tac).
+(* Need a way to rename or revert but revert needs to be done in the
+   other direction (so better do ";; autorename ;!; revertHyp"), and
+   may fail if something depends on the reverted hyp. So we should
+   revert everything depending on the unrenamed hyp. *)
+Ltac revert_if_norename H :=
+  let t := type of H in
+  match type of t with
+  | Prop => match goal with
+            | _ =>  let x := fallback_rename_hyp_prefx H t in idtac
+            (* since we are only in prop it is almost never the case
+               that something depends on H but if this happens we revert
+               everything that does. *)
+            | _ => try revert dependent H
+            end
+  | _ => idtac
+  end.
+
+(* two renaming tactical with different priorities wrt ";". !! binds
+   stronger than ";", "!" bind weaker than ";". *)
+Tactic Notation (at level 3) "!!" tactic3(Tac) := (Tac ;!; revert_if_norename ;; autorename).
+Tactic Notation (at level 0) "!" tactic(Tac) := (Tac ;!; revert_if_norename ;; autorename).
+(* !!! tac performs tac, then subst with new hypothesis when possible,
+   then rename remaining new hyps. "!!!" binds string than ";" *)
+Tactic Notation "!!!" tactic3(Tac) := (Tac ;; substHyp ;!; revert_if_norename ;; autorename).
+
+(* Same as !!! + move hyp to the top of the goal if it is Type-sorted. *)
+Tactic Notation (at level 4) "!!!!" tactic4(Tac) :=
+  (Tac ;; substHyp ;!; revert_if_norename ;; autorename ;; move_up_types).
+  (* (tac1 ;; (fun h => substHyp h||(move_up_types h;autorename h))). *)
+
+(* subst or revert, revert is done from older to newer *)
+Tactic Notation (at level 4) "??" tactic4(tac1) :=
+  (tac1 ;; substHyp ;!; revertHyp).
+
+
+
+(* subst or revert, revert is done from older to newer *)
+Tactic Notation (at level 4) "?!" tactic4(tac1) :=
+  ((tac1 ;; substHyp ;!; revert_if_norename) ;; autorename).
 
 Ltac rename_all_hyps :=
   let renam H := autorename H in
   let hyps := all_hyps in
   map_hyps renam hyps.
 
-
-(** ** Renaming Tacticals *)
-(** Note that for example !!induction h doesn not work because
-    "destruct" is not a ltac function by itself, it is already a
-    notation. Hence the special definitions below for this kind of
-    tactics: induction ddestruct inversion etc. *)
-
-
-(* Tactic Notation "!induction" constr(h) := ! (induction h). *)
-(* Tactic Notation "!functional" "induction" constr(h) := *)
-   (* !! (functional induction h). *)
-(* Tactic Notation "!functional" "inversion" constr(h) := *)
-  (* !! (functional inversion h). *)
-(* Tactic Notation "!destruct" constr(h) := !! (destruct h). *)
-
-(* Tactic Notation "!destruct" constr(h) "!eqn:?" := (!(destruct h eqn:?)). *)
-(* Tactic Notation "!intros" "until" ident(id) := intros until id; !intros. *)
-
-(* Tactic Notation "!intros" simple_intropattern(id1) := ! intro id1. *)
-
-(*Tactic Notation "!intros" ident(id1) ident(id2)
-  := intros id1 id2; !intros.
-Tactic Notation "!intros" ident(id1) ident(id2) ident(id3)
-  := intros id1 id2 id3; !!intros.
-Tactic Notation "!intros" ident(id1) ident(id2) ident(id3) ident(id4)
-  := intros id1 id2 id3 id4; !!intros.
-
-Tactic Notation "!intros" ident(id1) ident(id2) ident(id3) ident(id4) ident(id5)
-  := intros id1 id2 id3 id4 id5; !!intros.
-Tactic Notation "!intros" ident(id1) ident(id2) ident(id3) ident(id4) ident(id5) ident(id6)
-  := intros id1 id2 id3 id4 id5 id6; !!intros.
-*)
 
 (* A full example: *)
 (*
@@ -262,33 +267,35 @@ Lemma foo: forall x y,
     x = y -> 
     ~x = y -> 
     ~1 < 0 ->
-    forall z t:nat,
-    (0 < 1 -> ~(true=false)) ->
-    (forall w w',w < w' -> ~(true=false)) ->
-    (0 < 1 -> ~(1<0)) ->
-    (0 < 1 -> 1<0) -> 0 < z.
+    (true=false) ->
+    (False -> (true=false)) ->
+    forall z t:nat, IDProp -> 
+      (0 < 1 -> ~(true=false)) ->
+      (forall w w',w < w' -> ~(true=false)) ->
+      (0 < 1 -> ~(1<0)) ->
+      (0 < 1 -> 1<0) -> 0 < z.
   (* auto naming at intro: *)
- !intros.
- Undo.
+  !intros.
+   Undo.
   (* auto naming + subst when possible at intro: *)
- !!intros.
- Undo.
- (* intros first, rename after: *)
- intros.
- rename_all_hyps.
- Undo.
- (* intros first, rename some hyp only: *)
- intros.
- autorename H0.
- Undo 3.
- (* put !! before a (composed)tactic to rename all new hyps: *)
- intros;; (fun h => substHyp h||(move_up_types h;autorename h)).
- Undo.
- intros.
- !destruct H eqn:?;intro.
- Undo.
- !!destruct H eqn:?;intro.
- - auto with arith.
- - auto with arith.
-Qed.
+  !!!intros.
+  Undo.
+  (* intros first, rename after: *)
+  intros.
+  rename_all_hyps.
+  Undo.
+  (* intros first, rename some hyp only: *)
+  intros.
+  autorename H0.
+  Undo 3.
+  (* put !! before a (composed)tactic to rename all new hyps: *)
+  intros;; (fun h => substHyp h||(move_up_types h;autorename h)).
+  Undo.
+  intros until 3.
+  !destruct H eqn:?;intros.
+  Undo.
+  !!destruct H eqn:?;intros.
+  Undo.
+  ?!(destruct H eqn:?;intros).
+Abort.
 *)
