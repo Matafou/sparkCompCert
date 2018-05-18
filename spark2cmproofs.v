@@ -1881,7 +1881,6 @@ Ltac rename_stack_push_all_new h th :=
   | invariant_to_locenv _ _ ?m ?e => fresh "inv_to_locenv_" m
   | invariant_to_locenv _ _ ?m ?e => fresh "inv_to_locenv_" e
   | invariant_to_locenv _ _ ?m ?e => fresh "inv_to_locenv_" m "_" e
-  | _ => STACK.rename_hyp1 h th
   | _ => rename_hyp_strong h th
   end.
 Ltac rename_sparkprf ::= rename_stack_push_all_new.
