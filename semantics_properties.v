@@ -86,7 +86,7 @@ Ltac rename_hyp_sem h th :=
 Ltac rename_hyp1 h th :=
   match th with
   | _ => rename_hyp_sem h th
-  | _ => spark_utils.rename_hyp1 h th
+  | _ => STACK.rename_hyp1 h th
   | _ => LibHypsNaming.rename_hyp_neg h th
   end.
 

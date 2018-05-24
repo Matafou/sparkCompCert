@@ -42,11 +42,10 @@ Notation "x ≥ y" := (ge x y) (at level 70, no associativity,format "'[hv' x  '
 Ltac rename_sparkprf h th := fail.
 
 (** Hypothesis renaming stuff from other files + current file.
-    DO NOT REDEFINED INT HIS FILE *)
+    DO NOT REDEFINE IN THIS FILE. Redefine rename_sparkprf instead. *)
 Ltac rename_hyp h th ::=
   match th with
   | _ => (rename_sparkprf h th)
-  | _ => (spark_utils.rename_hyp1 h th)
   | _ => (STACK.rename_hyp1 h th)
   | _ => (semantics_properties.rename_hyp_sem h th)
   | _ => (more_stdlib.rename_hyp1 h th)
@@ -1038,7 +1037,7 @@ Proof.
            !assert (STACK.frameG nme ((Datatypes.length s, s1) :: s) = Some (lvl, sto)).
            { !assert (STACK.resideG nme s = true).
              { eapply STACK.frameG_resideG_1;eauto. }
-             specialize STACK.nodup_G_cons with (1:=h_nodupG) (2:=heq_resideG);intro h.
+             specialize STACK.nodup_G_cons with (1:=h_nodup_G) (2:=heq_resideG);intro h.
              cbn.
              cbn in h.
              rewrite h.
@@ -9701,6 +9700,15 @@ Proof.
       specialize IH with (10:=h_copy_in0).
 
       exists locenv', t2, m'.
+                      (* (Values.Vptr sp Ptrofs.zero) locenv' g m' *)
+          ∧ ∃ (locenv' : env) (t2 : Events.trace) (m' : mem),
+            exec_stmt
+              g proc_t (Values.Vptr sp Ptrofs.zero) locenv_fst m_fst
+              x2 t2 locenv' m' Out_normal
+            ∧ match_env stbl ((lvl, x') :: s) ((lvl, l') :: CE)
+                        (Values.Vptr sp Ptrofs.zero) locenv' g m').
+    { decomp h_ex. 
+      exists locenv', (Events.Eapp t_fst t2), m'.
       split.
       - admit.
         (*econstructor.
@@ -9711,7 +9719,46 @@ Proof.
     }
     
 
+    assert (
+      ∃ (locenv_fst : env) (t_fst : Events.trace) (m_fst : mem), 
+        exec_stmt g proc_t (Values.Vptr sp Ptrofs.zero)
+                  (set_params args_t_v (transl_lparameter_specification_to_lident stbl (a :: lparam'))) m (Sstore x1 x3 rexp) t_fst locenv_fst
+                  m_fst Out_normal
+        ∧ (exec_stmt g proc_t (Values.Vptr sp Ptrofs.zero)
+                    (set_params args_t_v (transl_lparameter_specification_to_lident stbl (a :: lparam'))) m (Sstore x1 x3 rexp) t_fst locenv_fst
+                    m_fst Out_normal ->
+    (∃ (locenv' : env) (t2 : Events.trace) (m' : mem), 
+        exec_stmt g proc_t (Values.Vptr sp Ptrofs.zero) locenv_fst m_fst x2 t2 locenv' m' Out_normal
+        ∧ match_env stbl ((lvl, x') :: s) ((lvl, l') :: CE) (Values.Vptr sp Ptrofs.zero) locenv' g m'))). {
+      cbn in heq_transl_name.
+      !!!! functional inversion heq_transl_name.
+      !!!! rew add_to_frame_ok with functional inversion heq_add_to_fr_nme.
+      do 3 eexists .
+      split.
+      
+    + admit.
+      (*!specialize (h_match_env0.(me_stack_match)) as ?.
+      red in h_stk_mtch.
+      specialize h_stk_mtch with (1:=heq_transl_name).
+      !!!!inversion h_copy_in.
+      !!!!functional inversion heq_transl_name.
+      !!!!functional inversion heq_transl_variable.
+      econstructor.
+      *)
+    + !intro.
+      !!!!inversion h_exec_stmt.
+      rewrite heq.
+      eapply h_forall_astnum. (* eauo here goes in a dead-end *)
+      * eassumption.
+      * reflexivity.
+      * reflexivity.
+      * xxx
 
+      rewrite <- heq_E0 in *.
+      decomp h_ex.
+      do 3 eexists.
+      split.
+      * 
 
 .
 
