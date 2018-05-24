@@ -3421,7 +3421,7 @@ Proof.
   !functional inversion heq_transl_variable0.
   rewrite <- heq_build_loads0 in heq_transl_variable0.
   specialize transl_variable_inj with (1:=h_exct_lvlG_CE)(2:=h_allincr_CE)
-                                      (3:=h_bound_addr_CE)(4:=heq_transl_variable)
+                                      (3:=h_no_overf_CE)(4:=heq_transl_variable)
                                       (5:=heq_transl_variable0).
   assert (m' = m'0).
   { rewrite heq_lvloftop_CE_m' in heq_lvloftop_CE_m'0.
@@ -3440,9 +3440,9 @@ Proof.
     eapply minus_same_eq;eauto. }
   subst lvl_id₂.
   assert (δ_id₁ = δ_id₂).
-  { red in h_bound_addr_CE.
-    specialize h_bound_addr_CE with (1:=heq_CEfetchG_id₁_CE) as h.
-    specialize h_bound_addr_CE with (1:=heq_CEfetchG_id₂_CE) as h'.
+  { red in h_no_overf_CE.
+    specialize h_no_overf_CE with (1:=heq_CEfetchG_id₁_CE) as h.
+    specialize h_no_overf_CE with (1:=heq_CEfetchG_id₂_CE) as h'.
     decomp h.
     decomp h'.
     repeat rewrite Int.Z_mod_modulus_eq in *.
@@ -4875,7 +4875,7 @@ Proof.
       !assert (4 <= n).
       { eapply h_nonul_ofs_CE;eauto. }
       !assert (n < Ptrofs.modulus).
-      { eapply h_bound_addr_CE;eauto. }
+      { eapply h_no_overf_CE;eauto. }
       subst.
       specialize eval_build_loads_offset
         with (2:=h_aligned_g_m) (4:=h_CM_eval_expr_nme_t_nme_t_v) as h.
@@ -4904,7 +4904,7 @@ Proof.
         !assert (4 <= n).
         { eapply h_nonul_ofs_CE;eauto. }
         !assert (n < Ptrofs.modulus).
-        { eapply h_bound_addr_CE;eauto. }
+        { eapply h_no_overf_CE;eauto. }
         subst.
         specialize eval_build_loads_offset
           with (2:=h_aligned_g_m) (4:=h_CM_eval_expr_nme_t_nme_t_v) as h.
@@ -4952,7 +4952,7 @@ Proof.
   (* The three following cases are identical, i.e. the parameter mode
        should not be case split but functional induction does and I don't
        want to make the induction by hand. *)
-  - specialize (h_forall_initparams _ h_exct_lvlG_CE h_nonul_ofs_CE h_bound_addr_CE heq_store_params).
+  - specialize (h_forall_initparams _ h_exct_lvlG_CE h_nonul_ofs_CE h_no_overf_CE heq_store_params).
     !invclear h_exec_stmt_initparams_Out_normal; eq_same_clear.
     specialize h_forall_initparams with (astnum:=astnum)(1:=heq_length)(4:=h_exec_stmt_x0_Out_normal).
     rename m1 into m_mid.
@@ -5071,7 +5071,7 @@ Lemma exec_store_params_unchanged_on_subproof:
 Proof.
   !intros.
   !pose proof (exec_store_params_preserve_forbidden_subproof
-                  _ _ _ _ h_exct_lvlG_CE h_nonul_ofs_CE h_bound_addr_CE
+                  _ _ _ _ h_exct_lvlG_CE h_nonul_ofs_CE h_no_overf_CE
                   heq_store_prms_lparams_initparams
                   astnum _ proc_t _ _ _ _ _ _ _ heq_length h_chain_m_lvl_sp h_aligned_g_m
                   h_exec_stmt_initparams_Out_normal).
@@ -5186,8 +5186,8 @@ Proof.
             !assert (Datatypes.length CE = (S m'0)) by (eapply exact_level_top_lvl;eauto).
             rewrite heq_length.
             omega. }
-          red in h_bound_addr_CE.
-          specialize h_bound_addr_CE with (1:= heq_CEfetchG).
+          red in h_no_overf_CE.
+          specialize h_no_overf_CE with (1:= heq_CEfetchG).
           
           
           !assert (n mod Int.modulus = n).
@@ -5236,8 +5236,8 @@ Proof.
               !assert (Datatypes.length CE = (S m'0)) by (eapply exact_level_top_lvl;eauto).
               rewrite heq_length.
               omega. }
-          red in h_bound_addr_CE.
-          specialize h_bound_addr_CE with (1:= heq_CEfetchG).
+          red in h_no_overf_CE.
+          specialize h_no_overf_CE with (1:= heq_CEfetchG).
           !assert (n mod Int.modulus = n).
           { apply Z.mod_small.
             assumption. }
@@ -5299,7 +5299,7 @@ Proof.
   up_type.
   specialize exec_init_locals_preserve_forbidden_subproof
     with (astnum:=astnum)
-      (1:=h_exct_lvlG_CE) (2:=h_nonul_ofs_CE) (3:=h_bound_addr_CE) 
+      (1:=h_exct_lvlG_CE) (2:=h_nonul_ofs_CE) (3:=h_no_overf_CE) 
          (4:=heq_init_lcl_decl_locvarinit)
          (5:=heq_length) (6:=h_chain_m_lvl_sp) (7:=h_aligned_g_m)
          (8:=h_exec_stmt_locvarinit_Out_normal).
@@ -5661,8 +5661,8 @@ Lemma transl_variable_cons':
 Proof.
   !intros.
   !functional inversion heq_transl_variable;clear heq_transl_variable.
-  red in h_bound_addr.
-  specialize h_bound_addr with (1:=heq_CEfetchG_nme) as h'.
+  red in h_no_overf.
+  specialize h_no_overf with (1:=heq_CEfetchG_nme) as h'.
   decomp h'.
   !assert (Int.Z_mod_modulus δ_nme = Int.Z_mod_modulus δ_id).
   { (* convertible even if unfolding problem *)
@@ -5737,8 +5737,8 @@ Lemma transl_variable_cons'':
 Proof.
   !intros.
   !functional inversion heq_transl_variable;clear heq_transl_variable.
-  red in h_bound_addr.
-  specialize h_bound_addr with (1:=heq_CEfetchG_nme) as h'.
+  red in h_no_overf.
+  specialize h_no_overf with (1:=heq_CEfetchG_nme) as h'.
   decomp h'.
   !assert (Int.Z_mod_modulus δ_nme = Int.Z_mod_modulus δ_id).
   { (* convertible even if unfolding problem *)
@@ -5927,8 +5927,8 @@ Lemma transl_variable_cons:
 Proof.
   !intros.
   !functional inversion heq_transl_variable;clear heq_transl_variable.
-  red in h_bound_addr.
-  specialize h_bound_addr with (1:=heq_CEfetchG_nme) as h'.
+  red in h_no_overf.
+  specialize h_no_overf with (1:=heq_CEfetchG_nme) as h'.
   decomp h'.
   !assert (Int.Z_mod_modulus δ_nme = Int.Z_mod_modulus δ_id).
   { (* convertible even if unfolding problem *)
@@ -6027,7 +6027,7 @@ Proof.
         end.
   all:swap 1 2.
   - (* nme is in CE, applying hyp. *)
-    (* specialize transl_variable_cons'' with (1:=h_bound_addr_CE). *)
+    (* specialize transl_variable_cons'' with (1:=h_no_overf_CE). *)
     !assert (CompilEnv.fetchG nme CE = Some δ_nme).
     { cbn in heq_CEfetchG_nme.
       rewrite h1 in heq_CEfetchG_nme.
@@ -8139,9 +8139,9 @@ Proof.
             eassumption.
          ++ specialize (ci_no_overflow h_inv_comp_CE_stbl).
             !intro.
-            red in h_bound_addr_CE.
-            specialize h_bound_addr_CE with (1:=heq_CEfetchG_id_CE).
-            decomp h_bound_addr_CE.
+            red in h_no_overf_CE.
+            specialize h_no_overf_CE with (1:=heq_CEfetchG_id_CE).
+            decomp h_no_overf_CE.
             unfold Ptrofs.max_unsigned.
             omega.
       -- eapply chained_stack_structure_le;eauto.
@@ -8151,8 +8151,8 @@ Proof.
          ++ apply h_inv_comp_CE_stbl.
       -- specialize (ci_no_overflow h_inv_comp_CE_stbl).
          !intro.
-         red in h_bound_addr_CE.
-         specialize h_bound_addr_CE with (1:=heq_CEfetchG_id_CE).
+         red in h_no_overf_CE.
+         specialize h_no_overf_CE with (1:=heq_CEfetchG_id_CE).
          apply Z.mod_small.
          assumption.
     * eapply store_preserves_structure;eauto.
@@ -8915,9 +8915,9 @@ Proof.
                unfold max_unsigned.
                rewrite modulus_ok.
                !specialize h_inv_comp_CE_st.(ci_no_overflow) as ?.
-               red in h_bound_addr_CE.
-               specialize h_bound_addr_CE with (1:=heq_CEfetchG_id_CE).
-               rewrite Ptrofs.modulus_eq32 in h_bound_addr_CE;eauto.
+               red in h_no_overf_CE.
+               specialize h_no_overf_CE with (1:=heq_CEfetchG_id_CE).
+               rewrite Ptrofs.modulus_eq32 in h_no_overf_CE;eauto.
                omega.
     }
           
@@ -9311,7 +9311,7 @@ Proof.
           rewrite InA_alt in abs.
           decomp abs.
           subst pb_lvl.
-          cbn in .
+          cbn in *.
           red in h_nonempty_inters.
           decomp h_nonempty_inters.
           !inversion h_inA_e.
@@ -9471,43 +9471,170 @@ Proof.
         + cbn.
           assumption. }
 
+
+
+(*
+    Variables (param : paramSpec) (ff : ST.frame) (f' : ST.scope_level * list (idnum * V)) (stbl : symTab) (ss : ST.state) (lparam : list paramSpec) 
+            (le : list exp) (f'' : Ret ST.frame) (n : astnum) (nm : name)
+            (h1:parameter_mode param = Out)
+            (h2:ST.push ff (parameter_name param) Undefined = f')
+            (h3:copyIn stbl ss f' lparam le f'').
+    Variables (xparam : paramSpec) (xff : ST.frame) (xf' : ST.scope_level * list (idnum * V))    
+             (xf'' : Ret ST.frame) (xn : astnum) (xnm : name)
+            (xh1:parameter_mode xparam = Out)
+            (xh2:ST.push xff (parameter_name xparam) Undefined = xf')
+            (xh3:copyIn stbl ss xf' lparam le xf'').
+    Variables n1 n2: astnum.
+    Variables nm1 nm2: name.
+    Variables prm1 prm2: paramSpec.
+    Goal copyIn stbl ss f' (prm1::prm2::[]) (Name n1 nm1 ::Name n1 nm2::[]) (OK (ST.push (ST.push f' (parameter_name prm1) Undefined) (parameter_name prm2) Undefined)).
+      assert (h1:parameter_mode prm1 = Out) by admit.
+      assert (h2:parameter_mode prm2 = Out) by admit.
+      set (
+          XXX:=
+            CopyIn_Mode_Out
+              prm1 f' (ST.push f' (parameter_name prm1) Undefined) stbl ss [prm2] [Name n1 nm2]
+              (OK (ST.push (ST.push f' (parameter_name prm1) Undefined) (parameter_name prm2) Undefined))
+              n1 nm1 h1 eq_refl
+              
+              (CopyIn_Mode_Out
+                 prm2
+                 (ST.push f' (parameter_name prm1) Undefined)
+                 (ST.push (ST.push f' (parameter_name prm1) Undefined) (parameter_name prm2) Undefined)
+                 stbl ss [ ] [ ]
+                 (OK (ST.push (ST.push f' (parameter_name prm1) Undefined) (parameter_name prm2) Undefined))
+                 n1 nm2 h2 eq_refl
+              
+                 (CopyIn_Nil
+                    stbl ss
+                    (ST.push (ST.push f' (parameter_name prm1) Undefined) (parameter_name prm2) Undefined)))).
+      destruct f'.
+      lazy delta[ST.push ST.level_of fst ] beta iota in XXX.
+      simpl in XXX.
+      eapply CopyIn_Mode_Out.
+      all: cycle 2.
+      eapply CopyIn_Mode_Out.
+      5:reflexivity.
+      2:reflexivity.
+      - admit.
+      - constructor.
+        Show Proof.
+      + admit.
+      + admit.
+
+
+    Check (CopyIn_Mode_Out _ _ _ _ _ _ _ _ n nm h1 h2 (CopyIn_Mode_Out _ _ _ _ _ _ _ _ xn xnm xh1 xh2 xh3)).
+    Axiom nametab:nametable.
+    Axiom stbl:symboltable.
+   (*:= {|
+                        vars := [(12%nat,(In,Integer))];
+                        procs := nil;
+                        types := nil;
+                        exps := nil;
+                        sloc := nil;
+                        names := nametab |}.*)
+    Definition prms := [{|parameter_astnum:=123%nat;parameter_name:=12%nat;parameter_subtype_mark:=Integer;parameter_mode:=In|};{|parameter_astnum:=123%nat;parameter_name:=28%nat;parameter_subtype_mark:=Integer;parameter_mode:=In|}].
+    Eval vm_compute in (build_frame_lparams stbl ([(4%nat,4)],8) prms).
+
+    Axiom ff:ST.frame.
+    Axiom s:ST.state.
+    Check (CopyIn_Mode_Out {|parameter_astnum:=123%nat;parameter_name:=12%nat;parameter_subtype_mark:=Integer;parameter_mode:=In|} ff (ST.push ff (12%nat) Undefined) stbl) s prms.
+
+*)
+
+    Lemma init_params_succeeds:
+      ∀ stbl stcksizeinit lparams l' stcksize lvl CE initprms bigs
+        args sto s sto' locenv stkptr g m mcalling callinglocenv callingsp proc_t
+        args_t args_t_v stoCE stoCE' m' locenv' tr tlparams,
+
+        (* tlparams is the args ids of lparams  *)
+        transl_lparameter_specification_to_lident stbl lparams = tlparams -> 
+
+        (* Concerning CE *)
+        build_frame_lparams stbl (stoCE,stcksizeinit) lparams =: (stoCE'++stoCE, stcksize) ->
+
+        (* Concerning Cminor side *)
+        (* evaluate real args *)
+        eval_exprlist g callingsp callinglocenv mcalling args_t args_t_v ->
+        (* build a locenv from args values *)
+        set_params args_t_v tlparams = locenv ->
+        (* generate the code to copy these values from locenv to stack *)
+        store_params stbl ((lvl, stoCE'++stoCE) :: CE) lparams =: initprms ->
+        (* execute the code *)
+        exec_stmt g proc_t stkptr locenv m initprms tr locenv' m' Out_normal ->
+
+        (* Concerning spark side *)
+        copyIn stbl bigs (lvl, sto) lparams args (OK (lvl, sto')) ->
+
+        (* Conclusion *)
+        match_env stbl bigs (CE_prefx++CE) callingsp callinglocenv g mcalling ->
+        match_env stbl ((lvl,sto')::s) ((lvl,stoCE'++stoCE)::CE) stkptr locenv' g m'.
+
+    Lemma init_params_succeeds:
+      ∀ stbl l stcksizeinit lparams l' stcksize lvl CE initprms bigs
+        args sto s sto' locenv sp g m mcalling callinglocenv callingsp CE_prefx proc_t
+        args_t args_t_v stoCE stoCE',
+
+        (* Concerning CE *)
+        build_frame_lparams stbl (stoCE,stcksizeinit) lparams =: (stoCE'++stoCE, stcksize) ->
+
+        (* Concerning Cminor side *)
+        eval_exprlist g callingsp callinglocenv mcalling args_t args_t_v ->
+        set_params args_t_v tlparams = locenv ->
+        store_params stbl ((lvl, stoCE'++stoCE) :: CE) lparams =: initprms ->
+
+        (* Concerning spark side *)
+        copyIn stbl bigs (lvl, sto) lparams args (OK (lvl, sto')) ->
+
+        (* All together *)
+        (* This one implies that spark's copyIn and cminor's
+           eval_exprlist+storeparams+set_params corresponds to copyIn *)
+        match_env stbl bigs (CE_prefx++CE) callingsp callinglocenv g mcalling ->
+        match_env stbl ((lvl,l++l')::s) ((lvl,stoCE++stoCE')::CE) (Values.Vptr sp Ptrofs.zero) locenv g m ->
+
+        ∃ locenv' t2 m',
+          exec_stmt g proc_t (Values.Vptr sp Ptrofs.zero) locenv m initprms t2 locenv'
+                    m' Out_normal.
+
     Lemma init_params_succeeds:
       ∀ stbl lparams lstcksizinit astnum pnum lvl decl0 pbdy statm CE  stcksizeinit stcksize
-        newlfundef  initprms decl_t tlparams l l',
+        newlfundef  initprms decl_t llocals stoCE sto_sz tlparams l l',
         build_frame_lparams stbl lstcksizinit lparams =: (l', stcksize) ->
+        build_compilenv stbl CE lvl lparams llocals =: ((lvl, stoCE) :: CE, sto_sz) ->
         pbdy = mkprocBodyDecl astnum pnum lparams decl0 statm ->
         lstcksizinit = (l,stcksizeinit) ->
         (* add_to_frame stbl fram_sz nme subtyp_mrk
            build_compilenv stbl enclosingCE lvl lparams decl0 =: (CE, stcksize) -> *)
         (* stcksize <= Ptrofs.max_unsigned -> *)
-        transl_declaration stbl CE (S lvl) decl0 =: newlfundef ->
-        store_params stbl CE lparams =: initprms ->
+        transl_declaration stbl ((lvl, stoCE) :: CE) (S lvl) decl0 =: newlfundef ->
+        store_params stbl ((lvl, stoCE) :: CE) lparams =: initprms ->
         transl_decl_to_lident stbl decl0 = decl_t ->
         transl_lparameter_specification_to_lident stbl lparams = tlparams ->
-        ∀ proc_t m sp g callinglocenv callingsp callingCE CE_prefx locenv x x' 
+        ∀ proc_t m sp g mcalling callinglocenv callingsp callingCE CE_prefx locenv sto sto' 
           bigs pref_s s args args_t args_t_v,
           (* compilation of the arguments expressions passed to the procedure. *)
           spark2Cminor.transl_paramexprlist stbl callingCE args lparams =: args_t -> 
           ST.cut_until bigs lvl pref_s s ->
           CompilEnv.cut_until callingCE lvl CE_prefx CE ->
           (* spark: storing args values and then local var init *)
-          copyIn stbl bigs (lvl, x) lparams args (OK (lvl, x')) ->
+          copyIn stbl bigs (lvl, sto) lparams args (OK (lvl, sto')) ->
           (* Cminor: evaluating args *)
-          eval_exprlist g callingsp callinglocenv m args_t args_t_v ->
+           eval_exprlist g callingsp callinglocenv mcalling args_t args_t_v ->
           (* Cminor: and then setting local vars *)
           (*Mem.alloc minit 0 stcksize = (m, sp) ->*) (*  stcksize(fn_stackspace f) *)
           set_params args_t_v tlparams = locenv -> (* FIXME f? *)
           (* match_list x'' args_t_v  *)
           (* if match_env before calling: *)
-          match_env stbl bigs callingCE callingsp callinglocenv g m ->
+          match_env stbl bigs callingCE callingsp callinglocenv g mcalling ->
           (* and also when starting  *)
-          match_env stbl ((lvl,x)::s) ((lvl,l)::CE) (Values.Vptr sp Ptrofs.zero) locenv g m ->
+          match_env stbl ((lvl,sto)::s) ((lvl,l)::CE) (Values.Vptr sp Ptrofs.zero) locenv g m ->
           ∃ locenv' t2 m',
             exec_stmt g proc_t (Values.Vptr sp Ptrofs.zero) locenv m
                       initprms t2 locenv' m' Out_normal
-            ∧ match_env stbl ((lvl,x')::s) ((lvl,l')::CE)
+            ∧ match_env stbl ((lvl,sto')::s) ((lvl,l')::CE)
                         (Values.Vptr sp Ptrofs.zero) locenv' g m'.
 Proof.
+  !intros.
   !intros stbl tlparams lstcksizinit.
   rew build_frame_lparams_ok with
       !!!functional induction function_utils.build_frame_lparams stbl lstcksizinit tlparams;
@@ -9523,38 +9650,68 @@ Proof.
     + econstructor.
     + assumption.
   - inversion heq_Error.
-  - match goal with |- context [?x::lparam'] => set (a:=x) in * end; up_type.
+  - rename h_forall_astnum into IH.
+    match goal with |- context [?x::lparam'] => set (a:=x) in * end; up_type.
     rew store_params_ok with !!!functional inversion heq_store_prms;up_type.
     !enough (
-        ∃ (locenv_fst : env) (t_fst : Events.trace) (m_fst:mem) (locenv' : env) (t2 : Events.trace) (m' : mem), 
+        ∃ (t_fst : Events.trace) (m_fst:mem) , 
           exec_stmt
             g proc_t (Values.Vptr sp Ptrofs.zero)
             (set_params args_t_v (transl_lparameter_specification_to_lident stbl (a :: lparam'))) m
-            (Sstore x1 x3 rexp) t_fst locenv_fst m_fst Out_normal
+            (Sstore x1 x3 rexp) t_fst
+            (set_params args_t_v (transl_lparameter_specification_to_lident stbl (a :: lparam')))
+            m_fst Out_normal
           (* ∧ match_env stbl ((lvl, x') :: s) ((lvl, l') :: CE) *)
-                      (* (Values.Vptr sp Ptrofs.zero) locenv' g m' *)
-          ∧ exec_stmt
+                      (* (Values.Vptr sp Ptrofs.zero) locenv' g m' *)).
+(*    ∧ exec_stmt
               g proc_t (Values.Vptr sp Ptrofs.zero) locenv_fst m_fst
               x2 t2 locenv' m' Out_normal
           ∧ match_env stbl ((lvl, x') :: s) ((lvl, l') :: CE)
-                      (Values.Vptr sp Ptrofs.zero) locenv' g m').
+                      (Values.Vptr sp Ptrofs.zero) locenv' g m').*)
     { decomp h_ex. 
+      specialize IH
+        with (locenv:=(set_params args_t_v (transl_lparameter_specification_to_lident stbl (a :: lparam'))))
+             (m:=m_fst).
+      (!!!!rew transl_paramexprlist_ok with functional inversion htrans_prmexprl);
+        specialize IH with (9:=htrans_prmexprl0).
+      all:!!!inversion h_copy_in;
+         match goal with
+         | H: parameter_mode ?a = ?x, H': parameter_mode ?a = ?y |- _ => now (rewrite H in H';discriminate)
+         | H: parameter_mode ?a = ?x, H': parameter_mode ?a = ?x |- _ => clear H'
+         end;
+      unfold ST.push in h_copy_in0;
+      cbn in h_copy_in0.
+      all:!!!!inversion h_CM_eval_exprl_args_t_args_t_v.
+      all:specialize IH with (12:=h_CM_eval_exprl_x5_vl).
+      all:specialize IH with (13:=h_match_env).
+      !!!!inversion h_exec_stmt.
+      !specialize assignment_preserve_match_env
+        with (3:=h_match_env0)
+             (5:=h_CM_eval_expr_x3_x3_v)
+             (9:=heq_storev_rexp_v_m_fst)
+        as ?.
+      specialize h_forall_x
+        with (4:=heq_compute_chnk).
+        with (3:=heq_transl_name)
+      .
+
+      cbn in h_copy_in0.
+      cbn in h_copy_in0.
+
+      specialize IH with (10:=h_copy_in0).
+
       exists locenv', t2, m'.
       split.
-      - econstructor.
+      - admit.
+        (*econstructor.
         + eassumption.
-        + 
-      
-
+        + admit.
+        + *)
+      - admit.
     }
+    
 
 
-
-    !!!inversion h_copy_in;
-      match goal with
-      | H: parameter_mode ?a = ?x, H': parameter_mode ?a = ?y |- _ => try now (rewrite H in H';discriminate)
-      end.
-      up_type.
 
 .
 
@@ -9944,7 +10101,7 @@ Admitted.
         apply le_n. }
       !intros.
       !specialize init_params_preserves_structure
-        with (1:=h_exct_lvlG) (2:=H) (3:=h_bound_addr)
+        with (1:=h_exct_lvlG) (2:=H) (3:=h_no_overf)
              (4:=heq_store_prms_procedure_parameter_profile_s_parms)
              (7:=h_aligned_g_m_postchainarg)
              (8:=h_exec_stmt_s_parms_Out_normal)(astnum:=astnum)
