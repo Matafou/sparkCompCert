@@ -9541,16 +9541,40 @@ Proof.
 
 *)
 
-    Lemma init_params_succeeds:
-      ∀ stbl stcksizeinit lparams l' stcksize lvl CE initprms bigs
-        args sto s sto' locenv stkptr g m mcalling callinglocenv callingsp proc_t
-        args_t args_t_v stoCE stoCE' m' locenv' tr tlparams,
+    !!specialize transl_expr_ok with (3:=h_match_env) as ?.
 
+    Lemma copyIn_store_params_ok:
+      ∀ st CE args args_t g callingsp callinglocenv mcalling
+        (args_t_v:list Values.val) lvl sto' sto lparams bigs ,
+        transl_paramexprlist st CE args lparams =: args_t ->
+        eval_exprlist g callingsp callinglocenv mcalling args_t args_t_v ->
+        copyIn st bigs (lvl, sto) lparams args (OK (lvl, sto'++sto)) ->
+        transl_value_list (List.map snd sto') args_t_v.
+
+        set_params args_t_v tlparams = locenv ->
+        (* generate the code to copy these values from locenv to stack *)
+        store_params stbl ((lvl, stoCE'++stoCE) :: CE) lparams =: initprms ->
+        (* execute the code *)
+        exec_stmt g proc_t stkptr locenv m initprms tr locenv m' Out_normal
+        ∧ 
+        
+
+
+    Lemma init_params_succeeds:
+      ∀ stbl stcksizeinit lparams stcksize lvl CE initprms bigs
+        s locenv stkptr g m mcalling callinglocenv callingsp proc_t
+        args_t m' locenv' tr tlparams CE_prefx
+        proc_stkptr
+        sto sto' stoCE stoCE' args args' args_t_v args_t_v',
         (* tlparams is the args ids of lparams  *)
         transl_lparameter_specification_to_lident stbl lparams = tlparams -> 
+        set_params (args_t_v++args_t_v') tlparams = locenv -> 
+        match_env stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) proc_stkptr locenv g m x-> 
 
         (* Concerning CE *)
         build_frame_lparams stbl (stoCE,stcksizeinit) lparams =: (stoCE'++stoCE, stcksize) ->
+        (* Concerning spark side *)
+        copyIn stbl bigs (lvl, sto) lparams args (OK (lvl, sto'++sto)) ->
 
         (* Concerning Cminor side *)
         (* evaluate real args *)
@@ -9562,12 +9586,10 @@ Proof.
         (* execute the code *)
         exec_stmt g proc_t stkptr locenv m initprms tr locenv' m' Out_normal ->
 
-        (* Concerning spark side *)
-        copyIn stbl bigs (lvl, sto) lparams args (OK (lvl, sto')) ->
 
         (* Conclusion *)
         match_env stbl bigs (CE_prefx++CE) callingsp callinglocenv g mcalling ->
-        match_env stbl ((lvl,sto')::s) ((lvl,stoCE'++stoCE)::CE) stkptr locenv' g m'.
+        match_env stbl ((lvl,sto'::sto)::s) ((lvl,stoCE'++stoCE)::CE) stkptr locenv' g m'.
 
     Lemma init_params_succeeds:
       ∀ stbl l stcksizeinit lparams l' stcksize lvl CE initprms bigs
