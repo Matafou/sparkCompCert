@@ -9542,6 +9542,16 @@ Proof.
 *)
 
     !!specialize transl_expr_ok with (3:=h_match_env) as ?.
+    Lemma Forall_impl_strong : forall A (P Q : A -> Prop) (l: list A),
+        (forall a, List.In a l -> P a -> Q a) ->
+        Forall P l ->
+        Forall Q l.
+    Proof.
+      intros A P Q l H.
+      rewrite !Forall_forall.
+      intros H0 x H1. 
+      firstorder.
+    Qed.
 
     Lemma copyIn_store_params_ok:
       ∀ st CE args lparams args_t ,
@@ -9556,12 +9566,20 @@ Proof.
           ∀ locenv tlparams,
           transl_lparameter_specification_to_lident st lparams = tlparams -> 
           set_params (args_t_v++args_t_v') tlparams = locenv -> 
-          Forall (fun prm:(idnum * V) =>
+          Forall2 (fun (prm:idnum * V) prm_prof  =>
                     forall k' v',
                     let (k,v) := prm in
-                    transl_paramid k = k' ->
-                    transl_value v v' -> 
-                    Maps.PTree.get k' locenv = Some v') sto'.
+                     transl_paramid k = k' ->
+                     match parameter_mode prm_prof with
+                     | In => (transl_value v v' -> Maps.PTree.get k' locenv = Some v')
+                     | Out => (v = Undefined)
+                     | InOut =>
+                       (transl_value v v' ->
+                        forall chk,
+                          compute_chnk_of_type st (parameter_subtype_mark prm_prof) =: chk ->
+                          exists addr,
+                            Maps.PTree.get k' locenv = Some addr)
+                     end) (List.rev sto') lparams.
     Proof.
       !intros until lparams.
       !!!!rew transl_paramexprlist_ok with
@@ -9601,96 +9619,271 @@ Proof.
           up_type.
           rewrite <- app_assoc in h_copy_in0.
           simpl in h_copy_in0.
-          !!!!specialize h_forall_args_t with (1:=h_copy_in0)(2:=eq_refl)(3:=eq_refl).
-
-          Require Import List SetoidList Sorted PermutSetoid.
-          enough (
-              Forall
-                (λ prm : idnum * V, 
-                         ∀ (k' : positive) (v' : Values.val),
-                           let (k, v) := prm in
-                           transl_paramid k = k'
-                           → transl_value v v'
-                           → Maps.PTree.get
-                               k'
-                               (set_params ((e_t_v :: vl) ++ args_t_v')
-                                           (transl_lparameter_specification_to_lident
-                                              st
-                                              (p1 :: p2))
-                               ) = Some v')
-                (sto'')
-            ∧ (λ prm : idnum * V, 
-                         ∀ (k' : positive) (v' : Values.val),
-                           let (k, v) := prm in
-                           transl_paramid k = k'
-                           → transl_value v v'
-                           → Maps.PTree.get
-                               k'
-                               (set_params ((e_t_v :: vl) ++ args_t_v')
-                                           (transl_lparameter_specification_to_lident
-                                              st
-                                              (p1 :: p2))
-                               ) = Some v') (parameter_name p1, e_v)) as h.
-          { decomp h. 
-            apply Forall_forall.
-            rewrite Forall_forall in h_lst_forall_sto''.
-            !!!!intros.
-            simpl in h_lst_in_x.
-            apply in_app_or in h_lst_in_x.
-            !destruct h_lst_in_x.
-            * apply h_lst_forall_sto'' with (1:=h_lst_in_x_sto'').
-            * !!!!inversion h_lst_in_x.
-              all:swap 1 2.
-              { inversion h_lst_in_x0. }
-              !intros.
-              apply h_forall_k';auto. }
-          split.
-          * apply Forall_impl with (2:=h_forall_args_t).
-            intros.
-            destruct a.
+          rewrite rev_unit.
+          constructor.
+          !!!!intros.
+          * rewrite heq_parameter_mode0.
             !intros.
             simpl.
-            !destruct (Pos.eq_dec k' (transl_paramid (parameter_name p1))).
-            -- subst.
-               rewrite heq_k'.
-               rewrite Maps.PTree.gss.
-            (args_t_v':=args_t_v')                .
-
-
-
-
-            specialize h_forall_args_t with (args_t_v':=args_t_v') (1:=h_copy_in0)
-                                            (2:=eq_refl)(3:=eq_refl).
-            simpl.
-
-            (* use the nodup on lparam to prove that 1)= order is no
-            important, the presence of p1 does not matter. *)
-            apply Forall_impl
-              with (λ prm : idnum * V, 
-                            ∀ (k' : positive) (v' : Values.val),
-                              let (k, v) := prm in
-                              transl_paramid k = k'
-                              → transl_value v v'
-                              → Maps.PTree.get
-                                  k'
-                                  (set_params
-                                     ((vl) ++ args_t_v')
-                                     (transl_lparameter_specification_to_lident st (p2)))
-                                = Some v').
-            -- !intros.
-               admit.
-            -- eapply h_forall_args_t.
-          * !intros.
-            simpl set_params.
-            rewrite heq_transl_paramid.
             rewrite Maps.PTree.gss.
             !specialize transl_expr_ok with (1:=heq_tr_expr_e) (2:=h_eval_expr_e_e_v)
                                             (3:=h_match_env) as ?.
-            decomp h_ex.
-            rewrite det_eval_expr with (1:=h_CM_eval_expr_e_t_e_t_v)(2:=h_CM_eval_expr_e_t_e_t_v0).
-            rewrite  transl_value_det with (1:=h_transl_value_e_v_e_t_v0) (2:=h_transl_value_e_v_e_v_t).
-            reflexivity.
-        +
+            !!!!decomp h_ex.
+            f_equal.
+            rewrite transl_value_det with (2:=h_transl_value_e_v_e_t_v0) (1:=h_transl_value_e_v_v').
+            eapply det_eval_expr;eauto.
+          * 
+            Lemma Forall2_impl : forall A B (P Q : A -> B -> Prop) l l',
+              (forall a b, P a b -> Q a b) ->
+              Forall2 P l l' ->
+              Forall2 Q l l'.
+            Proof.
+              intros A B P Q l l' h_impl H. 
+              induction H.
+              - constructor.
+              - constructor;auto.
+            Qed.
+
+            specialize h_forall_args_t with (1:=h_copy_in0) (2:=eq_refl)
+                                            (args_t_v':=e_t_v::args_t_v') (3:=eq_refl).
+            !!!! (eapply Forall2_impl with (2:=h_forall_args_t); intros).
+            destruct a;!intros.
+            specialize h_forall_k' with (1:=heq_transl_paramid).
+            destruct (parameter_mode b).
+            -- !intros.
+               specialize h_forall_k' with (1:=h_transl_value_t_v').
+               simpl.
+               !destruct (Pos.eq_dec k' (transl_paramid (parameter_name p1))).
+               ++ subst.
+                  rewrite heq_k'.
+                  rewrite Maps.PTree.gss.
+                  rewrite heq_k' in h_forall_k'.
+                  f_equal.
+                  rewrite transl_value_det with (2:=h_transl_value_e_t_v0) (1:=h_transl_value_t_v').
+                  eapply det_eval_expr;eauto.
+
+            simpl.
+            rewrite Maps.PTree.gso.
+            all:swap 1 2.
+            { intro abs.
+              apply Nat2Pos.inj in abs;try omega.
+              setoid_rewrite Nat.add_comm in abs.
+              apply hneq_i.
+              eapply plus_reg_l;eassumption. }
+            assumption.
+        + unfold ST.push in h_copy_in0.
+          simpl  in h_copy_in0.
+          !assert (exists sto'', sto' = sto''++ [(parameter_name p1, Int v)] ). {
+            admit. (*TODO:lemma*)
+          }
+          decomp h_ex.
+          subst sto'.
+          specialize h_forall_args_t with (sto:=(parameter_name p1, Int v) :: sto) (sto':=sto'').
+          up_type.
+          rewrite <- app_assoc in h_copy_in0.
+          simpl in h_copy_in0.
+
+          apply Forall_forall.
+          !!!!intros.
+          destruct x; (!!!! intros).
+          !!!!specialize h_forall_args_t with (1:=h_copy_in0)(2:=eq_refl)(args_t_v':=args_t_v')
+                                              (3:=eq_refl).
+          rewrite Forall_forall in h_forall_args_t.
+          specialize h_forall_args_t with (x:=(i,t)).
+          simpl in h_forall_args_t.
+          specialize h_forall_args_t with (2:=eq_refl)(3:=h_transl_value_t_v').
+          apply in_app_or in h_lst_in_x.
+          !!!!destruct h_lst_in_x.
+          * specialize h_forall_args_t with (1:=h_lst_in).
+            !assert (i≠parameter_name p1). {
+              admit. (* nodup + In i sto' *)
+            }
+            simpl.
+            rewrite Maps.PTree.gso.
+            all:swap 1 2.
+            { intro abs.
+              apply Nat2Pos.inj in abs;try omega.
+              setoid_rewrite Nat.add_comm in abs.
+              apply hneq_i.
+              eapply plus_reg_l;eassumption. }
+            assumption.
+          * simpl in h_lst_in.
+            decomp h_lst_in;try (intro abs;elim abs).
+            !!!!inversion heq_pair.
+            simpl.
+            rewrite Maps.PTree.gss.
+            !specialize transl_expr_ok with (1:=heq_tr_expr_e) (2:=h_eval_expr_e)
+                                            (3:=h_match_env) as ?.
+            !!!!decomp h_ex.
+            f_equal.
+            rewrite transl_value_det with (2:=h_transl_value_e_t_v0) (1:=h_transl_value_t_v').
+            eapply det_eval_expr;eauto.
+        - specialize h_forall_args_t with (bigs:=bigs)(lvl:=lvl)(1:=htrans_prmexprl).
+        !invclear heq_OK.
+        !!!!inversion h_CM_eval_exprl_args_t_args_t_v.
+        specialize h_forall_args_t with (1:=h_CM_eval_exprl_x0_vl)(3:=h_match_env).
+        !!!!inversion h_copy_in;
+          match goal with
+          | H: parameter_mode ?a = ?x, H': parameter_mode ?a = ?y |- _ => try now (rewrite H in H';discriminate)
+          end.
+        + unfold ST.push in h_copy_in0.
+          simpl  in h_copy_in0.
+          !assert (exists sto'', sto' = sto''++ [(parameter_name p1, Undefined)] ). {
+            admit. (*TODO:lemma*)
+          }
+          decomp h_ex.
+          subst sto'.
+          specialize h_forall_args_t with (sto:=(parameter_name p1, Undefined) :: sto) (sto':=sto'').
+          up_type.
+          rewrite <- app_assoc in h_copy_in0.
+          simpl in h_copy_in0.
+
+          apply Forall_forall.
+          !!!!intros.
+          destruct x; (!!!! intros).
+          !!!!specialize h_forall_args_t with (1:=h_copy_in0)(2:=eq_refl)(args_t_v':=args_t_v')
+                                              (3:=eq_refl).
+          rewrite Forall_forall in h_forall_args_t.
+          specialize h_forall_args_t with (x:=(i,t)).
+          simpl in h_forall_args_t.
+          specialize h_forall_args_t with (2:=eq_refl)(3:=h_transl_value_t_v').
+          apply in_app_or in h_lst_in_x.
+          !!!!destruct h_lst_in_x.
+          * specialize h_forall_args_t with (1:=h_lst_in).
+            !assert (i≠parameter_name p1). {
+              admit. (* nodup + In i sto' *)
+            }
+            simpl.
+            rewrite Maps.PTree.gso.
+            all:swap 1 2.
+            { intro abs.
+              apply Nat2Pos.inj in abs;try omega.
+              setoid_rewrite Nat.add_comm in abs.
+              apply hneq_i.
+              eapply plus_reg_l;eassumption. }
+            assumption.
+          * exfalso.
+            simpl in h_lst_in.
+            decomp h_lst_in;try (intro abs;elim abs).
+            !!!!inversion heq_pair.
+            inversion h_transl_value_t_v'.
+        - specialize h_forall_args_t with (bigs:=bigs)(lvl:=lvl)(1:=htrans_prmexprl).
+        !invclear heq_OK.
+        !!!!inversion h_CM_eval_exprl_args_t_args_t_v.
+        specialize h_forall_args_t with (1:=h_CM_eval_exprl_x0_vl)(3:=h_match_env).
+        !!!!inversion h_copy_in;
+          match goal with
+          | H: parameter_mode ?a = ?x, H': parameter_mode ?a = ?y |- _ => try now (rewrite H in H';discriminate)
+          end.
+        + unfold ST.push in h_copy_in0.
+          simpl  in h_copy_in0.
+          !assert (exists sto'', sto' = sto''++ [(parameter_name p1, v)] ). {
+            admit. (*TODO:lemma*)
+          }
+          decomp h_ex.
+          subst sto'.
+          specialize h_forall_args_t with (sto:=(parameter_name p1, v) :: sto) (sto':=sto'').
+          up_type.
+          rewrite <- app_assoc in h_copy_in0.
+          simpl in h_copy_in0.
+
+          apply Forall_forall.
+          !!!!intros.
+          destruct x; (!!!! intros).
+          !!!!specialize h_forall_args_t with (1:=h_copy_in0)(2:=eq_refl)(args_t_v':=args_t_v')
+                                              (3:=eq_refl).
+          rewrite Forall_forall in h_forall_args_t.
+          specialize h_forall_args_t with (x:=(i,t)).
+          simpl in h_forall_args_t.
+          specialize h_forall_args_t with (2:=eq_refl)(3:=h_transl_value_t_v').
+          apply in_app_or in h_lst_in_x.
+          !!!!destruct h_lst_in_x.
+          * specialize h_forall_args_t with (1:=h_lst_in).
+            !assert (i≠parameter_name p1). {
+              admit. (* nodup + In i sto' *)
+            }
+            simpl.
+            rewrite Maps.PTree.gso.
+            all:swap 1 2.
+            { intro abs.
+              apply Nat2Pos.inj in abs;try omega.
+              setoid_rewrite Nat.add_comm in abs.
+              apply hneq_i.
+              eapply plus_reg_l;eassumption. }
+            assumption.
+          * simpl in h_lst_in.
+            decomp h_lst_in;try (intro abs;elim abs).
+            !!!!inversion heq_pair.
+            simpl.
+            rewrite Maps.PTree.gss.
+            !specialize transl_expr_ok with (3:=h_match_env) (e:=Name O nme) as ?.
+            !!!functional inversion heq_transl_name.
+            simpl in h_forall_e'.
+            
+            !specialize transl_variable_OK_inv with (1:=heq_transl_name) as ?.
+            !!!decomp h_ex.
+            rewrite heq_transl_variable in h_forall_e'.
+            
+
+            
+            !specialize transl_expr_ok with (3:=h_match_env) (e:=Name astnum (Identifier astnum id)) as ?.
+            !!!!decomp h_ex.
+            f_equal.
+            rewrite transl_value_det with (2:=h_transl_value_t_e_t_v0) (1:=h_transl_value_t_v').
+            eapply det_eval_expr;eauto.
+        + unfold ST.push in h_copy_in0.
+          simpl  in h_copy_in0.
+          !assert (exists sto'', sto' = sto''++ [(parameter_name p1, Int v)] ). {
+            admit. (*TODO:lemma*)
+          }
+          decomp h_ex.
+          subst sto'.
+          specialize h_forall_args_t with (sto:=(parameter_name p1, Int v) :: sto) (sto':=sto'').
+          up_type.
+          rewrite <- app_assoc in h_copy_in0.
+          simpl in h_copy_in0.
+
+          apply Forall_forall.
+          !!!!intros.
+          destruct x; (!!!! intros).
+          !!!!specialize h_forall_args_t with (1:=h_copy_in0)(2:=eq_refl)(args_t_v':=args_t_v')
+                                              (3:=eq_refl).
+          rewrite Forall_forall in h_forall_args_t.
+          specialize h_forall_args_t with (x:=(i,t)).
+          simpl in h_forall_args_t.
+          specialize h_forall_args_t with (2:=eq_refl)(3:=h_transl_value_t_v').
+          apply in_app_or in h_lst_in_x.
+          !!!!destruct h_lst_in_x.
+          * specialize h_forall_args_t with (1:=h_lst_in).
+            !assert (i≠parameter_name p1). {
+              admit. (* nodup + In i sto' *)
+            }
+            simpl.
+            rewrite Maps.PTree.gso.
+            all:swap 1 2.
+            { intro abs.
+              apply Nat2Pos.inj in abs;try omega.
+              setoid_rewrite Nat.add_comm in abs.
+              apply hneq_i.
+              eapply plus_reg_l;eassumption. }
+            assumption.
+          * simpl in h_lst_in.
+            decomp h_lst_in;try (intro abs;elim abs).
+            !!!!inversion heq_pair.
+            simpl.
+            rewrite Maps.PTree.gss.
+            !specialize transl_expr_ok with (1:=heq_tr_expr_e) (2:=h_eval_expr_e)
+                                            (3:=h_match_env) as ?.
+            !!!!decomp h_ex.
+            f_equal.
+            rewrite transl_value_det with (2:=h_transl_value_e_t_v0) (1:=h_transl_value_t_v').
+            eapply det_eval_expr;eauto.
+
+
+
+
+
+
 Lemma set_params_invariant_nodup: forall lv1 lv2 lid1 lid2 res1 res2,
             permutation lv1 lv2 ->
             set_params l1 lres ->
