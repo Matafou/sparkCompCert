@@ -6866,7 +6866,7 @@ Proof.
     - replace (fst x0, snd x0) with x0;auto.
       destruct x0;simpl;auto. }
   clear h.
-  !destruct h_and as [? h_forall_ord].
+  decomp h_and.
   revert h_incr_order h_fresh_prms_lparam res heq_bld_frm_lparam e x heq_CEfetches_x h_incr_order0  h_lst_forall h_upb.
   rew function_utils.build_frame_lparams_ok with
   !(functional induction (function_utils.build_frame_lparams stbl fram_sz lparam); try discriminate;
@@ -10126,8 +10126,16 @@ Proof.
                   apply h_neg_lst_in;auto.
 Qed.
         
+    !assert (NoDupA (λ x y : paramSpec, parameter_name x = parameter_name y)
+                   procedure_parameter_profile). {
+      admit. (* well formed/typed function *) }
+    !specialize copyIn_store_params_ok
+      with (1:=heq_transl_params_p_x) (2:=h_CM_eval_exprl_args_t_args_t_v)
+           (3:=h_copy_in) (4:=h_match_env)(5:=h_NoDupA_procedure_parameter_profile)
+           (6:=eq_refl) (7:=eq_refl) as ?.
+    rename h_lst_forall_procedure_parameter_profile into h_init_params.
 
-(*
+xxx
     Lemma init_params_succeeds:
       ∀ stbl stcksizeinit lparams stcksize lvl CE initprms bigs
         s locenv stkptr g m mcalling callinglocenv callingsp proc_t
@@ -10137,7 +10145,7 @@ Qed.
         (* tlparams is the args ids of lparams  *)
         transl_lparameter_specification_to_lident stbl lparams = tlparams -> 
         set_params (args_t_v++args_t_v') tlparams = locenv -> 
-        match_env stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) proc_stkptr locenv g m x-> 
+        match_env stbl ((lvl,sto)::s) ((lvl,stoCE)::CE) proc_stkptr locenv g m -> 
 
         (* Concerning CE *)
         build_frame_lparams stbl (stoCE,stcksizeinit) lparams =: (stoCE'++stoCE, stcksize) ->
@@ -10157,7 +10165,7 @@ Qed.
 
         (* Conclusion *)
         match_env stbl bigs (CE_prefx++CE) callingsp callinglocenv g mcalling ->
-        match_env stbl ((lvl,sto'::sto)::s) ((lvl,stoCE'++stoCE)::CE) stkptr locenv' g m'.
+        match_env stbl ((lvl,sto'++sto)::s) ((lvl,stoCE'++stoCE)::CE) stkptr locenv' g m'.
 
     Lemma init_params_succeeds:
       ∀ stbl l stcksizeinit lparams l' stcksize lvl CE initprms bigs
@@ -10625,13 +10633,6 @@ Admitted.
     Proof.
     Admitted.*)
 
-    !assert (NoDupA (λ x y : paramSpec, parameter_name x = parameter_name y)
-                   procedure_parameter_profile). {
-      admit. (* well formed/typed function *) }
-    specialize copyIn_store_params_ok
-      with (1:=heq_transl_params_p_x) (2:=h_CM_eval_exprl_args_t_args_t_v)
-           (3:=h_copy_in) (4:=h_match_env)(5:=h_NoDupA_procedure_parameter_profile)
-           (6:=eq_refl) (7:=eq_refl) as ?.
     destruct f1 as (f_lvl,f_frm).
     assert (f_lvl=Datatypes.length CE_sufx). {
       admit. (*easy lemma.*)
