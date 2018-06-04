@@ -6792,6 +6792,43 @@ Proof.
   assumption.
 Qed.
 
+Lemma in_transl_paramid_in_eq_param_name :
+  forall st l x,
+    List.In (transl_paramid (parameter_name x)) (transl_lparameter_specification_to_lident st l) ->
+    InA eq_param_name x l.
+Proof.
+  !intros until l. 
+  !induction l;(simpl;!!intros).
+  - intro abs;contradict abs.
+  - decomp h_or.
+    + destruct a;destruct x;simpl in *|-*.
+      constructor 1.
+      red.
+      simpl.
+      unfold transl_paramid, transl_num in heq_transl_paramid.
+      apply Nat2Pos.inj in heq_transl_paramid;try omega.
+      rewrite  Nat.add_cancel_r in heq_transl_paramid.
+      auto.
+    + constructor 2.
+      apply h_forall_x.
+      assumption.
+Qed.
+
+
+
+Lemma transl_lparameter_specification_to_lident_nodup: forall  st lprmSpec,
+    NoDupA eq_param_name lprmSpec -> 
+    List.NoDup (transl_lparameter_specification_to_lident st lprmSpec).
+Proof.
+  !intros.
+  !induction h_NoDupA_lprmSpec;fold transl_lparameter_specification_to_lident.
+  - constructor 1.
+  - constructor 2;fold transl_lparameter_specification_to_lident.
+    + intro abs.
+      apply h_neg_inA_x_l.
+      eapply in_transl_paramid_in_eq_param_name;eauto.
+    + assumption.
+Qed.
 
 Lemma build_frame_lparams_correct2 : forall lparam stbl fram_sz res,
     (* No argument with same name *)
@@ -9486,7 +9523,14 @@ Proof.
     Variables n1 n2: astnum.
     Variables nm1 nm2: name.
     Variables prm1 prm2: paramSpec.
-    Goal copyIn stbl ss f' (prm1::prm2::[]) (Name n1 nm1 ::Name n1 nm2::[]) (OK (ST.push (ST.push f' (parameter_name prm1) Undefined) (parameter_name prm2) Undefined)).
+    Goal
+      (copyIn stbl ss f'
+              (prm1        :: prm2        ::[])
+              (Name n1 nm1 :: Name n1 nm2 ::[])
+              (OK (ST.push
+                     (ST.push f' (parameter_name prm1) Undefined)
+                     (parameter_name prm2)
+                     Undefined))).
       assert (h1:parameter_mode prm1 = Out) by admit.
       assert (h2:parameter_mode prm2 = Out) by admit.
       set (
@@ -9515,7 +9559,8 @@ Proof.
       eapply CopyIn_Mode_Out.
       5:reflexivity.
       2:reflexivity.
-      - admit.
+      1: assumption.
+      2: assumption.
       - constructor.
         Show Proof.
       + admit.
@@ -9542,37 +9587,101 @@ Proof.
 *)
 
     !!specialize transl_expr_ok with (3:=h_match_env) as ?.
-    Lemma Forall_impl_strong : forall A (P Q : A -> Prop) (l: list A),
-        (forall a, List.In a l -> P a -> Q a) ->
-        Forall P l ->
-        Forall Q l.
+
+    Lemma copy_in_cons:
+      ∀ st bigs lprmSpec l_exp_args lvl sto l,
+        copyIn st bigs (lvl,sto) lprmSpec l_exp_args (OK (lvl, l)) ->
+        exists l' : ST.store,
+          l = l' ++ sto
+          ∧ Datatypes.length lprmSpec = Datatypes.length l'
+          ∧ ∀ ll, copyIn st bigs (lvl,ll) lprmSpec l_exp_args (OK (lvl, l' ++ ll)).
     Proof.
-      intros A P Q l H.
-      rewrite !Forall_forall.
-      intros H0 x H1. 
-      firstorder.
-    Qed.
-    Lemma Forall2_impl : forall A B (P Q : A -> B -> Prop) l l',
-        (forall a b, P a b -> Q a b) ->
-        Forall2 P l l' ->
-        Forall2 Q l l'.
-    Proof.
-      intros A B P Q l l' h_impl H. 
-      induction H.
-      - constructor.
-      - constructor;auto.
-    Qed.
-    Lemma Forall2_impl_strong : forall A B (P Q : A -> B -> Prop) l l',
-        Forall2 (fun a b => P a b  -> Q a b) l l' -> 
-        Forall2 P l l' ->
-        Forall2 Q l l'.
-    Proof.
-      intros A B P Q l l' h_impl H.
-      revert h_impl.
-      induction H;intros.
-      - constructor.
-      - inversion h_impl;subst.
-        constructor;auto.
+      !intros until 1.
+      remember (lvl,sto) as x.
+      remember (OK (lvl, l)) as x'.
+      revert l lvl sto Heqx Heqx'.
+      autorename h_copy_in.
+      !induction h_copy_in_x_x';!intros;subst;unfold ST.push in *; simpl in *; try discriminate.
+      - !invclear heq_OK.
+        exists nil;split;[|split];auto.
+        !intros.
+        simpl.
+        constructor.
+      - rename h_forall_l into IHh_copy_in_x_x'.
+        specialize IHh_copy_in_x_x' with (2:=eq_refl)(1:=eq_refl).
+        !!!!decomp IHh_copy_in_x_x'.
+        exists (l' ++ [(parameter_name param, e_v)]).
+        rewrite <- app_assoc;simpl.
+        split;[|split].
+        + reflexivity.
+        + rewrite heq_length.
+          rewrite app_length;simpl.
+          rewrite Nat.add_1_r;auto.
+        + !intros.
+          specialize h_forall_ll with (ll:=(parameter_name param, e_v) :: ll).
+          rewrite  <- app_assoc.
+          simpl.
+          econstructor 3;eauto.
+      - rename h_forall_l into IHh_copy_in_x_x'.
+        specialize IHh_copy_in_x_x' with (2:=eq_refl)(1:=eq_refl).
+        !!!!decomp IHh_copy_in_x_x'.
+        exists (l' ++ [(parameter_name param, Int v)]).
+        rewrite <- app_assoc;simpl.
+        split;[|split].
+        + reflexivity.
+        + rewrite heq_length.
+          rewrite app_length;simpl.
+          rewrite Nat.add_1_r;auto.
+        + !intros.
+          specialize h_forall_ll with (ll:=(parameter_name param, Int v) :: ll).
+          rewrite  <- app_assoc.
+          simpl.
+          econstructor 5;eauto.
+      - rename h_forall_l into IHh_copy_in_x_x'.
+        specialize IHh_copy_in_x_x' with (2:=eq_refl)(1:=eq_refl).
+        !!!!decomp IHh_copy_in_x_x'.
+        exists (l' ++ [(parameter_name param, v)]).
+        rewrite <- app_assoc;simpl.
+        split;[|split].
+        + reflexivity.
+        + rewrite heq_length.
+          rewrite app_length;simpl.
+          rewrite Nat.add_1_r;auto.
+        + !intros.
+          specialize h_forall_ll with (ll:=(parameter_name param, v) :: ll).
+          rewrite  <- app_assoc.
+          simpl.
+          econstructor 7;eauto.
+      - rename h_forall_l into IHh_copy_in_x_x'.
+        specialize IHh_copy_in_x_x' with (2:=eq_refl)(1:=eq_refl).
+        !!!!decomp IHh_copy_in_x_x'.
+        exists (l' ++ [(parameter_name param, Int v)]).
+        rewrite <- app_assoc;simpl.
+        split;[|split].
+        + reflexivity.
+        + rewrite heq_length.
+          rewrite app_length;simpl.
+          rewrite Nat.add_1_r;auto.
+        + !intros.
+          specialize h_forall_ll with (ll:=(parameter_name param, Int v) :: ll).
+          rewrite  <- app_assoc.
+          simpl.
+          econstructor 9;eauto.
+      - rename h_forall_l into IHh_copy_in_x_x'.
+        specialize IHh_copy_in_x_x' with (2:=eq_refl)(1:=eq_refl).
+        !!!!decomp IHh_copy_in_x_x'.
+        exists (l' ++ [(parameter_name param, Undefined)]).
+        rewrite <- app_assoc;simpl.
+        split;[|split].
+        + reflexivity.
+        + rewrite heq_length.
+          rewrite app_length;simpl.
+          rewrite Nat.add_1_r;auto.
+        + !intros.
+          specialize h_forall_ll with (ll:=(parameter_name param, Undefined) :: ll).
+          rewrite  <- app_assoc.
+          simpl.
+          econstructor 10;eauto.
     Qed.
 
     Lemma copyIn_store_params_ok:
@@ -9584,7 +9693,7 @@ Proof.
           copyIn st bigs (lvl, []) lparams args (OK (lvl, sto')) ->
 
           match_env st bigs CE callingsp callinglocenv g mcalling ->
-
+          NoDupA (fun x y => x.(parameter_name) = y.(parameter_name)) lparams -> 
           ∀ locenv tlparams,
           transl_lparameter_specification_to_lident st lparams = tlparams -> 
           set_params (args_t_v) tlparams = locenv -> 
@@ -9615,8 +9724,9 @@ Proof.
         rename e into exp_args.
         rename x0 into l_e_t.
         (* no choice in that instantiation: *)
+        !!!inversion h_NoDupA.
         specialize h_forall_args_t with (bigs:=bigs)(lvl:=lvl)
-                                        (1:=htrans_prmexprl).
+                                        (1:=htrans_prmexprl)(5:=h_NoDupA_lprmSpec).
         !invclear heq_OK.
         !!!!inversion h_CM_eval_exprl_args_t_args_t_v.
         clear h_CM_eval_exprl_args_t_args_t_v.
@@ -9627,16 +9737,26 @@ Proof.
           end.
         + unfold ST.push in h_copy_in0.
           simpl  in h_copy_in0.
+
+(* exists_last *)
+
           !assert (exists sto'', sto' = sto''++ [(parameter_name prmSpec, exp_args_v)] ). {
-            admit. (*TODO:lemma*)
-          }
+            !specialize copy_in_cons with (1:=h_copy_in0) as ?.
+            decomp h_ex;subst.
+            exists l';auto. }
           decomp h_ex.
           subst sto'.
           specialize h_forall_args_t with (sto':=sto'').
           up_type.
           !assert (copyIn st bigs (lvl, [ ]) lprmSpec l_exp_args (OK (lvl, sto''))). {
-            admit. (* TODO *)
-          }
+            !specialize copy_in_cons with (1:=h_copy_in0) as ? .
+            decomp h_ex.
+            !specialize h_forall_ll with (ll:=nil).
+            assert (sto''=l'). {
+              eapply app_inv_tail with (l:=[(parameter_name prmSpec, exp_args_v)]);eauto. }
+            subst.
+            rewrite app_nil_r in h_forall_ll.
+            assumption. }
           specialize h_forall_args_t with (1:=h_copy_in1)(2:=eq_refl)(3:=eq_refl).
           rewrite rev_unit.
           constructor;!intros.
@@ -9662,18 +9782,38 @@ Proof.
                ++ assumption.
                ++ intro abs.
                   !assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))). {
-                    admit. (* hyp *)}
-                  intro h_nodup.
-                  !assert (exists x, List.In x (transl_lparameter_specification_to_lident st lprmSpec)
-                                    ∧  x=k'). {
-                    admit. }
+
+                    apply transl_lparameter_specification_to_lident_nodup;auto. }
+                    Lemma set_params_in : ∀ l vl k v,
+                      Maps.PTree.get k (set_params vl l) = Some v ->
+                      List.In k l.
+                    Proof.
+                      induction l;simpl;!intros.
+                      - rewrite Maps.PTree.gempty in heq_mget_k_v.
+                        inversion heq_mget_k_v.
+                      - destruct vl;simpl in *.
+                        + destruct (Pos.eq_dec a k).
+                          * left;auto.
+                          * right.
+                            rewrite Maps.PTree.gso in heq_mget_k_v.
+                            -- eapply IHl;eauto.
+                            -- symmetry.
+                               assumption.
+                        + destruct (Pos.eq_dec a k).
+                          * left;auto.
+                          * right.
+                            rewrite Maps.PTree.gso in heq_mget_k_v.
+                            -- eapply IHl;eauto.
+                            -- symmetry.
+                               assumption.
+                    Qed.
+
+                    !specialize set_params_in with (1:=h_forall_k') as?.
                   simpl in h_nodup.
                   subst k'.
-                  decomp h_ex;subst.
                   rewrite abs in *.
                   rewrite NoDup_cons_iff in h_nodup.
                   !destruct h_nodup.
-                  intro h_nodup2.
                   apply h_neg_lst_in;auto.
             -- auto.
             -- !intros.
@@ -9683,31 +9823,34 @@ Proof.
                ++ assumption.
                ++ intro abs.
                   !assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))). {
-                    admit. (* hyp *)}
-                  intro h_nodup.
-                  !assert (exists x, List.In x (transl_lparameter_specification_to_lident st lprmSpec)
-                                    ∧  x=k'). {
-                    admit. }
+                    apply transl_lparameter_specification_to_lident_nodup;auto. }
+                  decomp h_forall_k'.
+                  !specialize set_params_in with (1:=heq_mget_k'_addr) as ?.
                   simpl in h_nodup.
                   subst k'.
-                  decomp h_ex;subst.
                   rewrite abs in *.
                   rewrite NoDup_cons_iff in h_nodup.
                   !destruct h_nodup.
-                  intro h_nodup2.
                   apply h_neg_lst_in;auto.
         + unfold ST.push in h_copy_in0.
           simpl  in h_copy_in0.
           !assert (exists sto'', sto' = sto''++ [(parameter_name prmSpec, Int v)] ). {
-            admit. (*TODO:lemma*)
-          }
+            !specialize copy_in_cons with (1:=h_copy_in0) as ?.
+            decomp h_ex;subst.
+            exists l';auto. }
           decomp h_ex.
           subst sto'.
           specialize h_forall_args_t with (sto':=sto'').
           up_type.
           !assert (copyIn st bigs (lvl, [ ]) lprmSpec l_exp_args (OK (lvl, sto''))). {
-            admit. (* TODO *)
-          }
+            !specialize copy_in_cons with (1:=h_copy_in0) as ? .
+            decomp h_ex.
+            !specialize h_forall_ll with (ll:=nil).
+            assert (sto''=l'). {
+              eapply app_inv_tail with (l:=[(parameter_name prmSpec, Int v)]);eauto. }
+            subst.
+            rewrite app_nil_r in h_forall_ll.
+            assumption. }
           specialize h_forall_args_t with (1:=h_copy_in1)(2:=eq_refl)(3:=eq_refl).
           rewrite rev_unit.
           constructor;!intros.
@@ -9733,18 +9876,13 @@ Proof.
                ++ assumption.
                ++ intro abs.
                   !assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))). {
-                    admit. (* hyp *)}
-                  intro h_nodup.
-                  !assert (exists x, List.In x (transl_lparameter_specification_to_lident st lprmSpec)
-                                    ∧  x=k'). {
-                    admit. }
+                    apply transl_lparameter_specification_to_lident_nodup;auto. }
+                  !specialize set_params_in with (1:=h_forall_k') as ?.
                   simpl in h_nodup.
                   subst k'.
-                  decomp h_ex;subst.
                   rewrite abs in *.
                   rewrite NoDup_cons_iff in h_nodup.
                   !destruct h_nodup.
-                  intro h_nodup2.
                   apply h_neg_lst_in;auto.
             -- auto.
             -- !intros.
@@ -9754,18 +9892,14 @@ Proof.
                ++ assumption.
                ++ intro abs.
                   !assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))). {
-                    admit. (* hyp *)}
-                  intro h_nodup.
-                  !assert (exists x, List.In x (transl_lparameter_specification_to_lident st lprmSpec)
-                                    ∧  x=k'). {
-                    admit. }
+                    apply transl_lparameter_specification_to_lident_nodup;auto. }
+                  decomp h_forall_k'.
+                  !specialize set_params_in with (1:=heq_mget_k'_addr) as ?.
                   simpl in h_nodup.
                   subst k'.
-                  decomp h_ex;subst.
                   rewrite abs in *.
                   rewrite NoDup_cons_iff in h_nodup.
                   !destruct h_nodup.
-                  intro h_nodup2.
                   apply h_neg_lst_in;auto.
       - rename p1 into prmSpec.
         rename p2 into lprmSpec.
@@ -9773,8 +9907,9 @@ Proof.
         rename nme into nme_args.
         rename x0 into l_e_t.
         (* no choice in that instantiation: *)
+        !!!inversion h_NoDupA.
         specialize h_forall_args_t with (bigs:=bigs)(lvl:=lvl)
-                                        (1:=htrans_prmexprl).
+                                        (1:=htrans_prmexprl)(5:=h_NoDupA_lprmSpec).
         !invclear heq_OK.
         !!!!inversion h_CM_eval_exprl_args_t_args_t_v.
         clear h_CM_eval_exprl_args_t_args_t_v.
@@ -9786,15 +9921,22 @@ Proof.
         + unfold ST.push in h_copy_in0.
           simpl  in h_copy_in0.
           !assert (exists sto'', sto' = sto''++ [(parameter_name prmSpec, Undefined)] ). {
-            admit. (*TODO:lemma*)
-          }
+            !specialize copy_in_cons with (1:=h_copy_in0) as ?.
+            decomp h_ex;subst.
+            exists l';auto. }
           decomp h_ex.
           subst sto'.
           specialize h_forall_args_t with (sto':=sto'').
           up_type.
           !assert (copyIn st bigs (lvl, [ ]) lprmSpec l_exp_args (OK (lvl, sto''))). {
-            admit. (* TODO *)
-          }
+            !specialize copy_in_cons with (1:=h_copy_in0) as ? .
+            decomp h_ex.
+            !specialize h_forall_ll with (ll:=nil).
+            assert (sto''=l'). {
+              eapply app_inv_tail with (l:=[(parameter_name prmSpec, Undefined)]);eauto. }
+            subst.
+            rewrite app_nil_r in h_forall_ll.
+            assumption. }
           specialize h_forall_args_t with (1:=h_copy_in1)(2:=eq_refl)(3:=eq_refl).
           rewrite rev_unit.
           constructor;!intros.
@@ -9811,18 +9953,13 @@ Proof.
                ++ assumption.
                ++ intro abs.
                   !assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))). {
-                    admit. (* hyp *)}
-                  intro h_nodup.
-                  !assert (exists x, List.In x (transl_lparameter_specification_to_lident st lprmSpec)
-                                    ∧  x=k'). {
-                    admit. }
+                    apply transl_lparameter_specification_to_lident_nodup;auto. }
+                  !specialize set_params_in with (1:=h_forall_k') as ?.
                   simpl in h_nodup.
                   subst k'.
-                  decomp h_ex;subst.
                   rewrite abs in *.
                   rewrite NoDup_cons_iff in h_nodup.
                   !destruct h_nodup.
-                  intro h_nodup2.
                   apply h_neg_lst_in;auto.
             -- auto.
             -- !intros.
@@ -9832,18 +9969,14 @@ Proof.
                ++ assumption.
                ++ intro abs.
                   !assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))). {
-                    admit. (* hyp *)}
-                  intro h_nodup.
-                  !assert (exists x, List.In x (transl_lparameter_specification_to_lident st lprmSpec)
-                                    ∧  x=k'). {
-                    admit. }
+                    apply transl_lparameter_specification_to_lident_nodup;auto. }
+                  decomp h_forall_k'.
+                  !specialize set_params_in with (1:=heq_mget_k'_addr) as ?.
                   simpl in h_nodup.
                   subst k'.
-                  decomp h_ex;subst.
                   rewrite abs in *.
                   rewrite NoDup_cons_iff in h_nodup.
                   !destruct h_nodup.
-                  intro h_nodup2.
                   apply h_neg_lst_in;auto.
       - rename p1 into prmSpec.
         rename p2 into lprmSpec.
@@ -9851,8 +9984,9 @@ Proof.
         rename nme into nme_args.
         rename x0 into l_e_t.
         (* no choice in that instantiation: *)
+        !!!inversion h_NoDupA.
         specialize h_forall_args_t with (bigs:=bigs)(lvl:=lvl)
-                                        (1:=htrans_prmexprl).
+                                        (1:=htrans_prmexprl)(5:=h_NoDupA_lprmSpec).
         !invclear heq_OK.
         !!!!inversion h_CM_eval_exprl_args_t_args_t_v.
         clear h_CM_eval_exprl_args_t_args_t_v.
@@ -9865,15 +9999,22 @@ Proof.
           unfold ST.push in h_copy_in0.
           simpl  in h_copy_in0.
           !assert (exists sto'', sto' = sto''++ [(parameter_name prmSpec, nme_args_v)] ). {
-            admit. (*TODO:lemma*)
-          }
+            !specialize copy_in_cons with (1:=h_copy_in0) as ?.
+            decomp h_ex;subst.
+            exists l';auto. }
           decomp h_ex.
           subst sto'.
           specialize h_forall_args_t with (sto':=sto'').
           up_type.
           !assert (copyIn st bigs (lvl, [ ]) lprmSpec l_exp_args (OK (lvl, sto''))). {
-            admit. (* TODO *)
-          }
+            !specialize copy_in_cons with (1:=h_copy_in0) as ? .
+            decomp h_ex.
+            !specialize h_forall_ll with (ll:=nil).
+            assert (sto''=l'). {
+              eapply app_inv_tail with (l:=[(parameter_name prmSpec, nme_args_v)]);eauto. }
+            subst.
+            rewrite app_nil_r in h_forall_ll.
+            assumption. }
           specialize h_forall_args_t with (1:=h_copy_in1)(2:=eq_refl)(3:=eq_refl).
           rewrite rev_unit.
           constructor;!intros.
@@ -9894,18 +10035,13 @@ Proof.
                ++ assumption.
                ++ intro abs.
                   !assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))). {
-                    admit. (* hyp *)}
-                  intro h_nodup.
-                  !assert (exists x, List.In x (transl_lparameter_specification_to_lident st lprmSpec)
-                                    ∧  x=k'). {
-                    admit. }
+                    apply transl_lparameter_specification_to_lident_nodup;auto. }
+                  !specialize set_params_in with (1:=h_forall_k') as ?.
                   simpl in h_nodup.
                   subst k'.
-                  decomp h_ex;subst.
                   rewrite abs in *.
                   rewrite NoDup_cons_iff in h_nodup.
                   !destruct h_nodup.
-                  intro h_nodup2.
                   apply h_neg_lst_in;auto.
             -- auto.
             -- !intros.
@@ -9915,31 +10051,34 @@ Proof.
                ++ assumption.
                ++ intro abs.
                   !assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))). {
-                    admit. (* hyp *)}
-                  intro h_nodup.
-                  !assert (exists x, List.In x (transl_lparameter_specification_to_lident st lprmSpec)
-                                    ∧  x=k'). {
-                    admit. }
+                    apply transl_lparameter_specification_to_lident_nodup;auto. }
+                  decomp h_forall_k'.
+                  !specialize set_params_in with (1:=heq_mget_k'_addr) as ?.
                   simpl in h_nodup.
                   subst k'.
-                  decomp h_ex;subst.
                   rewrite abs in *.
                   rewrite NoDup_cons_iff in h_nodup.
                   !destruct h_nodup.
-                  intro h_nodup2.
                   apply h_neg_lst_in;auto.
         + unfold ST.push in h_copy_in0.
           simpl  in h_copy_in0.
           !assert (exists sto'', sto' = sto''++ [(parameter_name prmSpec, Int v)] ). {
-            admit. (*TODO:lemma*)
-          }
+            !specialize copy_in_cons with (1:=h_copy_in0) as ?.
+            decomp h_ex;subst.
+            exists l';auto. }
           decomp h_ex.
           subst sto'.
           specialize h_forall_args_t with (sto':=sto'').
           up_type.
           !assert (copyIn st bigs (lvl, [ ]) lprmSpec l_exp_args (OK (lvl, sto''))). {
-            admit. (* TODO *)
-          }
+            !specialize copy_in_cons with (1:=h_copy_in0) as ? .
+            decomp h_ex.
+            !specialize h_forall_ll with (ll:=nil).
+            assert (sto''=l'). {
+              eapply app_inv_tail with (l:=[(parameter_name prmSpec, Int v)]);eauto. }
+            subst.
+            rewrite app_nil_r in h_forall_ll.
+            assumption. }
           specialize h_forall_args_t with (1:=h_copy_in1)(2:=eq_refl)(3:=eq_refl).
           rewrite rev_unit.
           constructor;!intros.
@@ -9960,18 +10099,13 @@ Proof.
                ++ assumption.
                ++ intro abs.
                   !assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))). {
-                    admit. (* hyp *)}
-                  intro h_nodup.
-                  !assert (exists x, List.In x (transl_lparameter_specification_to_lident st lprmSpec)
-                                    ∧  x=k'). {
-                    admit. }
+                    apply transl_lparameter_specification_to_lident_nodup;auto. }
+                  !specialize set_params_in with (1:=h_forall_k') as ?.
                   simpl in h_nodup.
                   subst k'.
-                  decomp h_ex;subst.
                   rewrite abs in *.
                   rewrite NoDup_cons_iff in h_nodup.
                   !destruct h_nodup.
-                  intro h_nodup2.
                   apply h_neg_lst_in;auto.
             -- auto.
             -- !intros.
@@ -9981,161 +10115,19 @@ Proof.
                ++ assumption.
                ++ intro abs.
                   !assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))). {
-                    admit. (* hyp *)}
-                  intro h_nodup.
-                  !assert (exists x, List.In x (transl_lparameter_specification_to_lident st lprmSpec)
-                                    ∧  x=k'). {
-                    admit. }
+                    apply transl_lparameter_specification_to_lident_nodup;auto. }
+                  decomp h_forall_k'.
+                  !specialize set_params_in with (1:=heq_mget_k'_addr) as ?.
                   simpl in h_nodup.
                   subst k'.
-                  decomp h_ex;subst.
                   rewrite abs in *.
                   rewrite NoDup_cons_iff in h_nodup.
                   !destruct h_nodup.
-                  intro h_nodup2.
                   apply h_neg_lst_in;auto.
-
-
 Qed.
-    Lemma copyIn_store_params_ok:
-      ∀ st CE args lparams args_t ,
-        transl_paramexprlist st CE args lparams =: args_t ->
-        ∀ g callingsp callinglocenv mcalling args_t_v args_t_v' 
-          lvl sto' sto  bigs,
-          eval_exprlist g callingsp callinglocenv mcalling args_t args_t_v ->
-          copyIn st bigs (lvl, sto) lparams args (OK (lvl, sto'++sto)) ->
-
-          match_env st bigs CE callingsp callinglocenv g mcalling ->
-
-          transl_lparameter_specification_to_lident stbl lparams = tlparams -> 
-          set_params (args_t_v++args_t_v') tlparams = locenv -> 
-          store_params st ((lvl, stoCE'++stoCE) :: CE) lparams =: initprms ->
-          
-
-      transl_value_list (List.map snd (List.rev sto')) args_t_v.
-    Proof.
-      !intros until lparams.
-      !!!!rew transl_paramexprlist_ok with
-          functional induction function_utils.transl_paramexprlist st CE args lparams;
-        try (now (simpl in *; discriminate));!intros.
-      - !invclear heq_OK.
-        !!!!inversion h_copy_in.
-        !!!!inversion h_CM_eval_exprl_args_t_args_t_v.
-        assert (sto'=[]). {
-          induction sto'.
-          - reflexivity.
-          - !assert (Datatypes.length sto = Datatypes.length ((a :: sto') ++ sto)). {
-              rewrite heq_sto at 1.
-              reflexivity. }
-            simpl in heq_length.
-            rewrite app_length in heq_length.
-            exfalso; omega. }
-        subst.
-        cbn.
-        constructor.
-      - specialize h_forall_args_t with (bigs:=bigs)(lvl:=lvl)(1:=htrans_prmexprl).
-        !invclear heq_OK.
-        !!!!inversion h_CM_eval_exprl_args_t_args_t_v.
-        specialize h_forall_args_t with (1:=h_CM_eval_exprl_x0_vl)(3:=h_match_env).
-
-        !!!!inversion h_copy_in;
-          match goal with
-          | H: parameter_mode ?a = ?x, H': parameter_mode ?a = ?y |- _ => try now (rewrite H in H';discriminate)
-          end.
-        + unfold ST.push in h_copy_in0.
-          simpl  in h_copy_in0.
-          !assert (exists sto'', sto' = sto''++ [(parameter_name p1, e_v)] ). {
-            admit. (*TODO:lemma*)
-          }
-          decomp h_ex.
-          subst sto'.
-          specialize h_forall_args_t with (sto:=(parameter_name p1, e_v) :: sto) (sto':=sto'').
-          rewrite <- app_assoc in h_copy_in0.
-          simpl in h_copy_in0.
-          specialize h_forall_args_t with (1:=h_copy_in0).
-          rewrite rev_app_distr;simpl.
-          constructor;auto.
-          !edestruct transl_expr_ok;eauto.
-          decomp h_and.
-          erewrite det_eval_expr with (1:=h_CM_eval_expr_e_t_x)(2:=h_CM_eval_expr_e_t_e_t_v) in h_transl_value_e_v_x;auto.
-        + unfold ST.push in h_copy_in0.
-          simpl  in h_copy_in0.
-          !assert (exists sto'', sto' = sto''++ [(parameter_name p1, Int v)] ). {
-            admit. (*TODO:lemma*)
-          }
-          decomp h_ex.
-          subst sto'.
-          specialize h_forall_args_t with (sto:=(parameter_name p1, Int v) :: sto) (sto':=sto'').
-          rewrite <- app_assoc in h_copy_in0.
-          simpl in h_copy_in0.
-          specialize h_forall_args_t with (1:=h_copy_in0).
-          rewrite rev_app_distr;simpl.
-          constructor;auto.
-          !edestruct transl_expr_ok;eauto.
-          decomp h_and.
-          erewrite det_eval_expr with (1:=h_CM_eval_expr_e_t_x)(2:=h_CM_eval_expr_e_t_e_t_v) in h_transl_value_x;auto.
-      - admit. (* Out params, we need to change the lemma *)
-      - specialize h_forall_args_t with (bigs:=bigs)(lvl:=lvl)(1:=htrans_prmexprl).
-        !invclear heq_OK.
-        !!!!inversion h_CM_eval_exprl_args_t_args_t_v.
-        specialize h_forall_args_t with (1:=h_CM_eval_exprl_x0_vl)(3:=h_match_env).
-
-        !!!!inversion h_copy_in;
-          match goal with
-          | H: parameter_mode ?a = ?x, H': parameter_mode ?a = ?y |- _ => try now (rewrite H in H';discriminate)
-          end.
-        + unfold ST.push in h_copy_in0.
-          simpl  in h_copy_in0.
-          !assert (exists sto'', sto' = sto''++ [(parameter_name p1, v)] ). {
-            admit. (*TODO:lemma*)
-          }
-          decomp h_ex.
-          subst sto'.
-          specialize h_forall_args_t with (sto:=(parameter_name p1, v) :: sto) (sto':=sto'').
-          rewrite <- app_assoc in h_copy_in0.
-          simpl in h_copy_in0.
-          specialize h_forall_args_t with (1:=h_copy_in0).
-          rewrite rev_app_distr;simpl.
-          constructor;auto.
-          !edestruct transl_expr_ok;eauto.
-          decomp h_and.
-          erewrite det_eval_expr with (1:=h_CM_eval_expr_e_t_x)(2:=h_CM_eval_expr_e_t_e_t_v) in h_transl_value_e_v_x;auto.
-        + unfold ST.push in h_copy_in0.
-          simpl  in h_copy_in0.
-          !assert (exists sto'', sto' = sto''++ [(parameter_name p1, Int v)] ). {
-            admit. (*TODO:lemma*)
-          }
-          decomp h_ex.
-          subst sto'.
-          specialize h_forall_args_t with (sto:=(parameter_name p1, Int v) :: sto) (sto':=sto'').
-          rewrite <- app_assoc in h_copy_in0.
-          simpl in h_copy_in0.
-          specialize h_forall_args_t with (1:=h_copy_in0).
-          rewrite rev_app_distr;simpl.
-          constructor;auto.
-          !edestruct transl_expr_ok;eauto.
-          decomp h_and.
-          erewrite det_eval_expr with (1:=h_CM_eval_expr_e_t_x)(2:=h_CM_eval_expr_e_t_e_t_v) in h_transl_value_x;auto.
-      -
-
-
-
-          edestruct h_stk_mtch_bigs_mcalling;eauto.
-        
-        eapply h_forall_args_t.
-
-
-
-
-        set_params args_t_v tlparams = locenv ->
-        (* generate the code to copy these values from locenv to stack *)
-        store_params stbl ((lvl, stoCE'++stoCE) :: CE) lparams =: initprms ->
-        (* execute the code *)
-        exec_stmt g proc_t stkptr locenv m initprms tr locenv m' Out_normal
-        ∧ 
         
 
-
+(*
     Lemma init_params_succeeds:
       ∀ stbl stcksizeinit lparams stcksize lvl CE initprms bigs
         s locenv stkptr g m mcalling callinglocenv callingsp proc_t
@@ -10471,8 +10463,9 @@ Proof.
 
 Qed.
 xxx Change the statement above.
+*)
 
-
+(*
     Lemma init_params_succeeds:
       ∀ (lparams : list paramSpec) (st : symboltable)(lvl : nat) l
         (CE : CompilEnv.state) (initparams : Cminor.stmt),
@@ -10630,7 +10623,15 @@ Admitted.
               exec_stmt g proc_t sp e_chain m s_locvarinit t2 e_chain' m' Out_normal
               ∧ match_env st ((lvl,x'')::s) CE' sp e_chain' g m'.
     Proof.
-    Admitted.
+    Admitted.*)
+
+    !assert (NoDupA (λ x y : paramSpec, parameter_name x = parameter_name y)
+                   procedure_parameter_profile). {
+      admit. (* well formed/typed function *) }
+    specialize copyIn_store_params_ok
+      with (1:=heq_transl_params_p_x) (2:=h_CM_eval_exprl_args_t_args_t_v)
+           (3:=h_copy_in) (4:=h_match_env)(5:=h_NoDupA_procedure_parameter_profile)
+           (6:=eq_refl) (7:=eq_refl) as ?.
     destruct f1 as (f_lvl,f_frm).
     assert (f_lvl=Datatypes.length CE_sufx). {
       admit. (*easy lemma.*)

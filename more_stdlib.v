@@ -19,6 +19,8 @@ Ltac rename_hyp1 h th :=
   | @StronglySorted _ ?ord ?l => fresh "strgSorted"
   | NoDupA _ ?l => fresh "NoDupA_" l
   | NoDupA _ _ => fresh "NoDupA"
+  | NoDup ?l => fresh "nodup_" l
+  | NoDup _ => fresh "nodup"
   end.
 
 
@@ -150,3 +152,35 @@ Lemma stack_NoDupA_sublist: forall A R, forall CE1 CE2 : list A, NoDupA R (CE1 +
     apply h_forall_CE2;auto.
 Qed.
 
+Lemma Forall_impl_strong : forall A (P Q : A -> Prop) (l: list A),
+    (forall a, List.In a l -> P a -> Q a) ->
+    Forall P l ->
+    Forall Q l.
+Proof.
+  intros A P Q l H.
+  rewrite !Forall_forall.
+  intros H0 x H1. 
+  firstorder.
+Qed.
+Lemma Forall2_impl : forall A B (P Q : A -> B -> Prop) l l',
+    (forall a b, P a b -> Q a b) ->
+    Forall2 P l l' ->
+    Forall2 Q l l'.
+Proof.
+  intros A B P Q l l' h_impl H. 
+  induction H.
+  - constructor.
+  - constructor;auto.
+Qed.
+Lemma Forall2_impl_strong : forall A B (P Q : A -> B -> Prop) l l',
+    Forall2 (fun a b => P a b  -> Q a b) l l' -> 
+    Forall2 P l l' ->
+    Forall2 Q l l'.
+Proof.
+  intros A B P Q l l' h_impl H.
+  revert h_impl.
+  induction H;intros.
+  - constructor.
+  - inversion h_impl;subst.
+    constructor;auto.
+Qed.
