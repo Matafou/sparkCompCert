@@ -86,8 +86,9 @@ Definition update_sloc := Symbol_Table_Module.update_sloc.
 Definition range_of (tpnum:type): res range :=
   OK (Range 0 10) (* FIXME *).
 
-(* We add 80 to free names for Compcert *)
-Definition transl_num x := (Pos.of_nat (x+80)).
+(* We add 80 to free names for Compcert. To save place for special
+   vars (chaining param at least). *)
+Definition transl_num x := (Pos.of_succ_nat (x+80)).
 
 (** [reduce_type stbl ty n] returns the basic type (which is not a
     base type à la Ada) of a type. Currently this function iters on a
@@ -206,7 +207,7 @@ Function transl_type (stbl:symboltable) (t:type): res Ctypes.type :=
 (** We book one identifier for the chaining argument of all functions.
     Hopefully we can use the same everywhere. *)
 
-Definition chaining_param := 80%positive.
+Definition chaining_param := 1%positive.
 
 
 Function transl_literal (l:literal): Cminor.constant :=
