@@ -10164,6 +10164,7 @@ Qed.
     !assert (NoDupA (λ x y : paramSpec, parameter_name x = parameter_name y)
                    procedure_parameter_profile). {
       admit. (* well formed/typed function *) }
+
     !specialize copyIn_store_params_ok
       with (1:=heq_transl_params_p_x) (2:=h_CM_eval_exprl_args_t_args_t_v)
            (3:=h_copy_in) (4:=h_match_env)(5:=h_NoDupA_procedure_parameter_profile)
@@ -10193,11 +10194,8 @@ Qed.
         !destruct Maps.PTree.get eqn:?.
         - exfalso.
           apply set_params_in in heq_mget_chaining_param_v.
-          change (transl_lparameter_specification_to_lident st procedure_parameter_profile)
-            with (fn_params the_proc) in heq_mget_chaining_param_v.
+          eapply chaining_param_neq_transl_lparam;eauto.
         - reflexivity. }
-        
-        admit. (* uniqueness of chaining_param *) }
       revert heq_get.
       (* removes the occurrence of procedure_parameter_profile that we do not want
          to induct on. *)
@@ -10234,19 +10232,101 @@ Qed.
                discriminate.
         + apply h_impl_lst_forall_l0_l';auto. }
     
+    apply Forall2_impl_strong with (Q:=(λ (prm : idnum * V) (prm_prof : paramSpec), 
+                     ∀ (k' : positive) (v' : Values.val),
+                     let (k, v) := prm in
+                     transl_paramid k = k'
+                     → match parameter_mode prm_prof with
+                       | In =>
+                           transl_value v v' → Maps.PTree.get k' (set_locals (fn_vars the_proc) (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc))) = Some v'
+                       | Out => v = Undefined
+                       | In_Out =>
+                           transl_value v v'
+                           → ∀ chk : AST.memory_chunk,
+                             compute_chnk_of_type st (parameter_subtype_mark prm_prof) =: chk
+                             → ∃ addr : Values.val, 
+                               Maps.PTree.get k' (set_locals (fn_vars the_proc) (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc))) = Some addr
+                       end)) in h_init_params.
+    all:swap 1 2.
+    { !intros.
+      (* remember procedure_parameter_profile as l in |- *. *)
+      (* revert Heql. *)
+      !assert
+        (forall id,
+            List.In id (fn_vars the_proc)
+            -> (Maps.PTree.get
+                  id
+                  (set_params (chaining_expr_from_caller_v :: args_t_v) (chaining_param ::transl_lparameter_specification_to_lident
+                                          st procedure_parameter_profile))
+                = None)). {
+        admit. (* well formedness *) }
+      revert h_forall_id.
+      (* removes the occurrence of procedure_parameter_profile that we do not want
+         to induct on. *)
+      remember (transl_decl_to_lident st procedure_declarative_part) as l.
+      remember (transl_lparameter_specification_to_lident st procedure_parameter_profile) as lprm.
+      (* do no get it back (elim instead of induction) *)
+      !elim h_init_params;!intros.
+      - constructor.
+      - constructor.
+        + !intros.
+          !!destruct x;!intros.
+          specialize h_forall_k' with (1:= heq_transl_paramid) (v':=v').
+          !destruct (parameter_mode y);!intros.
+          all: swap 1 2.
+          * auto.
+          * rewrite map_get_set_locals_diff.
+            -- auto.
+            -- subst.
+               lazy beta iota delta [set_params] in h_forall_k'0.
+               fold set_params in h_forall_k'0.
+               intro abs.
+               specialize h_forall_id with (1:=abs).
+               specialize h_forall_k'0 with (1:=eq_refl)(2:=h_transl_value_t_v').
+               specialize h_forall_k' with (1:=h_transl_value_t_v').
+               unfold the_proc in h_forall_k'.
+               simpl fn_params in h_forall_k'.
+               
+               unfold fn_params , the_proc in h_forall_k'0.
+               rewrite h_forall_id in h_forall_k'0.
+               discriminate h_forall_k'0.
+          * rewrite map_get_set_locals_diff.
+            -- eapply h_forall_k'0;eauto.
+            -- intro abs.
+               subst.
+               specialize h_forall_k' with (1:=h_transl_value_t_v')(2:=heq_compute_chnk_of_type).
+               specialize h_forall_id with (1:=abs).
+               specialize h_forall_k'0 with (1:=eq_refl)(2:=h_transl_value_t_v')(3:=heq_compute_chnk_of_type).
+               decomp h_forall_k'.
+               lazy beta iota delta [fn_params the_proc] in heq_mget.
+               rewrite heq_mget in h_forall_id.
+               discriminate h_forall_id.
+        + apply h_impl_lst_forall_l0_l';auto. }
+
+xxxxx
+
+
     assert (
         exists locenv' t2 m',
           exec_stmt
             g the_proc stkptr_proc
-            (set_locals (fn_vars the_proc) (set_params (chaining_expr_from_caller_v :: args_t_v)
-                                                       (fn_params the_proc)))
+            (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc))
             m_postchainarg
-            s_parms t2 locenv' m'  Out_normal).
+            s_parms t2 locenv' m'  Out_normal). {
+      remember (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc)) as locenv_proc in *.
+      revert heq_store_prms_procedure_parameter_profile_s_parms.
+      elim h_init_params;!intros.
+      - simpl in heq_store_prms.
+        inversion  heq_store_prms.
+        subst s_parms.
+        do 3 eexists.
+        econstructor.
+      - eapply h_impl_ex;auto.
+        
+}
 
 
-               exec_stmt g proc_t (Values.Vptr sp Ptrofs.zero) locenv m initprms t2 locenv'
-                         m' Out_normal).
-
+ 
 xxx
     Lemma init_params_succeeds:
       ∀ stbl stcksizeinit lparams stcksize lvl CE initprms bigs
