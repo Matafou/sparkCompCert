@@ -10303,9 +10303,140 @@ Qed.
                discriminate h_forall_id.
         + apply h_impl_lst_forall_l0_l';auto. }
 
-xxxxx
+    Lemma exec_params_succeeds:
+      forall st the_proc CE_sufx sto proc_param_prof s_parms g initf f
+             args stkptr_proc s suffix_s revf 
+             s_init_frame locenv_postchainarg m_postchainarg locenv,
+        Forall2 (λ (prm : idnum * V) (prm_prof : paramSpec), 
+                 ∀ (k' : positive) (v' : Values.val),
+                   let (k, v) := prm in
+                   transl_paramid k = k'
+                   → match parameter_mode prm_prof with
+                     | In => transl_value v v' → Maps.PTree.get k' locenv = Some v'
+                     | Out => v = Undefined
+                     | In_Out =>
+                       transl_value v v'
+                       → ∀ chk : AST.memory_chunk,
+                           compute_chnk_of_type st (parameter_subtype_mark prm_prof) =: chk
+                           → ∃ addr : Values.val, Maps.PTree.get k' locenv = Some addr
+                     end)
+                revf proc_param_prof →
+        f = rev revf++initf →
+        store_params st ((Datatypes.length suffix_s, sto) :: CE_sufx) proc_param_prof =: s_parms →       
+        copyIn st s (Datatypes.length suffix_s, initf) proc_param_prof args (OK (Datatypes.length CE_sufx, f)) → 
+        match_env st (s_init_frame :: suffix_s) ((Datatypes.length suffix_s, sto) :: CE_sufx)
+                  stkptr_proc locenv_postchainarg g m_postchainarg →
+        ∃ (locenv' : env) (t2 : Events.trace) (m' : mem), 
+          exec_stmt g the_proc stkptr_proc locenv m_postchainarg s_parms t2 locenv' m'  Out_normal.
+    Proof.
+        !intros until 1.
+        rename h_lst_forall_revf_proc_param_prof into h_cpinOK.
+        revert CE_sufx sto s_parms g args stkptr_proc s f suffix_s s_init_frame locenv_postchainarg
+               m_postchainarg initf.
+        !induction h_cpinOK;!intros.
+        - !!!!rew store_params_ok with functional inversion heq_store_prms.
+          do 3 eexists.
+          constructor.
+        - !!!!rew store_params_ok with functional inversion heq_store_prms.
+          rename x1 into s_params'.
+          assert (∃ (locenv'_fst : env) (t_fst : Events.trace) (m_fst : mem), 
+                     exec_stmt g the_proc stkptr_proc locenv m_postchainarg
+                               (Sstore x0 x2 rexp) t_fst locenv'_fst m_fst Out_normal). {
+            subst f.
+            
 
 
+
+            !!!!inversion h_copy_in.
+            do 3 eexists.
+            econstructor.
+            - !specialize (me_stack_match h_match_env) as ?.
+              red in h_stk_mtch.
+              specialize h_stk_mtch with (1:=heq_transl_name).
+              subst f.
+          specialize h_forall_CE_sufx with (1:=eq_refl)(2:=heq_store_prms_l'_x1).
+
+          specialize h_forall_CE_sufx with (1:=h_match_env).
+
+
+          !!!!inversion h_copy_in.
+          specialize h_forall_CE_sufx with (1:=h_copy_in0).
+          edestruct h_forall_CE_sufx.
+          all:cycle 3.
+          + decomp H.
+            do 3 eexists.
+            eapply H.
+          + 
+          !!!!rew store_params_ok with functional inversion heq_store_prms.
+          do 3 eexists.
+          eapply exec_Sseq_continue.
+          all:swap 1 2.
+          + edestruct h_forall_CE_sufx.
+            * decomp H.
+              eapply H.
+          eapply h_forall_CE_sufx.
+
+
+
+    Lemma exec_params_succeeds:
+      ∀ st procedure_declarative_part procedure_parameter_profile s_pbdy CE_init_frame CE_init_frame_sz
+        CE CE_sufx (CE_prefx: CompilEnv.state) stkptr
+        stkptr_proc b' locenv_proc f f1 suffix_s lglobdef the_proc args_t_v args
+        s_locvarinit procedure_statements sto_sz g m m_postchainarg locenv_postchainarg locenv,
+      Forall2
+        (λ (prm : idnum * V) (prm_prof : paramSpec), 
+         ∀ (k' : positive) (v' : Values.val),
+           let (k, v) := prm in
+           transl_paramid k = k'
+           → match parameter_mode prm_prof with
+             | In => transl_value v v'
+                     → Maps.PTree.get k' (set_locals (transl_decl_to_lident st procedure_declarative_part) locenv_proc) = Some v'
+             | Out => v = Undefined
+             | In_Out =>
+               transl_value v v'
+               → ∀ chk : AST.memory_chunk,
+                   compute_chnk_of_type st (parameter_subtype_mark prm_prof) =: chk
+                   → ∃ addr : Values.val,
+                     Maps.PTree.get k' (set_locals (transl_decl_to_lident st procedure_declarative_part) locenv_proc) = Some addr
+             end) (rev f) procedure_parameter_profile
+      -> 
+      ∀ (sto : localframe) (fr_prm : localframe * Z) (p_sig : AST.signature) (s_parms : Cminor.stmt) (args_t : list expr),
+        NoDupA (λ x y : paramSpec, parameter_name x = parameter_name y) procedure_parameter_profile
+        → NoDupA eq_param_name procedure_parameter_profile
+        → NoDupA eq (decl_to_lident st procedure_declarative_part)
+        → store_params st ((Datatypes.length CE_sufx, sto) :: CE_sufx) procedure_parameter_profile =: s_parms
+        → transl_declaration st ((Datatypes.length CE_sufx, sto) :: CE_sufx)
+                             (S (Datatypes.length CE_sufx)) procedure_declarative_part =: lglobdef
+        → transl_stmt st ((Datatypes.length CE_sufx, sto) :: CE_sufx) procedure_statements =: s_pbdy
+        → init_locals st ((Datatypes.length CE_sufx, sto) :: CE_sufx) procedure_declarative_part =: s_locvarinit
+        → build_frame_decl st fr_prm procedure_declarative_part =: (sto, sto_sz)
+        (* init_frame contains the previously processed params. the *)
+        → build_frame_lparams st (CE_init_frame, CE_init_frame_sz) procedure_parameter_profile =: fr_prm
+        → CE_init_frame_sz >= 4
+        → fresh_params procedure_parameter_profile sto
+        → invariant_compile ((Datatypes.length CE_sufx, sto) :: CE_sufx) st
+        → (∀ (astnum : astnum) (id : idnum) (δlvl : nat) (n : Z) (id_v : Values.val),
+              transl_variable st ((Datatypes.length CE_sufx, sto) :: CE_sufx) astnum id =: build_loads (S δlvl) n
+              → eval_expr g stkptr_proc locenv_postchainarg m_postchainarg (build_loads (S δlvl) n) id_v
+              → eval_expr g stkptr locenv_postchainarg m_postchainarg (build_loads (Datatypes.length CE_prefx + δlvl) n) id_v)
+        → (∀ (astnum : astnum) (addr : Values.block) (ofs : Z),
+              forbidden st CE g astnum locenv stkptr m m addr ofs
+              → forbidden st ((Datatypes.length CE_sufx, sto) :: CE_sufx)
+                          g astnum locenv_postchainarg stkptr_proc m_postchainarg m_postchainarg addr ofs)
+        → transl_lparameter_specification_to_procsig st (Datatypes.length CE_sufx) procedure_parameter_profile =: p_sig
+        → transl_paramexprlist st CE args procedure_parameter_profile =: args_t
+        → eval_exprlist g (Values.Vptr b' Ptrofs.zero) locenv m args_t args_t_v
+        → match_env st (f1 :: suffix_s) ((Datatypes.length suffix_s, CE_init_frame) :: CE_sufx)
+                    stkptr_proc locenv_postchainarg g m_postchainarg
+        → ∃ (locenv' : env) (t2 : Events.trace) (m' : mem), 
+        exists locenv' t2 m',
+          exec_stmt
+            g the_proc stkptr_proc
+            (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc))
+            m_postchainarg s_parms t2 locenv' m'  Out_normal.
+    Proof.
+      !intros.
+*)
     assert (
         exists locenv' t2 m',
           exec_stmt
@@ -10314,14 +10445,75 @@ xxxxx
             m_postchainarg
             s_parms t2 locenv' m'  Out_normal). {
       remember (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc)) as locenv_proc in *.
-      revert heq_store_prms_procedure_parameter_profile_s_parms.
-      elim h_init_params;!intros.
+      unfold fn_vars, fn_vars, the_proc in h_init_params.
+      
+(*      revert s_parms the_proc heq_find_func_paddr_fction h_alloc Heqlocenv_proc
+             h_exec_stmt heq_store_prms_procedure_parameter_profile_s_parms.
+      (* revert heq_store_prms_procedure_parameter_profile_s_parms. *)
+      remember (rev f) as revf.
+      remember procedure_parameter_profile as prms.*)
+
+      clearbody the_proc.
+      clear h_copy_out h_copy_in heq_fetch_proc_p
+            hcpout_prm_procedure_parameter_profile_s_copyout heq_bldCE
+            heq_transl_stmt_stm'.
+      
+      revert sto fr_prm p_sig s_parms args_t
+             h_NoDupA_procedure_parameter_profile
+             hnodup_arg hnodup_decl
+             heq_store_prms_procedure_parameter_profile_s_parms
+             h_forall_s' heq_transl_decl_procedure_declarative_part_c
+             heq_transl_stmt_procedure_statements_s_pbdy
+             heq_init_lcl_procedure_declarative_part_s_locvarinit
+             heq_build_frame_decl heq_bld_frm_procedure_parameter_profile hfrsh
+             h_inv_CE''_bld h_reachable_enclosing_variables
+             h_forbidden_incl_m_m_poschainarg'
+             heq_transl_lprm_spec_procedure_parameter_profile_p_sig
+             heq_transl_params_p_x h_CM_eval_exprl_args_t_args_t_v
+             .
+      !!!!induction h_init_params;!intros.
       - simpl in heq_store_prms.
         inversion  heq_store_prms.
         subst s_parms.
         do 3 eexists.
         econstructor.
-      - eapply h_impl_ex;auto.
+      - up_type.
+        !!!!rew store_params_ok with functional inversion heq_store_prms.
+        !!!!rew transl_paramexprlist_ok with functional inversion htrans_prmexprl.
+        rename h_forall_sto into IH.
+        !!!inversion h_NoDupA.
+        !!!inversion h_NoDupA0.
+        (* !!!inversion h_NoDupA_procedure_parameter_profile. *)
+        specialize IH with (1:=h_NoDupA_l') (2:=h_NoDupA_l'0) (3:=h_NoDupA1)
+                           (4:=heq_store_prms_l'_x1)
+                           (5:=h_forall_lvl)
+                           (6:=heq_transl_decl_procedure_declarative_part_lglobdef)(* useless? *)
+                           (7:=heq_transl_stmt_procedure_statements_s_pbdy)(* useless? *)
+                           (8:=heq_init_lcl_procedure_declarative_part_s_locvarinit)
+                           (9:=heq_build_frame_decl)
+                           (12:=h_inv_comp_st)
+                           (13:=h_forall_astnum0)
+                           (14:=h_forall_astnum1)
+        .
+
+        do 3 eexists;econstructor.
+        all:swap 1 2.
+        eapply IH.
+                  (16:=htrans_prmexprl)
+
+        red in h_fresh_prms.
+        !inversion h_fresh_prms.
+        specialize IH with (2:=h_lst_forall_l').
+        
+        !!!!rew build_frame_lparams_ok with functional inversion heq_bld_frm.
+        specialize IH with (1:=)
+        .
+        specialize 
+        specialize h_impl_ex with (1:=heq_store_prms_l'_x1).
+        
+        eapply h_impl_ex;auto.
+        
+        assumption.
         
 }
 
