@@ -10231,7 +10231,7 @@ Qed.
                rewrite heq_mget_chaining_param_addr0 in heq_get.
                discriminate.
         + apply h_impl_lst_forall_l0_l';auto. }
-    
+    (* xxx TODO replace foall v' by exists v' inside match *)
     apply Forall2_impl_strong with (Q:=(λ (prm : idnum * V) (prm_prof : paramSpec), 
                      ∀ (k' : positive) (v' : Values.val),
                      let (k, v) := prm in
@@ -10256,8 +10256,10 @@ Qed.
             List.In id (fn_vars the_proc)
             -> (Maps.PTree.get
                   id
-                  (set_params (chaining_expr_from_caller_v :: args_t_v) (chaining_param ::transl_lparameter_specification_to_lident
-                                          st procedure_parameter_profile))
+                  (set_params (chaining_expr_from_caller_v :: args_t_v)
+                              (chaining_param
+                                 :: transl_lparameter_specification_to_lident
+                                      st procedure_parameter_profile))
                 = None)). {
         admit. (* well formedness *) }
       revert h_forall_id.
@@ -10324,6 +10326,7 @@ Qed.
         f = rev revf++initf →
         store_params st ((Datatypes.length suffix_s, sto) :: CE_sufx) proc_param_prof =: s_parms →       
         copyIn st s (Datatypes.length suffix_s, initf) proc_param_prof args (OK (Datatypes.length CE_sufx, f)) → 
+        invariant_compile ((Datatypes.length suffix_s, sto) :: CE_sufx) st →
         match_env st (s_init_frame :: suffix_s) ((Datatypes.length suffix_s, sto) :: CE_sufx)
                   stkptr_proc locenv_postchainarg g m_postchainarg →
         ∃ (locenv' : env) (t2 : Events.trace) (m' : mem), 
@@ -10333,28 +10336,96 @@ Qed.
         rename h_lst_forall_revf_proc_param_prof into h_cpinOK.
         revert CE_sufx sto s_parms g args stkptr_proc s f suffix_s s_init_frame locenv_postchainarg
                m_postchainarg initf.
-        !induction h_cpinOK;!intros.
+        !!!!(induction h_cpinOK;!intros).
         - !!!!rew store_params_ok with functional inversion heq_store_prms.
           do 3 eexists.
           constructor.
         - !!!!rew store_params_ok with functional inversion heq_store_prms.
           rename x1 into s_params'.
+          destruct x.
           assert (∃ (locenv'_fst : env) (t_fst : Events.trace) (m_fst : mem), 
                      exec_stmt g the_proc stkptr_proc locenv m_postchainarg
                                (Sstore x0 x2 rexp) t_fst locenv'_fst m_fst Out_normal). {
-            subst f.
-            
+            !!!functional inversion heq_transl_name.
+             !specialize match_env_sp_zero with (1:=h_match_env) as ?.
+             decomp h_ex.
+             rename b into proc_addr.
+             subst.
+            !specialize transl_variable_Vptr
+              with (1:=h_inv_comp_st)(3:=heq_transl_variable)
+                   (2:=me_stack_localstack_aligned (me_safe_cm_env h_match_env))
+               as ?.
+            !!!!(destruct (parameter_mode y) eqn:heq
+            ; inversion h_copy_in;
+              try match goal with
+                  | H: parameter_mode y = ?m, H':parameter_mode y = ?m' |- _ => 
+                    (rewrite H in H'; discriminate) + clear H'
+                  end).
+            + do 3 eexists.
+              !specialize (me_stack_match_addresses (me_safe_cm_env h_match_env)) as ?.
+              red in h_stk_mtch_addr.
+              specialize h_stk_mtch_addr with (1:=heq_transl_name).
+              decomp h_stk_mtch_addr.
+              specialize h_forall_nme_t_v with (1:=h_CM_eval_expr_x2_x2_v).
+              decomp h_forall_nme_t_v.
+              subst.
+              simpl.
+              !specialize Mem.valid_access_store with (chunk:=x0)(m1:=m_postchainarg)
+                                                      (b:=nme_block)(ofs:=Ptrofs.unsigned nme_ofst)
+              as ?.
+            !assert (Mem.valid_access m_postchainarg x0 nme_block (Ptrofs.unsigned nme_ofst) Writable). {
+              apply Mem.valid_access_freeable_any. 
+              !specialize (h_match_env.(me_safe_cm_env).(me_stack_freeable)) as ?.
+              red in h_freeable_m_postchainarg.
+              eapply h_freeable_m_postchainarg;eauto. }
+            specialize forall_v with (1:=h_valid_access_nme_block).
+            unfold indirection_according_to_mode.
+            { simpl in rexp.
+              subst rexp id0.
+              eapply exec_Sstore with (v:=e_v).
+              + eapply eval_expr_transl_name_inv_locenv;eauto.
+              + subst rexp id0.
+                 econstructor.
+                 eapply h_forall_k';eauto.
+                * f_equal.
+                  admit. (* TODO *)
+                * 
+            + simpl.
+              decomp
+              
+              specialize (forall_v ?v).
+              
+              unfold Mem.storev.
+              !!!!inversion h_copy_in.
+              + 
+              eapply heq_transl_name.
+            eapply h_CM_eval_expr_x2_x2_v.
 
 
-
+xxx
+            simpl in h_copy_in.
+            rewrite <- app_assoc in h_copy_in.
             !!!!inversion h_copy_in.
-            do 3 eexists.
+            + specialize h_forall_CE_sufx with(3:=h_copy_in0).
+              simpl in h_forall_CE_sufx.
+              rewrite heq_parameter_mode in *.
+              specialize h_forall_CE_sufx with (2:=heq_store_prms_l'_x1) (3:=h_match_env).
+              !assert ((ST.push (Datatypes.length suffix_s, initf) (parameter_name y) e_v) = (Datatypes.length suffix_s,[x] ++ initf)). {
+                admit. (*TODO: lemma*)
+              }
+              unfold ST.push in heq_push.
+              simpl in heq_push.
+              inversion heq_push.
+              subst.
+              specialize h_forall_CE_sufx with(1:=eq_refl).
+              decomp h_forall_CE_sufx.
+              do 3 eexists.
+              eassumption.
             econstructor.
             - !specialize (me_stack_match h_match_env) as ?.
               red in h_stk_mtch.
               specialize h_stk_mtch with (1:=heq_transl_name).
               subst f.
-          specialize h_forall_CE_sufx with (1:=eq_refl)(2:=heq_store_prms_l'_x1).
 
           specialize h_forall_CE_sufx with (1:=h_match_env).
 
