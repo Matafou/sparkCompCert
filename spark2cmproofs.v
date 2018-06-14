@@ -9719,6 +9719,19 @@ Proof.
           econstructor 10;eauto.
     Qed.
 
+    Lemma copy_in_push:
+      ∀ st s lvl initf prm_prof   l' e lexp l i v,
+      copyIn st s (lvl,initf) (prm_prof::l') (e::lexp) (OK (lvl, l++ (i, v):: initf))
+        → Datatypes.length l = Datatypes.length l'
+          ∧ i = parameter_name prm_prof
+          ∧ match parameter_mode prm_prof with
+            | In => evalExp st s e (OK v)
+            | Out => True
+            | InOut => True
+            end.
+      Proof.
+      Admitted.
+
     Lemma copyIn_store_params_ok:
       ∀ st CE args lparams args_t ,
         transl_paramexprlist st CE args lparams =: args_t ->
@@ -10355,14 +10368,47 @@ Qed.
               with (1:=h_inv_comp_st)(3:=heq_transl_variable)
                    (2:=me_stack_localstack_aligned (me_safe_cm_env h_match_env))
                as ?.
+            !assert (Datatypes.length suffix_s = Datatypes.length CE_sufx). {
+              admit.
+            }
+            rewrite heq_length in h_copy_in.
+            destruct args.
+            { inversion h_copy_in. }
+            simpl in h_copy_in.
+            rewrite <- app_assoc in h_copy_in.
+            simpl in h_copy_in.
+            !specialize copy_in_push with (1:=h_copy_in) as ?.
+            !destruct h_and.
+            !destruct h_and.
+            intro h_prm_mode.
+            subst.
+            
+            !!!!(destruct (parameter_mode y) eqn:heq); simpl in rexp;subst rexp.
+            + eexists.
+              !assert (exists v, eval_expr g (Values.Vptr proc_addr Ptrofs.zero) locenv m_postchainarg (Evar (transl_paramid (parameter_name y))) v). {
+              (* !!!functional inversion heq_transl_variable. *)
+              
+              eexists.
+              econstructor.
+              eapply h_forall_k' ;eauto.
+              * f_equal.
+                admit. (* TODO *)
+              * 
+                
+                admit. }
+
+
+              econstructor.
+              eapply h_forall_k';eauto.
+
+
             !!!!(destruct (parameter_mode y) eqn:heq
             ; inversion h_copy_in;
               try match goal with
                   | H: parameter_mode y = ?m, H':parameter_mode y = ?m' |- _ => 
                     (rewrite H in H'; discriminate) + clear H'
                   end).
-            + do 3 eexists.
-              !specialize (me_stack_match_addresses (me_safe_cm_env h_match_env)) as ?.
+            + !specialize (me_stack_match_addresses (me_safe_cm_env h_match_env)) as ?.
               red in h_stk_mtch_addr.
               specialize h_stk_mtch_addr with (1:=heq_transl_name).
               decomp h_stk_mtch_addr.
@@ -10370,83 +10416,110 @@ Qed.
               decomp h_forall_nme_t_v.
               subst.
               simpl.
-              !specialize Mem.valid_access_store with (chunk:=x0)(m1:=m_postchainarg)
+              specialize Mem.valid_access_store with (chunk:=x0)(m1:=m_postchainarg)
                                                       (b:=nme_block)(ofs:=Ptrofs.unsigned nme_ofst)
-              as ?.
+              as h_forall_v. (* TODO: fix hyp naming here. sig is in Type. *)
             !assert (Mem.valid_access m_postchainarg x0 nme_block (Ptrofs.unsigned nme_ofst) Writable). {
               apply Mem.valid_access_freeable_any. 
               !specialize (h_match_env.(me_safe_cm_env).(me_stack_freeable)) as ?.
               red in h_freeable_m_postchainarg.
               eapply h_freeable_m_postchainarg;eauto. }
-            specialize forall_v with (1:=h_valid_access_nme_block).
+            ! assert (exists v, eval_expr g (Values.Vptr proc_addr Ptrofs.zero) locenv m_postchainarg (Evar (transl_paramid (parameter_name y))) v). {
+              (* !!!functional inversion heq_transl_variable. *)
+              
+              eexists.
+              econstructor.
+              eapply h_forall_k';eauto.
+              * f_equal.
+                admit. (* TODO *)
+              * 
+                
+                admit. }
+            decomp h_ex.
+            specialize h_forall_v with (1:=h_valid_access_nme_block).
             unfold indirection_according_to_mode.
             { simpl in rexp.
               subst rexp id0.
-              eapply exec_Sstore with (v:=e_v).
-              + eapply eval_expr_transl_name_inv_locenv;eauto.
-              + subst rexp id0.
-                 econstructor.
-                 eapply h_forall_k';eauto.
-                * f_equal.
-                  admit. (* TODO *)
-                * 
-            + simpl.
-              decomp
-              
-              specialize (forall_v ?v).
-              
-              unfold Mem.storev.
-              !!!!inversion h_copy_in.
-              + 
-              eapply heq_transl_name.
-            eapply h_CM_eval_expr_x2_x2_v.
 
-
-xxx
-            simpl in h_copy_in.
-            rewrite <- app_assoc in h_copy_in.
-            !!!!inversion h_copy_in.
-            + specialize h_forall_CE_sufx with(3:=h_copy_in0).
-              simpl in h_forall_CE_sufx.
-              rewrite heq_parameter_mode in *.
-              specialize h_forall_CE_sufx with (2:=heq_store_prms_l'_x1) (3:=h_match_env).
-              !assert ((ST.push (Datatypes.length suffix_s, initf) (parameter_name y) e_v) = (Datatypes.length suffix_s,[x] ++ initf)). {
-                admit. (*TODO: lemma*)
-              }
-              unfold ST.push in heq_push.
-              simpl in heq_push.
-              inversion heq_push.
-              subst.
-              specialize h_forall_CE_sufx with(1:=eq_refl).
-              decomp h_forall_CE_sufx.
+              specialize h_forall_v with (v:=v).
+              decomp h_forall_v.
               do 3 eexists.
-              eassumption.
-            econstructor.
-            - !specialize (me_stack_match h_match_env) as ?.
-              red in h_stk_mtch.
-              specialize h_stk_mtch with (1:=heq_transl_name).
-              subst f.
+              eapply exec_Sstore.
+              + eapply eval_expr_transl_name_inv_locenv;eauto.
+              + eassumption.
+              + simpl.
+                eapply heq_store_v_m2. }
+            + !specialize (me_stack_match_addresses (me_safe_cm_env h_match_env)) as ?.
+              red in h_stk_mtch_addr.
+              specialize h_stk_mtch_addr with (1:=heq_transl_name).
+              decomp h_stk_mtch_addr.
+              specialize h_forall_nme_t_v with (1:=h_CM_eval_expr_x2_x2_v).
+              decomp h_forall_nme_t_v.
+              subst.
+              simpl.
+              specialize Mem.valid_access_store with (chunk:=x0)(m1:=m_postchainarg)
+                                                      (b:=nme_block)(ofs:=Ptrofs.unsigned nme_ofst)
+              as h_forall_v. (* TODO: fix hyp naming here. sig is in Type. *)
+            !assert (Mem.valid_access m_postchainarg x0 nme_block (Ptrofs.unsigned nme_ofst) Writable). {
+              apply Mem.valid_access_freeable_any. 
+              !specialize (h_match_env.(me_safe_cm_env).(me_stack_freeable)) as ?.
+              red in h_freeable_m_postchainarg.
+              eapply h_freeable_m_postchainarg;eauto. }
+            ! assert (exists v, eval_expr g (Values.Vptr proc_addr Ptrofs.zero) locenv m_postchainarg (Evar (transl_paramid (parameter_name y))) v). {
+              eexists.
+              econstructor.
+              eapply h_forall_k';eauto.
+              * f_equal.
+                admit. (* TODO *)
+              * admit. }
+            decomp h_ex.
+            specialize h_forall_v with (1:=h_valid_access_nme_block).
+            unfold indirection_according_to_mode.
+            { simpl in rexp.
+              subst rexp id0.
 
-          specialize h_forall_CE_sufx with (1:=h_match_env).
+              specialize h_forall_v with (v:=v0).
+              decomp h_forall_v.
+              do 3 eexists.
+              eapply exec_Sstore.
+              + eapply eval_expr_transl_name_inv_locenv;eauto.
+              + eassumption.
+              + simpl.
+                eapply heq_store_v0_m2. }
+            + !specialize (me_stack_match_addresses (me_safe_cm_env h_match_env)) as ?.
+              red in h_stk_mtch_addr.
+              specialize h_stk_mtch_addr with (1:=heq_transl_name).
+              decomp h_stk_mtch_addr.
+              specialize h_forall_nme_t_v with (1:=h_CM_eval_expr_x2_x2_v).
+              decomp h_forall_nme_t_v.
+              subst.
+              simpl.
+              specialize Mem.valid_access_store with (chunk:=x0)(m1:=m_postchainarg)
+                                                      (b:=nme_block)(ofs:=Ptrofs.unsigned nme_ofst)
+                as h_forall_v. (* TODO: fix hyp naming here. sig is in Type. *)
+              !assert (Mem.valid_access m_postchainarg x0 nme_block (Ptrofs.unsigned nme_ofst) Writable). {
+                apply Mem.valid_access_freeable_any. 
+                !specialize (h_match_env.(me_safe_cm_env).(me_stack_freeable)) as ?.
+                red in h_freeable_m_postchainarg.
+                eapply h_freeable_m_postchainarg;eauto. }
+              !assert (exists v,eval_expr g (Values.Vptr proc_addr Ptrofs.zero) locenv m_postchainarg (Eload x0 (Evar (transl_paramid (parameter_name y)))) v). {
+                admit.
+              }
+              decomp h_ex.
+              specialize h_forall_v with (1:=h_valid_access_nme_block).
+              unfold indirection_according_to_mode.
+              { simpl in rexp.
+                subst rexp id0.
+                specialize h_forall_v with (v:=v).
+                decomp h_forall_v.
 
-
-          !!!!inversion h_copy_in.
-          specialize h_forall_CE_sufx with (1:=h_copy_in0).
-          edestruct h_forall_CE_sufx.
-          all:cycle 3.
-          + decomp H.
-            do 3 eexists.
-            eapply H.
-          + 
-          !!!!rew store_params_ok with functional inversion heq_store_prms.
-          do 3 eexists.
-          eapply exec_Sseq_continue.
-          all:swap 1 2.
-          + edestruct h_forall_CE_sufx.
-            * decomp H.
-              eapply H.
-          eapply h_forall_CE_sufx.
-
+                do 3 eexists.
+                eapply exec_Sstore.
+                + eapply eval_expr_transl_name_inv_locenv;eauto.
+                + eassumption.
+                + simpl.
+                  eapply heq_store_v_m2.  }
+            +
 
 
     Lemma exec_params_succeeds:
