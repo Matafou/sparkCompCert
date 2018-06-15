@@ -10098,13 +10098,15 @@ Proof.
             simpl.
             subst.
             rewrite Maps.PTree.gss.
-            !specialize transl_expr_ok as ?.
-            !assert (transl_expr st CE (Name 0%nat nme_args) = value_at_addr st (parameter_subtype_mark prmSpec) nme_t). {
-              simpl.
+            !specialize transl_expr_ok with (2:=h_eval_expr_nme_args_v) (3:=h_match_env) as ?.
+            !assert (transl_expr st CE (Name 0%nat nme_args)
+                     = value_at_addr st (parameter_subtype_mark prmSpec) nme_t). {
+              simpl transl_expr.
               !!!!functional inversion heq_transl_name.
               rewrite heq_transl_variable.
               !assert (symboltable.fetch_exp_type astnum st = Some (parameter_subtype_mark prmSpec)). {
-                admit. (* Well typedness *)
+                admit. (* Well typedness of the call:
+                          the actual arg's type = the formal arg type *)
               }
               rewrite heq_fetch_exp_type.
               reflexivity.
@@ -10112,32 +10114,36 @@ Proof.
             unfold value_at_addr in heq_tr_expr.
             destruct (transl_type st (parameter_subtype_mark prmSpec)) eqn:heq.
             all:swap 1 2.
-            { exfalso. admit. (* well typedness: prmspec is correct *) }
+            { exfalso.
+              simpl in heq_tr_expr.
+              admit. (* well typedness: prmspec is correct *) }
             simpl bind in heq_tr_expr.
-            unfold make_load in heq_tr_expr.
-            destruct (access_mode t) eqn:heq_accmmode.
-            all:cycle 1.
-             { admit. (* well typedness. *) }
-             { admit. (* well typedness. *) }
-             { admit. (* well typedness. *) }
+            !specialize make_load_no_fail with (nme_t:=nme_t)(1:=heq) as ?.
+            decomp h_ex.
+            rewrite heq_make_load in heq_tr_expr.
+            !!!functional inversion heq_make_load.
              specialize h_forall_stbl with (1:=heq_tr_expr)(2:=h_eval_expr_nme_args_v)
                                            (3:=h_match_env).
              decomp h_forall_stbl.
-             
-             xxxxx use transl_expr_ok?
+             exists nme_args_v_t, chunk;split;[|split].
+            -- assumption.
+            -- admit. (* TODO *)
+            -- exists nme_t_v;split;auto.
+               !!!inversion h_CM_eval_expr_nme_args_v_t.
+               rewrite <- det_eval_expr with (1:=h_CM_eval_expr_nme_t_nme_t_v0)(2:=h_CM_eval_expr_nme_t_nme_t_v).
+               assumption.
           * !!!! (eapply Forall2_impl with (2:=h_forall_args_t); intros).
             destruct a;!intros.
-            specialize h_forall_k' with (1:=heq_transl_paramid)(v':=v').
+            specialize h_forall_k' with (1:=heq_transl_paramid).
             destruct (parameter_mode b).
-            -- !intros.
-               specialize h_forall_k' with (1:=h_transl_value_t_v').
+            -- decomp h_forall_k'.
                simpl.
                rewrite Maps.PTree.gso.
-               ++ assumption.
+               ++ eexists;repeat split;eauto.
                ++ intro abs.
                   !assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))). {
                     apply transl_lparameter_specification_to_lident_nodup;auto. }
-                  !specialize set_params_in with (1:=h_forall_k') as ?.
+                  !specialize set_params_in with (1:=heq_mget_k'_t_t) as ?.
                   simpl in h_nodup.
                   subst k'.
                   rewrite abs in *.
@@ -10146,14 +10152,13 @@ Proof.
                   apply h_neg_lst_in;auto.
             -- auto.
             -- !intros.
-               specialize h_forall_k' with (1:=h_transl_value_t_v')(2:=heq_compute_chnk_of_type).
+               decomp h_forall_k'.
                simpl.
                rewrite Maps.PTree.gso.
-               ++ assumption.
+               ++ exists t_t,chk;split;[|split];eauto.
                ++ intro abs.
                   !assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))). {
                     apply transl_lparameter_specification_to_lident_nodup;auto. }
-                  decomp h_forall_k'.
                   !specialize set_params_in with (1:=heq_mget_k'_addr) as ?.
                   simpl in h_nodup.
                   subst k'.
@@ -10184,24 +10189,54 @@ Proof.
           rewrite rev_unit.
           constructor;!intros.
           * rewrite heq_parameter_mode.
-            !intros.
+            !assert (evalExp st bigs (Name O nme_args) (OK (Int v))). {
+              constructor;auto. }
             simpl.
             subst.
             rewrite Maps.PTree.gss.
-            eauto.
+            !specialize transl_expr_ok as ?.
+            !assert (transl_expr st CE (Name 0%nat nme_args) = value_at_addr st (parameter_subtype_mark prmSpec) nme_t). {
+              simpl.
+              !!!!functional inversion heq_transl_name.
+              rewrite heq_transl_variable.
+              !assert (symboltable.fetch_exp_type astnum st = Some (parameter_subtype_mark prmSpec)). {
+                admit. (* Well typedness *)
+              }
+              rewrite heq_fetch_exp_type.
+              reflexivity.
+            }
+            unfold value_at_addr in heq_tr_expr.
+            destruct (transl_type st (parameter_subtype_mark prmSpec)) eqn:heq.
+            all:swap 1 2.
+            { exfalso. admit. (* well typedness: prmspec is correct *) }
+            simpl bind in heq_tr_expr.
+            !specialize make_load_no_fail with (nme_t:=nme_t)(1:=heq) as ?.
+            decomp h_ex.
+            rewrite heq_make_load in heq_tr_expr.
+            !!!functional inversion heq_make_load.
+             specialize h_forall_stbl with (1:=heq_tr_expr)(2:=h_eval_expr)
+                                           (3:=h_match_env).
+             decomp h_forall_stbl.
+             exists v_t, chunk;split;[|split].
+            -- assumption.
+            -- admit. (* TODO *)
+            -- exists nme_t_v;split;auto.
+               !!!inversion h_CM_eval_expr_v_t.
+               rewrite <- det_eval_expr with (1:=h_CM_eval_expr_nme_t_nme_t_v0)(2:=h_CM_eval_expr_nme_t_nme_t_v).
+               assumption.
           * !!!! (eapply Forall2_impl with (2:=h_forall_args_t); intros).
             destruct a;!intros.
-            specialize h_forall_k' with (1:=heq_transl_paramid)(v':=v').
+            specialize h_forall_k' with (1:=heq_transl_paramid).
             destruct (parameter_mode b).
             -- !intros.
-               specialize h_forall_k' with (1:=h_transl_value_t_v').
+               decomp h_forall_k'.
                simpl.
                rewrite Maps.PTree.gso.
-               ++ assumption.
+               ++ exists t_t;split;auto.
                ++ intro abs.
                   !assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))). {
                     apply transl_lparameter_specification_to_lident_nodup;auto. }
-                  !specialize set_params_in with (1:=h_forall_k') as ?.
+                  !specialize set_params_in with (1:=heq_mget_k'_t_t) as ?.
                   simpl in h_nodup.
                   subst k'.
                   rewrite abs in *.
@@ -10210,14 +10245,13 @@ Proof.
                   apply h_neg_lst_in;auto.
             -- auto.
             -- !intros.
-               specialize h_forall_k' with (1:=h_transl_value_t_v')(2:=heq_compute_chnk_of_type).
+               decomp h_forall_k'.
                simpl.
                rewrite Maps.PTree.gso.
-               ++ assumption.
+               ++  exists t_t,chk;split;[|split];eauto.
                ++ intro abs.
                   !assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))). {
                     apply transl_lparameter_specification_to_lident_nodup;auto. }
-                  decomp h_forall_k'.
                   !specialize set_params_in with (1:=heq_mget_k'_addr) as ?.
                   simpl in h_nodup.
                   subst k'.
