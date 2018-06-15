@@ -9752,10 +9752,13 @@ Proof.
                      match parameter_mode prm_prof with
                      | In => exists v', transl_value v v' ∧ Maps.PTree.get k' locenv = Some v'
                      | Out => (v = Undefined)
-                     | InOut => exists v' chk,
+                     | InOut => 
+                       (* This part is ensured by typing/wellformedness (intialisation of inout vars) *)
+                       exists v' chk,
                                 transl_value v v' ∧
                                 (compute_chnk_of_type st (parameter_subtype_mark prm_prof) =: chk)
-                                ∧ exists addr, Maps.PTree.get k' locenv = Some addr
+                                ∧ (exists addr, Maps.PTree.get k' locenv = Some addr
+                                                ∧ Mem.loadv chk mcalling addr = Some v')
                      end) (List.rev sto') lparams.
     Proof.
       !intros until lparams.
@@ -9883,7 +9886,9 @@ Proof.
                exists t_t, chk;split;[|split];auto.
                simpl.
                rewrite Maps.PTree.gso.
-               ++ eexists;eapply heq_mget_k'_addr.
+               ++ eexists;split.
+                  ** eapply heq_mget_k'_addr.
+                  ** assumption.
                ++ intro abs.
                   !assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))). {
                     apply transl_lparameter_specification_to_lident_nodup;auto. }
@@ -9952,7 +9957,10 @@ Proof.
                exists t_t , chk;split;[|split];auto.
                simpl.
                rewrite Maps.PTree.gso.
-               ++ eexists;eapply heq_mget_k'_addr.
+               ++ eexists.
+                  split.
+                  ** eapply heq_mget_k'_addr.
+                  ** assumption.
                ++ intro abs.
                   !assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))). {
                     apply transl_lparameter_specification_to_lident_nodup;auto. }
@@ -10030,7 +10038,10 @@ Proof.
                exists t_t,chk;split;[|split];auto.
                simpl.
                rewrite Maps.PTree.gso.
-               ++ eexists;eapply heq_mget_k'_addr.
+               ++ eexists.
+                  split.
+                  ** eapply heq_mget_k'_addr.
+                  ** assumption.
                ++ intro abs.
                   !assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))). {
                     apply transl_lparameter_specification_to_lident_nodup;auto. }
@@ -10082,20 +10093,38 @@ Proof.
           rewrite rev_unit.
           constructor;!intros.
           * rewrite heq_parameter_mode.
-            !intros.
+            !assert (evalExp st bigs (Name O nme_args) (OK nme_args_v)). {
+              constructor;auto. }
             simpl.
             subst.
             rewrite Maps.PTree.gss.
-            specialize (h_match_env.(me_safe_cm_env).(me_stack_match_addresses)) as h.
-            red in h.
-            specialize h with (1:=heq_transl_name).
-            decomp h.
-xxx
-            !specialize _ok with
-                (1:=heq_tr_expr_e) (2:=h_eval_expr_exp_args)
-                                            (3:=h_match_env) as ?.
-            
-            eauto.
+            !specialize transl_expr_ok as ?.
+            !assert (transl_expr st CE (Name 0%nat nme_args) = value_at_addr st (parameter_subtype_mark prmSpec) nme_t). {
+              simpl.
+              !!!!functional inversion heq_transl_name.
+              rewrite heq_transl_variable.
+              !assert (symboltable.fetch_exp_type astnum st = Some (parameter_subtype_mark prmSpec)). {
+                admit. (* Well typedness *)
+              }
+              rewrite heq_fetch_exp_type.
+              reflexivity.
+            }
+            unfold value_at_addr in heq_tr_expr.
+            destruct (transl_type st (parameter_subtype_mark prmSpec)) eqn:heq.
+            all:swap 1 2.
+            { exfalso. admit. (* well typedness: prmspec is correct *) }
+            simpl bind in heq_tr_expr.
+            unfold make_load in heq_tr_expr.
+            destruct (access_mode t) eqn:heq_accmmode.
+            all:cycle 1.
+             { admit. (* well typedness. *) }
+             { admit. (* well typedness. *) }
+             { admit. (* well typedness. *) }
+             specialize h_forall_stbl with (1:=heq_tr_expr)(2:=h_eval_expr_nme_args_v)
+                                           (3:=h_match_env).
+             decomp h_forall_stbl.
+             
+             xxxxx use transl_expr_ok?
           * !!!! (eapply Forall2_impl with (2:=h_forall_args_t); intros).
             destruct a;!intros.
             specialize h_forall_k' with (1:=heq_transl_paramid)(v':=v').
