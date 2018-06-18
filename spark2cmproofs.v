@@ -9720,17 +9720,151 @@ Proof.
     Qed.
 
     Lemma copy_in_push:
-      ∀ st s lvl initf prm_prof   l' e lexp l i v,
+      ∀ l' st s lvl initf prm_prof e lexp l i v,
       copyIn st s (lvl,initf) (prm_prof::l') (e::lexp) (OK (lvl, l++ (i, v):: initf))
         → Datatypes.length l = Datatypes.length l'
           ∧ i = parameter_name prm_prof
           ∧ match parameter_mode prm_prof with
             | In => evalExp st s e (OK v)
-            | Out => True
-            | InOut => True
+            | Out => v = Undefined
+            | InOut => evalExp st s e (OK v)
             end.
       Proof.
-      Admitted.
+        induction l';!intros.
+        - simpl in * |- *.
+          !!!inversion h_copy_in.
+          + !!!inversion h_copy_in0.
+            !assert ((l ++ (i, v) :: initf) = ((l ++ [(i, v)]) ++ initf)). {
+              simpl.
+              rewrite <- app_assoc.
+              simpl.
+              reflexivity. }
+            rewrite heq_app in heq_cons.
+            change ((parameter_name prm_prof, e_v) :: initf)
+                   with ([(parameter_name prm_prof, e_v)] ++ initf) in heq_cons.
+            apply app_same_length_eq2 in heq_cons;auto.
+            decomp heq_cons.
+            !destruct l.
+            * split;auto.
+              simpl in *.
+              !inversion heq_cons.
+              split;auto.
+              destruct (parameter_mode prm_prof);auto; try discriminate.
+            * exfalso.
+              simpl in heq_cons.
+              !assert (List.length [(parameter_name prm_prof, e_v)] = List.length (p :: l ++ [(i, v)])). {
+                rewrite  heq_cons;auto. }
+              simpl in heq_length.
+              rewrite app_length in heq_length.
+              simpl in heq_length.
+              omega.
+          + !!!inversion h_copy_in0.
+            !assert ((l ++ (i, v) :: initf) = ((l ++ [(i, v)]) ++ initf)). {
+              simpl.
+              rewrite <- app_assoc.
+              simpl.
+              reflexivity. }
+            rewrite heq_app in heq_cons.
+            change ((parameter_name prm_prof, Int v0) :: initf)
+                   with ([(parameter_name prm_prof, Int v0)] ++ initf) in heq_cons.
+            apply app_same_length_eq2 in heq_cons;auto.
+            decomp heq_cons.
+            !destruct l.
+            * split;auto.
+              simpl in *.
+              !inversion heq_cons.
+              split;auto.
+              destruct (parameter_mode prm_prof);auto; try discriminate.
+            * exfalso.
+              simpl in heq_cons.
+              !assert (List.length [(parameter_name prm_prof, Int v0)] = List.length (p :: l ++ [(i, v)])). {
+                rewrite  heq_cons;auto. }
+              simpl in heq_length.
+              rewrite app_length in heq_length.
+              simpl in heq_length.
+              omega.
+          + !!!inversion h_copy_in0.
+            !assert ((l ++ (i, v) :: initf) = ((l ++ [(i, v)]) ++ initf)). {
+              simpl.
+              rewrite <- app_assoc.
+              simpl.
+              reflexivity. }
+            rewrite heq_app in heq_cons.
+            change ((parameter_name prm_prof, v0) :: initf)
+                   with ([(parameter_name prm_prof, v0)] ++ initf) in heq_cons.
+            apply app_same_length_eq2 in heq_cons;auto.
+            decomp heq_cons.
+            !destruct l.
+            * split;auto.
+              simpl in *.
+              !inversion heq_cons.
+              split;auto.
+              destruct (parameter_mode prm_prof);auto; try discriminate.
+              constructor.
+              assumption.
+            * exfalso.
+              simpl in heq_cons.
+              !assert (List.length [(parameter_name prm_prof, v0)] = List.length (p :: l ++ [(i, v)])). {
+                rewrite  heq_cons;auto. }
+              simpl in heq_length.
+              rewrite app_length in heq_length.
+              simpl in heq_length.
+              omega.
+          + !!!inversion h_copy_in0.
+            !assert ((l ++ (i, v) :: initf) = ((l ++ [(i, v)]) ++ initf)). {
+              simpl.
+              rewrite <- app_assoc.
+              simpl.
+              reflexivity. }
+            rewrite heq_app in heq_cons.
+            change ((parameter_name prm_prof, Int v0) :: initf)
+                   with ([(parameter_name prm_prof, Int v0)] ++ initf) in heq_cons.
+            apply app_same_length_eq2 in heq_cons;auto.
+            decomp heq_cons.
+            !destruct l.
+            * split;auto.
+              simpl in *.
+              !inversion heq_cons.
+              split;auto.
+              destruct (parameter_mode prm_prof);auto; try discriminate.
+              constructor.
+              assumption.
+            * exfalso.
+              simpl in heq_cons.
+              !assert (List.length [(parameter_name prm_prof, Int v0)] = List.length (p :: l ++ [(i, v)])). {
+                rewrite  heq_cons;auto. }
+              simpl in heq_length.
+              rewrite app_length in heq_length.
+              simpl in heq_length.
+              omega.
+          + !!!inversion h_copy_in0.
+            !assert ((l ++ (i, v) :: initf) = ((l ++ [(i, v)]) ++ initf)). {
+              simpl.
+              rewrite <- app_assoc.
+              simpl.
+              reflexivity. }
+            rewrite heq_app in heq_cons.
+            change ((parameter_name prm_prof, Undefined) :: initf)
+                   with ([(parameter_name prm_prof, Undefined)] ++ initf) in heq_cons.
+            apply app_same_length_eq2 in heq_cons;auto.
+            decomp heq_cons.
+            !destruct l.
+            * split;auto.
+              simpl in *.
+              !inversion heq_cons.
+              split;auto.
+              destruct (parameter_mode prm_prof);auto; try discriminate.
+            * exfalso.
+              simpl in heq_cons.
+              !assert (List.length [(parameter_name prm_prof, Undefined)] = List.length (p :: l ++ [(i, v)])). {
+                rewrite  heq_cons;auto. }
+              simpl in heq_length.
+              rewrite app_length in heq_length.
+              simpl in heq_length.
+              omega.
+        - !!!inversion h_copy_in.
+
+
 
     Lemma copyIn_store_params_ok:
       ∀ st CE args lparams args_t ,
@@ -10115,19 +10249,22 @@ Proof.
             destruct (transl_type st (parameter_subtype_mark prmSpec)) eqn:heq.
             all:swap 1 2.
             { exfalso.
-              simpl in heq_tr_expr.
-              admit. (* well typedness: prmspec is correct *) }
+              simpl bind in heq_tr_expr.
+              admit. (* well typedness: prmspec is correct, so transl_type and transl_exp should not rturn an error *) }
             simpl bind in heq_tr_expr.
             !specialize make_load_no_fail with (nme_t:=nme_t)(1:=heq) as ?.
             decomp h_ex.
             rewrite heq_make_load in heq_tr_expr.
             !!!functional inversion heq_make_load.
-             specialize h_forall_stbl with (1:=heq_tr_expr)(2:=h_eval_expr_nme_args_v)
-                                           (3:=h_match_env).
-             decomp h_forall_stbl.
+             specialize h_forall_e' with (1:=heq_tr_expr).
+             decomp h_forall_e'.
              exists nme_args_v_t, chunk;split;[|split].
             -- assumption.
-            -- admit. (* TODO *)
+            -- !!!functional inversion heq. 
+               ++ vm_compute in h_access_mode_t.
+                  inversion h_access_mode_t;auto.
+               ++ vm_compute in h_access_mode_t.
+                  inversion h_access_mode_t;auto.
             -- exists nme_t_v;split;auto.
                !!!inversion h_CM_eval_expr_nme_args_v_t.
                rewrite <- det_eval_expr with (1:=h_CM_eval_expr_nme_t_nme_t_v0)(2:=h_CM_eval_expr_nme_t_nme_t_v).
@@ -10219,7 +10356,11 @@ Proof.
              decomp h_forall_stbl.
              exists v_t, chunk;split;[|split].
             -- assumption.
-            -- admit. (* TODO *)
+            -- !!!functional inversion heq. 
+              ++ vm_compute in h_access_mode_t.
+                  inversion h_access_mode_t;auto.
+               ++ vm_compute in h_access_mode_t.
+                  inversion h_access_mode_t;auto.
             -- exists nme_t_v;split;auto.
                !!!inversion h_CM_eval_expr_v_t.
                rewrite <- det_eval_expr with (1:=h_CM_eval_expr_nme_t_nme_t_v0)(2:=h_CM_eval_expr_nme_t_nme_t_v).
