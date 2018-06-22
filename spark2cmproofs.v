@@ -9719,16 +9719,149 @@ Proof.
           econstructor 10;eauto.
     Qed.
 
+
+    Inductive Forall3 {A B C: Type} (R : A → B → C → Prop) : list A → list B → list C → Prop :=
+      Forall3_nil : Forall3 R [] [] []
+    | Forall3_cons : ∀ x y z l l' l'',
+        R x y z → Forall3 R l l' l'' → Forall3 R (l++[x]) (y :: l') (z :: l'').
+
+    Lemma copyIn_init:
+      ∀ st x y args lparams s, 
+        copyIn st s x lparams args y ->
+        ∀ lvl initf sto',
+          x = (lvl, initf) ->
+          y = OK (lvl, sto') -> 
+          exists sto'',
+            sto' = sto''++ initf
+            ∧ Datatypes.length sto'' = Datatypes.length lparams
+            ∧ Forall3 (fun (prm:idnum * V) prm_prof e =>
+                         forall k',
+                           let (k,v) := prm in
+                           transl_paramid k = k' ->
+                           match parameter_mode prm_prof with
+                           | In => evalExp st s e (OK v)
+                           | Out => v = Undefined
+                           | InOut => evalExp st s e (OK v)
+                           end) sto'' lparams args.
+    Proof.
+      !intros until 1.
+      !induction h_copy_in_x_y;!intros;try discriminate;subst.
+      - !!!inversion heq_OK.
+        exists nil.
+        split;[|split].
+        + auto.
+        + auto.
+        + constructor.
+      - unfold ST.push in h_forall_lvl.
+        simpl in *.
+        specialize h_forall_lvl with  (1:=eq_refl).
+        specialize h_forall_lvl with (1:=eq_refl).
+        decomp h_forall_lvl;eauto.
+        subst.
+        exists (sto'' ++ [(parameter_name param, e_v)]).
+        rewrite <- app_assoc.
+        simpl.
+        split;[|split].
+        + reflexivity.
+        + rewrite app_length .
+          simpl.
+          omega.
+        + constructor.
+          * !intros.
+            rewrite heq_parameter_mode.
+            assumption.
+          * assumption.
+      - unfold ST.push in h_forall_lvl.
+        simpl in *.
+        specialize h_forall_lvl with  (1:=eq_refl).
+        specialize h_forall_lvl with (1:=eq_refl).
+        decomp h_forall_lvl;eauto.
+        subst.
+        exists (sto'' ++ [(parameter_name param, Int v)]).
+        rewrite <- app_assoc.
+        simpl.
+        split;[|split].
+        + reflexivity.
+        + rewrite app_length .
+          simpl.
+          omega.
+        + constructor.
+          * !intros.
+            rewrite heq_parameter_mode.
+            assumption.
+          * assumption.
+      - unfold ST.push in h_forall_lvl.
+        simpl in *.
+        specialize h_forall_lvl with  (1:=eq_refl).
+        specialize h_forall_lvl with  (1:=eq_refl).
+        decomp h_forall_lvl;eauto.
+        subst.
+        exists (sto'' ++ [(parameter_name param, v)]).
+        rewrite <- app_assoc.
+        simpl.
+        split;[|split].
+        + reflexivity.
+        + rewrite app_length .
+          simpl.
+          omega.
+        + constructor.
+          * !intros.
+            rewrite heq_parameter_mode.
+            constructor.
+            assumption.
+          * assumption.
+      - unfold ST.push in h_forall_lvl.
+        simpl in *.
+        specialize h_forall_lvl with  (1:=eq_refl).
+        specialize h_forall_lvl with  (1:=eq_refl).
+        decomp h_forall_lvl;eauto.
+        subst.
+        exists (sto'' ++ [(parameter_name param, Int v)]).
+        rewrite <- app_assoc.
+        simpl.
+        split;[|split].
+        + reflexivity.
+        + rewrite app_length .
+          simpl.
+          omega.
+        + constructor.
+          * !intros.
+            rewrite heq_parameter_mode.
+            constructor.
+            assumption.
+          * assumption.
+      - unfold ST.push in h_forall_lvl.
+        simpl in *.
+        specialize h_forall_lvl with  (1:=eq_refl).
+        specialize h_forall_lvl with  (1:=eq_refl).
+        decomp h_forall_lvl;eauto.
+        subst.
+        exists (sto'' ++ [(parameter_name param, Undefined)]).
+        rewrite <- app_assoc.
+        simpl.
+        split;[|split].
+        + reflexivity.
+        + rewrite app_length .
+          simpl.
+          omega.
+        + constructor.
+          * !intros.
+            rewrite heq_parameter_mode.
+            reflexivity.
+          * assumption.
+    Qed.
+
     Lemma copy_in_push:
       ∀ l' st s lvl initf prm_prof e lexp l i v,
       copyIn st s (lvl,initf) (prm_prof::l') (e::lexp) (OK (lvl, l++ (i, v):: initf))
         → Datatypes.length l = Datatypes.length l'
           ∧ i = parameter_name prm_prof
           ∧ match parameter_mode prm_prof with
-            | In => evalExp st s e (OK v)
-            | Out => v = Undefined
-            | InOut => evalExp st s e (OK v)
-            end.
+             | In => evalExp st s e (OK v)
+             | Out => v = Undefined
+             | InOut => evalExp st s e (OK v)
+            end
+          ∧ copyIn st s (lvl, (i, v):: initf) (l') (lexp) (OK (lvl, l++(i, v):: initf)).
       Proof.
         induction l';!intros.
         - simpl in * |- *.
@@ -9745,11 +9878,11 @@ Proof.
             apply app_same_length_eq2 in heq_cons;auto.
             decomp heq_cons.
             !destruct l.
-            * split;auto.
-              simpl in *.
-              !inversion heq_cons.
-              split;auto.
-              destruct (parameter_mode prm_prof);auto; try discriminate.
+            * repeat split;auto;simpl in *;!inversion heq_cons.
+              -- reflexivity.
+              -- rewrite heq_parameter_mode.
+                 assumption.
+              -- assumption.
             * exfalso.
               simpl in heq_cons.
               !assert (List.length [(parameter_name prm_prof, e_v)] = List.length (p :: l ++ [(i, v)])). {
@@ -9770,11 +9903,12 @@ Proof.
             apply app_same_length_eq2 in heq_cons;auto.
             decomp heq_cons.
             !destruct l.
-            * split;auto.
-              simpl in *.
-              !inversion heq_cons.
-              split;auto.
-              destruct (parameter_mode prm_prof);auto; try discriminate.
+            * repeat split;auto;simpl in *; !inversion heq_cons.
+              -- reflexivity.
+              -- rewrite heq_parameter_mode.
+                 !inversion heq_cons.
+                 assumption.
+              -- assumption.
             * exfalso.
               simpl in heq_cons.
               !assert (List.length [(parameter_name prm_prof, Int v0)] = List.length (p :: l ++ [(i, v)])). {
@@ -9795,21 +9929,15 @@ Proof.
             apply app_same_length_eq2 in heq_cons;auto.
             decomp heq_cons.
             !destruct l.
-            * split;auto.
-              simpl in *.
-              !inversion heq_cons.
-              split;auto.
-              destruct (parameter_mode prm_prof);auto; try discriminate.
-              constructor.
-              assumption.
-            * exfalso.
-              simpl in heq_cons.
-              !assert (List.length [(parameter_name prm_prof, v0)] = List.length (p :: l ++ [(i, v)])). {
-                rewrite  heq_cons;auto. }
-              simpl in heq_length.
-              rewrite app_length in heq_length.
-              simpl in heq_length.
-              omega.
+            * repeat split;auto;simpl in *; !inversion heq_cons.
+              -- reflexivity.
+              -- rewrite heq_parameter_mode.
+                 constructor.
+                 assumption.
+              -- assumption.
+            * !inversion heq_cons.
+              exfalso.
+              eapply app_cons_not_nil with (a:=(i, v));eauto.
           + !!!inversion h_copy_in0.
             !assert ((l ++ (i, v) :: initf) = ((l ++ [(i, v)]) ++ initf)). {
               simpl.
@@ -9822,13 +9950,13 @@ Proof.
             apply app_same_length_eq2 in heq_cons;auto.
             decomp heq_cons.
             !destruct l.
-            * split;auto.
-              simpl in *.
-              !inversion heq_cons.
-              split;auto.
-              destruct (parameter_mode prm_prof);auto; try discriminate.
-              constructor.
-              assumption.
+            * simpl in *.
+              repeat split;auto; !inversion heq_cons.
+              -- reflexivity.
+              -- rewrite heq_parameter_mode.
+                 constructor.
+                 assumption.
+              -- assumption.
             * exfalso.
               simpl in heq_cons.
               !assert (List.length [(parameter_name prm_prof, Int v0)] = List.length (p :: l ++ [(i, v)])). {
@@ -9849,11 +9977,12 @@ Proof.
             apply app_same_length_eq2 in heq_cons;auto.
             decomp heq_cons.
             !destruct l.
-            * split;auto.
-              simpl in *.
-              !inversion heq_cons.
-              split;auto.
-              destruct (parameter_mode prm_prof);auto; try discriminate.
+            * simpl in *.
+              repeat split;!inversion heq_cons.
+              -- reflexivity.
+              -- rewrite heq_parameter_mode.
+                 reflexivity.
+              -- assumption.
             * exfalso.
               simpl in heq_cons.
               !assert (List.length [(parameter_name prm_prof, Undefined)] = List.length (p :: l ++ [(i, v)])). {
@@ -9863,6 +9992,13 @@ Proof.
               simpl in heq_length.
               omega.
         - !!!inversion h_copy_in.
+          unfold ST.push in h_copy_in0.
+          simpl in h_copy_in0.
+          !assert (exists a' lexp',  copyIn st s (lvl, (parameter_name prm_prof, e_v) :: initf) (a :: l') (a'::lexp') (OK (lvl, l ++ (i, v) :: initf))). {
+            admit.
+          }
+          decomp h_ex.
+          specialize IHl' with (1:=h_copy_in1).
 
 
 
