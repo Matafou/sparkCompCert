@@ -3,6 +3,7 @@ Require Import spark.eval.
 Require Import sparkfrontend.LibHypsNaming.
 Require Import Memory Errors FunInd.
 Require Import Cminor.
+Require  compcert.cfrontend.Ctypes.
 Require Import sparkfrontend.spark2Cminor.
 Require Import sparkfrontend.compcert_utils.
 Import Symbol_Table_Module.
@@ -976,8 +977,32 @@ Function transl_paramexprlist (stbl : symboltable) (CE : compilenv) (el : list e
       end
   end.
 
-
+Import Ctypes.
 Lemma transl_paramexprlist_ok : forall x y z, transl_paramexprlist x y z = spark2Cminor.transl_paramexprlist x y z.
+Proof.
+  reflexivity.
+Qed.
+
+Function access_mode ty := 
+match ty with
+| Ctypes.Tvoid => Ctypes.By_nothing
+| Ctypes.Tint I8 Signed _ => Ctypes.By_value AST.Mint8signed
+| Ctypes.Tint I8 Unsigned _ => Ctypes.By_value AST.Mint8unsigned
+| Ctypes.Tint I16 Signed _ => Ctypes.By_value AST.Mint16signed
+| Ctypes.Tint I16 Unsigned _ => Ctypes.By_value AST.Mint16unsigned
+| Ctypes.Tint I32 _ _ => Ctypes.By_value AST.Mint32
+| Ctypes.Tint IBool _ _ => Ctypes.By_value AST.Mint8unsigned
+| Ctypes.Tlong _ _ => Ctypes.By_value AST.Mint64
+| Ctypes.Tfloat F32 _ => Ctypes.By_value AST.Mfloat32
+| Ctypes.Tfloat F64 _ => Ctypes.By_value AST.Mfloat64
+| Ctypes.Tpointer _ _ => Ctypes.By_value AST.Mptr
+| Ctypes.Tarray _ _ _ => Ctypes.By_reference
+| Ctypes.Tfunction _ _ _ => Ctypes.By_reference
+| Ctypes.Tstruct _ _ => Ctypes.By_copy
+| Ctypes.Tunion _ _ => Ctypes.By_copy
+end.
+
+Lemma access_mode_ok : forall ty, Ctypes.access_mode ty = access_mode ty.
 Proof.
   reflexivity.
 Qed.

@@ -9720,10 +9720,51 @@ Proof.
     Qed.
 
 
-    Inductive Forall3 {A B C: Type} (R : A → B → C → Prop) : list A → list B → list C → Prop :=
-      Forall3_nil : Forall3 R [] [] []
-    | Forall3_cons : ∀ x y z l l' l'',
-        R x y z → Forall3 R l l' l'' → Forall3 R (l++[x]) (y :: l') (z :: l'').
+    Inductive Forall3_rev1 {A B C: Type} (R : A → B → C → Prop) : list A → list B → list C → Prop :=
+      Forall3r1_nil : Forall3_rev1 R [] [] []
+    | Forall3r1_cons : ∀ x y z l l' l'',
+        R x y z → Forall3_rev1 R l l' l'' → Forall3_rev1 R (l++[x]) (y :: l') (z :: l'').
+
+    Ltac rename_f3 h th :=
+      match th with
+      | Forall3_rev1 ?R ?A ?B ?C => fresh "for3_" A "_" B "_" C
+      | Forall3_rev1 ?R ?A ?B ?C => fresh "for3_" A "_" B
+      | Forall3_rev1 ?R ?A ?B ?C => fresh "for3_" A
+      | Forall3_rev1 ?R ?A ?B ?C => fresh "for3"
+      | _ => rename_wf_st h th
+      end.
+    Ltac rename_sparkprf ::= rename_f3.
+
+
+    Lemma Forall3r1_impl_strong:
+      ∀ (A B C : Type) (P Q : A → B → C → Prop) (l : list A) (l' : list B) (l'':list C),
+        Forall3_rev1 (λ a b c, P a b c → Q a b c) l l' l'' →
+        Forall3_rev1 P l l' l'' →
+        Forall3_rev1 Q l l' l''.
+    Proof.
+      intros until 0. (* bad naming of variables *)
+      !intros until 2.
+      revert h_for3_l_l'_l''.
+      induction h_for3_l_l'_l''0;!intros.
+      - constructor.
+      - !!!inversion h_for3.
+        !assert (l0 = l ∧ x0 = x) as ?. {
+          !assert (Datatypes.length (l0 ++ [x0]) = Datatypes.length (l ++ [x])). {
+            rewrite heq_app.
+            reflexivity. }
+          setoid_rewrite app_length in heq_length.
+          simpl in heq_length.
+          !assert (Datatypes.length l0 = Datatypes.length l). {
+            omega. }
+          !specialize app_same_length_eq with (1:=heq_length0)(2:=heq_app) as ?.
+          decomp h_and.
+          inversion heq_cons.
+          split;auto. }
+        decomp h_and.
+        subst.
+        constructor;auto.
+    Qed.
+
 
     Lemma copyIn_init:
       ∀ st x y args lparams s, 
@@ -9734,7 +9775,7 @@ Proof.
           exists sto'',
             sto' = sto''++ initf
             ∧ Datatypes.length sto'' = Datatypes.length lparams
-            ∧ Forall3 (fun (prm:idnum * V) prm_prof e =>
+            ∧ Forall3_rev1 (fun (prm:idnum * V) prm_prof e =>
                          forall k',
                            let (k,v) := prm in
                            transl_paramid k = k' ->
@@ -9851,7 +9892,7 @@ Proof.
           * assumption.
     Qed.
 
-    Lemma copy_in_push:
+    (*Lemma copy_in_push:
       ∀ l' st s lvl initf prm_prof e lexp l i v,
       copyIn st s (lvl,initf) (prm_prof::l') (e::lexp) (OK (lvl, l++ (i, v):: initf))
         → Datatypes.length l = Datatypes.length l'
@@ -9999,7 +10040,226 @@ Proof.
           }
           decomp h_ex.
           specialize IHl' with (1:=h_copy_in1).
+     *)
 
+    Lemma copyIn_init':
+      ∀ st args lparams bigs sto'',
+        Forall3_rev1 (fun (prm:idnum * V) prm_prof e =>
+                        forall k',
+                          let (k,v) := prm in
+                          transl_paramid k = k' ->
+                          match parameter_mode prm_prof with
+                          | In => evalExp st bigs e (OK v)
+                          | Out => v = Undefined
+                          | InOut => evalExp st bigs e (OK v)
+                          end) sto'' lparams args ->
+        ∀ g CE mcalling callinglocenv callingsp tlparams args_t args_t_v
+          (CE_sufx : compilenv) s_parms sto,
+          store_params st ((Datatypes.length CE_sufx, sto) :: CE_sufx) lparams =: s_parms -> 
+          transl_paramexprlist st CE args lparams =: args_t ->
+          Datatypes.length sto'' = Datatypes.length lparams ->
+          transl_lparameter_specification_to_lident st lparams = tlparams -> 
+          eval_exprlist g callingsp callinglocenv mcalling args_t args_t_v ->
+          match_env st bigs CE callingsp callinglocenv g mcalling ->
+          NoDupA (fun x y => x.(parameter_name) = y.(parameter_name)) lparams -> 
+          ∀ locenv tlparams,
+            set_params (args_t_v) tlparams = locenv ->
+            Forall3_rev1
+              (fun (prm:idnum * V) prm_prof arg  =>
+                 forall k',
+                   let (k,v) := prm in
+                   transl_paramid k = k' ->
+                   match parameter_mode prm_prof with
+                   | In => exists v', transl_value v v' ∧ Maps.PTree.get k' locenv = Some v'
+                   | Out => (v = Undefined)
+                   | InOut => 
+                     (* This part is ensured by typing/wellformedness (intialisation of inout vars)*)
+                     exists v' chk,
+                     transl_value v v' ∧
+                     (compute_chnk_of_type st (parameter_subtype_mark prm_prof) =: chk)
+                     ∧ (exists addr, Maps.PTree.get k' locenv = Some addr
+                                     ∧ Mem.loadv chk mcalling addr = Some v')
+                   end) sto'' lparams args.
+        Proof.
+          !intros until 1.
+          !induction h_for3_sto''_lparams_args;!intros;simpl.
+          - constructor.
+          - constructor.
+            + !intros.
+              rename heq_length into heq.
+              !assert (Datatypes.length l = Datatypes.length l'). {
+                rewrite app_length in heq.
+                simpl in heq.
+                omega. }
+              clear heq.
+              destruct x;!intros.
+              specialize h_forall_k' with (1:=heq_transl_paramid).
+              destruct (parameter_mode y) eqn:heq_mode;up_type.
+              * !!!rew transl_paramexprlist_ok with functional inversion htrans_prmexprl;
+                  match goal with
+                  | H: parameter_mode ?a = ?x, H': parameter_mode ?a = ?y |- _ => try now (rewrite H in H';discriminate)
+                  end.
+                !specialize transl_expr_ok with (1:=heq_tr_expr_e)
+                                               (2:=h_forall_k') (3:=h_match_env) as ?.
+                decomp h_ex.
+                exists e_t_v.
+                split.
+                -- assumption.
+                -- !!!rew store_params_ok with functional inversion heq_store_prms.
+                   subst.
+                   admit.
+              * assumption.
+              * !!!rew transl_paramexprlist_ok with functional inversion htrans_prmexprl;
+                  match goal with
+                  | H: parameter_mode ?a = ?x, H': parameter_mode ?a = ?y |- _ => try now (rewrite H in H';discriminate)
+                  end.
+
+Lemma transl_name_ok : forall stbl CE nme nme' typ_nme cm_typ_nme load_addr_nme,
+    transl_name stbl CE nme = Errors.OK nme' ->
+    type_of_name stbl nme =: typ_nme ->
+    transl_type stbl typ_nme =: cm_typ_nme ->
+    make_load nme' cm_typ_nme =: load_addr_nme ->
+    
+    forall locenv g m (s:STACK.state)  (v:value) stkptr,
+      evalName stbl s nme (OK v) ->
+      match_env stbl s CE stkptr locenv g m ->
+      exists v_t ,
+        (transl_value v v_t
+         /\ Cminor.eval_expr g stkptr locenv m load_addr_nme v_t).
+Proof.
+  !intros.
+  assert (forall n, evalExp stbl s (Name n nme) (OK v)). {
+    !intros. 
+    constructor.
+    assumption. }
+  
+  !specialize (h_match_env.(me_safe_cm_env).(me_stack_match_addresses)) as ?.
+  red in h_stk_mtch_addr_stkptr_m.
+  specialize h_stk_mtch_addr_stkptr_m with (1:=heq_transl_name).
+  decomp h_stk_mtch_addr_stkptr_m.
+  
+  !specialize (h_match_env.(me_stack_match)) as ?.
+  red in h_stk_mtch_s_m.
+  specialize h_stk_mtch_s_m with (1:=heq_transl_name) (2:=h_CM_eval_expr_nme_t_nme_t_v)
+                                 (3:=h_eval_name_nme_v)(4:=heq_transl_type) (5:=heq_type_of_name)
+                                 (6:=heq_make_load).
+  decomp h_stk_mtch_s_m.
+  eexists.
+    split;eauto.
+Qed.
+
+
+
+  
+
+  unfold transl_name in heq_transl_name.
+  !destruct nme; try discriminate.
+  revert nme_t heq_transl_name.
+  !functional induction (transl_variable stbl CE a i) ;try discriminate;simpl; !!intros.
+  
+
+  !invclear h_eval_name_v;eq_same_clear.
+  - inversion h_eval_literal;subst.
+    + !destruct v0.
+      * eexists;split;!intros; econstructor;eauto.
+      * eexists;split;!intros;econstructor;eauto.
+    + eexists;split;!intros.
+      * eapply (transl_literal_ok g _ _ h_eval_literal stkptr).
+        econstructor.
+      * constructor.
+        reflexivity.
+  - unfold value_at_addr in heq_value_at_addr.
+    destruct (transl_type stbl astnum_type) eqn:heq_transl_type;simpl in *.
+    + !destruct h_match_env.
+      edestruct h_safe_cm_CE_m.(me_stack_match_addresses) with (nme:=Identifier astnum id);eauto. 
+      eapply h_stk_mtch_s_m;eauto.
+      * simpl.
+        assumption.
+      * simpl.
+        rewrite heq_fetch_exp_type.
+        reflexivity.
+    + discriminate.
+  - decomp (h_forall_e' _ heq_tr_expr_e _ _ _ _ _ _ h_eval_expr_e_e_v h_match_env).
+    decomp (h_forall_e'0 _ heq_tr_expr_e0 _ _ _ _ _ _ h_eval_expr_e0_e0_v h_match_env).
+    assert (hex:or (exists b, v = Bool b) (exists n, v = Int n)). {
+      apply do_run_time_check_on_binop_ok in h_do_rtc_binop.
+      rewrite binopexp_ok in h_do_rtc_binop.
+      !functional inversion h_do_rtc_binop;subst;eq_same_clear
+       ;try contradiction;eauto.
+      unfold Math.mod' in  heq_mod'.
+      destruct e_v;try discriminate.
+      destruct e0_v;try discriminate.
+      inversion heq_mod'.
+      right;eauto. }
+    decomp hex;subst.
+    + destruct b; eexists;(split;[econstructor;eauto|]).
+      * eapply eval_Ebinop;try econstructor;eauto.
+        eapply binary_operator_ok with (v1:=e_v) (v2:=e0_v);eauto.
+        econstructor;eauto.
+      * eapply eval_Ebinop;try econstructor;eauto.
+        eapply binary_operator_ok with (v1:=e_v) (v2:=e0_v);eauto.
+        econstructor;eauto.
+    + eexists;(split;[econstructor;eauto|]).
+      eapply eval_Ebinop;try econstructor;eauto.
+        eapply binary_operator_ok with (v1:=e_v) (v2:=e0_v);eauto.
+        econstructor;eauto.
+  - (* Unary minus *)
+    simpl in heq_transl_unop.
+    eq_same_clear.
+    specialize h_forall_e' with (1:=heq_tr_expr_e) (2:=h_eval_expr_e_e_v) (3:=h_match_env).
+    decomp h_forall_e'.
+    !invclear h_do_rtc_unop;eq_same_clear.
+    !invclear h_overf_check.
+    eexists.
+    split.
+    * econstructor.
+    * assert (h:=unaryneg_ok _ _ _ h_transl_value_e_v_e_t_v heq_unary_minus).
+      econstructor;eauto.
+      simpl.
+      inversion h.
+      reflexivity.
+  (* Not *)
+  - !invclear h_do_rtc_unop;simpl in *;try eq_same_clear.
+    specialize h_forall_e' with (1:=heq_tr_expr_e) (2:=h_eval_expr_e_e_v) (3:=h_match_env).
+    decomp h_forall_e'.
+    generalize (not_ok _ _ _ h_transl_value_e_v_e_t_v heq_unary_operation).
+    !intro.
+    exists (Values.Val.notbool e_t_v).
+    split;auto.
+    econstructor;simpl in *;eauto.
+    + econstructor;eauto.
+      reflexivity.
+    + destruct e_t_v;simpl in *; try (inversion h_transl_value_e_v_e_t_v;fail).
+      unfold  Values.Val.cmp.
+      simpl.
+      unfold Values.Val.of_bool.
+      reflexivity.
+Qed.
+
+
+
+
+
+                
+                !specialize transl_expr_ok with (1:=heq_tr_expr_e)
+                                               (2:=h_forall_k') (3:=h_match_env) as ?.
+                decomp h_ex.
+                exists e_t_v.
+                split.
+
+
+                
+
+
+
+
+                !!!functional inversion heq_transl_lparameter_specification_to_lident.
+                exists args_t_v.
+            
+              
+              
+          
+        Qed.
 
 
     Lemma copyIn_store_params_ok:
@@ -10007,31 +10267,32 @@ Proof.
         transl_paramexprlist st CE args lparams =: args_t ->
         ∀ g callingsp callinglocenv mcalling args_t_v
           lvl sto' bigs, 
-          eval_exprlist g callingsp callinglocenv mcalling args_t args_t_v ->
           copyIn st bigs (lvl, []) lparams args (OK (lvl, sto')) ->
-
+          eval_exprlist g callingsp callinglocenv mcalling args_t args_t_v ->
           match_env st bigs CE callingsp callinglocenv g mcalling ->
           NoDupA (fun x y => x.(parameter_name) = y.(parameter_name)) lparams -> 
           ∀ locenv tlparams,
-          transl_lparameter_specification_to_lident st lparams = tlparams -> 
-          set_params (args_t_v) tlparams = locenv -> 
-          Forall2 (fun (prm:idnum * V) prm_prof  =>
-                    forall k',
-                    let (k,v) := prm in
-                     transl_paramid k = k' ->
-                     match parameter_mode prm_prof with
-                     | In => exists v', transl_value v v' ∧ Maps.PTree.get k' locenv = Some v'
-                     | Out => (v = Undefined)
-                     | InOut => 
-                       (* This part is ensured by typing/wellformedness (intialisation of inout vars) *)
-                       exists v' chk,
-                                transl_value v v' ∧
-                                (compute_chnk_of_type st (parameter_subtype_mark prm_prof) =: chk)
-                                ∧ (exists addr, Maps.PTree.get k' locenv = Some addr
-                                                ∧ Mem.loadv chk mcalling addr = Some v')
-                     end) (List.rev sto') lparams.
+            transl_lparameter_specification_to_lident st lparams = tlparams -> 
+            set_params (args_t_v) tlparams = locenv -> 
+            Forall3_rev1
+              (fun (prm:idnum * V) prm_prof arg  =>
+                 forall k',
+                   let (k,v) := prm in
+                   transl_paramid k = k' ->
+                   match parameter_mode prm_prof with
+                   | In => exists v', transl_value v v' ∧ Maps.PTree.get k' locenv = Some v'
+                   | Out => (v = Undefined)
+                   | InOut => 
+                     (* This part is ensured by typing/wellformedness (intialisation of inout vars)*)
+                     exists v' chk,
+                     transl_value v v' ∧
+                     (compute_chnk_of_type st (parameter_subtype_mark prm_prof) =: chk)
+                     ∧ (exists addr, Maps.PTree.get k' locenv = Some addr
+                                     ∧ Mem.loadv chk mcalling addr = Some v')
+                   end) sto' lparams args.
     Proof.
       !intros until lparams.
+      
       !!!!rew transl_paramexprlist_ok with
           functional induction function_utils.transl_paramexprlist st CE args lparams;
         try (now (simpl in *; discriminate));!intros.
@@ -10043,6 +10304,11 @@ Proof.
         rename e into exp_args.
         rename x0 into l_e_t.
         (* no choice in that instantiation: *)
+        !specialize copyIn_init with (1:=h_copy_in)(2:=eq_refl)(3:=eq_refl) as ?.
+        decomp h_ex.
+        subst.
+        intro h_forall3.
+        
         !!!inversion h_NoDupA.
         specialize h_forall_args_t with (bigs:=bigs)(lvl:=lvl)
                                         (1:=htrans_prmexprl)(5:=h_NoDupA_lprmSpec).
