@@ -2921,6 +2921,43 @@ Proof.
       reflexivity.
 Qed.
 
+Notation " x =: y" := (x = Errors.OK y) (at level 90): res_scope.
+Notation " x =! y" := (x = Error y) (at level 120): res_scope.
+Open Scope res_scope.
+
+Lemma transl_name_ok : forall stbl CE nme nme' typ_nme cm_typ_nme load_addr_nme,
+    transl_name stbl CE nme = Errors.OK nme' ->
+    type_of_name stbl nme =: typ_nme ->
+    transl_type stbl typ_nme =: cm_typ_nme ->
+    make_load nme' cm_typ_nme =: load_addr_nme ->
+    
+    forall locenv g m (s:STACK.state)  (v:value) stkptr,
+      evalName stbl s nme (OK v) ->
+      match_env stbl s CE stkptr locenv g m ->
+      exists v_t ,
+        (transl_value v v_t
+         /\ Cminor.eval_expr g stkptr locenv m load_addr_nme v_t).
+Proof.
+  !intros.
+  assert (forall n, evalExp stbl s (Name n nme) (OK v)). {
+    !intros. 
+    constructor.
+    assumption. }
+  
+  !specialize (h_match_env.(me_safe_cm_env).(me_stack_match_addresses)) as ?.
+  red in h_stk_mtch_addr_stkptr_m.
+  specialize h_stk_mtch_addr_stkptr_m with (1:=heq_transl_name).
+  decomp h_stk_mtch_addr_stkptr_m.
+  
+  !specialize (h_match_env.(me_stack_match)) as ?.
+  red in h_stk_mtch_s_m.
+  specialize h_stk_mtch_s_m with (1:=heq_transl_name) (2:=h_CM_eval_expr_nme_t_nme_t_v)
+                                 (3:=h_eval_name_nme_v)(4:=heq_transl_type) (5:=heq_type_of_name)
+                                 (6:=heq_make_load).
+  decomp h_stk_mtch_s_m.
+  eexists.
+    split;eauto.
+Qed.
 
 Scheme Equality for binary_operator.
 Scheme Equality for unary_operator.
@@ -3483,9 +3520,6 @@ Proof.
 Qed.
 
 
-Notation " x =: y" := (x = Errors.OK y) (at level 90): res_scope.
-Notation " x =! y" := (x = Error y) (at level 120): res_scope.
-Open Scope res_scope.
 
 Ltac simplify_do :=
   repeat progress
@@ -8089,6 +8123,298 @@ Proof.
   eapply exact_lvl_transl_variable_empty_top;eauto.
 Qed.
 
+Lemma copy_in_cons:
+  ∀ st bigs lprmSpec l_exp_args lvl sto l,
+    copyIn st bigs (lvl,sto) lprmSpec l_exp_args (OK (lvl, l)) ->
+    exists l' : ST.store,
+      l = l' ++ sto
+      ∧ Datatypes.length lprmSpec = Datatypes.length l'
+      ∧ ∀ ll, copyIn st bigs (lvl,ll) lprmSpec l_exp_args (OK (lvl, l' ++ ll)).
+Proof.
+  !intros until 1.
+  remember (lvl,sto) as x.
+  remember (OK (lvl, l)) as x'.
+  revert l lvl sto Heqx Heqx'.
+  autorename h_copy_in.
+  !induction h_copy_in_x_x';!intros;subst;unfold ST.push in *; simpl in *; try discriminate.
+  - !invclear heq_OK.
+    exists nil;split;[|split];auto.
+    !intros.
+    simpl.
+    constructor.
+  - rename h_forall_l into IHh_copy_in_x_x'.
+    specialize IHh_copy_in_x_x' with (2:=eq_refl)(1:=eq_refl).
+    !!!!decomp IHh_copy_in_x_x'.
+    exists (l' ++ [(parameter_name param, e_v)]).
+    rewrite <- app_assoc;simpl.
+    split;[|split].
+    + reflexivity.
+    + rewrite heq_length.
+      rewrite app_length;simpl.
+      rewrite Nat.add_1_r;auto.
+    + !intros.
+      specialize h_forall_ll with (ll:=(parameter_name param, e_v) :: ll).
+      rewrite  <- app_assoc.
+      simpl.
+      econstructor 3;eauto.
+  - rename h_forall_l into IHh_copy_in_x_x'.
+    specialize IHh_copy_in_x_x' with (2:=eq_refl)(1:=eq_refl).
+    !!!!decomp IHh_copy_in_x_x'.
+    exists (l' ++ [(parameter_name param, Int v)]).
+    rewrite <- app_assoc;simpl.
+    split;[|split].
+    + reflexivity.
+    + rewrite heq_length.
+      rewrite app_length;simpl.
+      rewrite Nat.add_1_r;auto.
+    + !intros.
+      specialize h_forall_ll with (ll:=(parameter_name param, Int v) :: ll).
+      rewrite  <- app_assoc.
+      simpl.
+      econstructor 5;eauto.
+  - rename h_forall_l into IHh_copy_in_x_x'.
+    specialize IHh_copy_in_x_x' with (2:=eq_refl)(1:=eq_refl).
+    !!!!decomp IHh_copy_in_x_x'.
+    exists (l' ++ [(parameter_name param, v)]).
+    rewrite <- app_assoc;simpl.
+    split;[|split].
+    + reflexivity.
+    + rewrite heq_length.
+      rewrite app_length;simpl.
+      rewrite Nat.add_1_r;auto.
+    + !intros.
+      specialize h_forall_ll with (ll:=(parameter_name param, v) :: ll).
+      rewrite  <- app_assoc.
+      simpl.
+      econstructor 7;eauto.
+  - rename h_forall_l into IHh_copy_in_x_x'.
+    specialize IHh_copy_in_x_x' with (2:=eq_refl)(1:=eq_refl).
+    !!!!decomp IHh_copy_in_x_x'.
+    exists (l' ++ [(parameter_name param, Int v)]).
+    rewrite <- app_assoc;simpl.
+    split;[|split].
+    + reflexivity.
+    + rewrite heq_length.
+      rewrite app_length;simpl.
+      rewrite Nat.add_1_r;auto.
+    + !intros.
+      specialize h_forall_ll with (ll:=(parameter_name param, Int v) :: ll).
+      rewrite  <- app_assoc.
+      simpl.
+      econstructor 9;eauto.
+  - rename h_forall_l into IHh_copy_in_x_x'.
+    specialize IHh_copy_in_x_x' with (2:=eq_refl)(1:=eq_refl).
+    !!!!decomp IHh_copy_in_x_x'.
+    exists (l' ++ [(parameter_name param, Undefined)]).
+    rewrite <- app_assoc;simpl.
+    split;[|split].
+    + reflexivity.
+    + rewrite heq_length.
+      rewrite app_length;simpl.
+      rewrite Nat.add_1_r;auto.
+    + !intros.
+      specialize h_forall_ll with (ll:=(parameter_name param, Undefined) :: ll).
+      rewrite  <- app_assoc.
+      simpl.
+      econstructor 10;eauto.
+Qed.
+
+
+Inductive Forall3_rev1 {A B C: Type} (R : A → B → C → Prop) : list A → list B → list C → Prop :=
+  Forall3r1_nil : Forall3_rev1 R [] [] []
+| Forall3r1_cons : ∀ x y z l l' l'',
+    R x y z → Forall3_rev1 R l l' l'' → Forall3_rev1 R (l++[x]) (y :: l') (z :: l'').
+
+Ltac rename_f3 h th :=
+  match th with
+  | Forall3_rev1 ?R ?A ?B ?C => fresh "for3_" A "_" B "_" C
+  | Forall3_rev1 ?R ?A ?B ?C => fresh "for3_" A "_" B
+  | Forall3_rev1 ?R ?A ?B ?C => fresh "for3_" A
+  | Forall3_rev1 ?R ?A ?B ?C => fresh "for3"
+  | _ => rename_wf_st h th
+  end.
+Ltac rename_sparkprf ::= rename_f3.
+
+
+Lemma Forall3r1_impl_strong:
+  ∀ (A B C : Type) (P Q : A → B → C → Prop) (l : list A) (l' : list B) (l'':list C),
+    Forall3_rev1 (λ a b c, P a b c → Q a b c) l l' l'' →
+    Forall3_rev1 P l l' l'' →
+    Forall3_rev1 Q l l' l''.
+Proof.
+  intros until 0. (* bad naming of variables *)
+  !intros until 2.
+  revert h_for3_l_l'_l''.
+  induction h_for3_l_l'_l''0;!intros.
+  - constructor.
+  - !!!inversion h_for3.
+    !assert (l0 = l ∧ x0 = x) as ?. {
+      !assert (Datatypes.length (l0 ++ [x0]) = Datatypes.length (l ++ [x])). {
+        rewrite heq_app.
+        reflexivity. }
+      setoid_rewrite app_length in heq_length.
+      simpl in heq_length.
+      !assert (Datatypes.length l0 = Datatypes.length l). {
+        omega. }
+      !specialize app_same_length_eq with (1:=heq_length0)(2:=heq_app) as ?.
+      decomp h_and.
+      inversion heq_cons.
+      split;auto. }
+    decomp h_and.
+    subst.
+    constructor;auto.
+Qed.
+
+
+Lemma copyIn_init:
+  ∀ st x y args lparams s, 
+    copyIn st s x lparams args y ->
+    ∀ lvl initf sto',
+      x = (lvl, initf) ->
+      y = OK (lvl, sto') -> 
+      exists sto'',
+        sto' = sto''++ initf
+        ∧ Datatypes.length sto'' = Datatypes.length lparams
+        ∧ Forall3_rev1 (fun (prm:idnum * V) prm_prof e =>
+                          forall k',
+                            let (k,v) := prm in
+                            transl_paramid k = k' ->
+                            match parameter_mode prm_prof with
+                            | In => evalExp st s e (OK v)
+                            | Out => v = Undefined
+                            | InOut => evalExp st s e (OK v)
+                            end) sto'' lparams args.
+Proof.
+  !intros until 1.
+  !induction h_copy_in_x_y;!intros;try discriminate;subst.
+  - !!!inversion heq_OK.
+    exists nil.
+    split;[|split].
+    + auto.
+    + auto.
+    + constructor.
+  - unfold ST.push in h_forall_lvl.
+    simpl in *.
+    specialize h_forall_lvl with  (1:=eq_refl).
+    specialize h_forall_lvl with (1:=eq_refl).
+    decomp h_forall_lvl;eauto.
+    subst.
+    exists (sto'' ++ [(parameter_name param, e_v)]).
+    rewrite <- app_assoc.
+    simpl.
+    split;[|split].
+    + reflexivity.
+    + rewrite app_length .
+      simpl.
+      omega.
+    + constructor.
+      * !intros.
+        rewrite heq_parameter_mode.
+        assumption.
+      * assumption.
+  - unfold ST.push in h_forall_lvl.
+    simpl in *.
+    specialize h_forall_lvl with  (1:=eq_refl).
+    specialize h_forall_lvl with (1:=eq_refl).
+    decomp h_forall_lvl;eauto.
+    subst.
+    exists (sto'' ++ [(parameter_name param, Int v)]).
+    rewrite <- app_assoc.
+    simpl.
+    split;[|split].
+    + reflexivity.
+    + rewrite app_length .
+      simpl.
+      omega.
+    + constructor.
+      * !intros.
+        rewrite heq_parameter_mode.
+        assumption.
+      * assumption.
+  - unfold ST.push in h_forall_lvl.
+    simpl in *.
+    specialize h_forall_lvl with  (1:=eq_refl).
+    specialize h_forall_lvl with  (1:=eq_refl).
+    decomp h_forall_lvl;eauto.
+    subst.
+    exists (sto'' ++ [(parameter_name param, v)]).
+    rewrite <- app_assoc.
+    simpl.
+    split;[|split].
+    + reflexivity.
+    + rewrite app_length .
+      simpl.
+      omega.
+    + constructor.
+      * !intros.
+        rewrite heq_parameter_mode.
+        constructor.
+        assumption.
+      * assumption.
+  - unfold ST.push in h_forall_lvl.
+    simpl in *.
+    specialize h_forall_lvl with  (1:=eq_refl).
+    specialize h_forall_lvl with  (1:=eq_refl).
+    decomp h_forall_lvl;eauto.
+    subst.
+    exists (sto'' ++ [(parameter_name param, Int v)]).
+    rewrite <- app_assoc.
+    simpl.
+    split;[|split].
+    + reflexivity.
+    + rewrite app_length .
+      simpl.
+      omega.
+    + constructor.
+      * !intros.
+        rewrite heq_parameter_mode.
+        constructor.
+        assumption.
+      * assumption.
+  - unfold ST.push in h_forall_lvl.
+    simpl in *.
+    specialize h_forall_lvl with  (1:=eq_refl).
+    specialize h_forall_lvl with  (1:=eq_refl).
+    decomp h_forall_lvl;eauto.
+    subst.
+    exists (sto'' ++ [(parameter_name param, Undefined)]).
+    rewrite <- app_assoc.
+    simpl.
+    split;[|split].
+    + reflexivity.
+    + rewrite app_length .
+      simpl.
+      omega.
+    + constructor.
+      * !intros.
+        rewrite heq_parameter_mode.
+        reflexivity.
+      * assumption.
+Qed.
+Lemma set_params_in : ∀ l vl k v,
+    Maps.PTree.get k (set_params vl l) = Some v ->
+    List.In k l.
+Proof.
+  induction l;simpl;!intros.
+  - rewrite Maps.PTree.gempty in heq_mget_k_v.
+    inversion heq_mget_k_v.
+  - destruct vl;simpl in *.
+    + destruct (Pos.eq_dec a k).
+      * left;auto.
+      * right.
+        rewrite Maps.PTree.gso in heq_mget_k_v.
+        -- eapply IHl;eauto.
+        -- symmetry.
+           assumption.
+    + destruct (Pos.eq_dec a k).
+      * left;auto.
+      * right.
+        rewrite Maps.PTree.gso in heq_mget_k_v.
+        -- eapply IHl;eauto.
+        -- symmetry.
+           assumption.
+Qed.
+
 (* replacing match-env by strong_match_env + unchange_on (forbidden). *)
 Lemma transl_stmt_normal_OK : forall stbl (stm:stmt) s norms',
     evalStmt stbl s stm norms' ->
@@ -9542,355 +9868,8 @@ Proof.
         + cbn.
           assumption. }
 
-
-
-(*
-    Variables (param : paramSpec) (ff : ST.frame) (f' : ST.scope_level * list (idnum * V)) (stbl : symTab) (ss : ST.state) (lparam : list paramSpec) 
-            (le : list exp) (f'' : Ret ST.frame) (n : astnum) (nm : name)
-            (h1:parameter_mode param = Out)
-            (h2:ST.push ff (parameter_name param) Undefined = f')
-            (h3:copyIn stbl ss f' lparam le f'').
-    Variables (xparam : paramSpec) (xff : ST.frame) (xf' : ST.scope_level * list (idnum * V))    
-             (xf'' : Ret ST.frame) (xn : astnum) (xnm : name)
-            (xh1:parameter_mode xparam = Out)
-            (xh2:ST.push xff (parameter_name xparam) Undefined = xf')
-            (xh3:copyIn stbl ss xf' lparam le xf'').
-    Variables n1 n2: astnum.
-    Variables nm1 nm2: name.
-    Variables prm1 prm2: paramSpec.
-    Goal
-      (copyIn stbl ss f'
-              (prm1        :: prm2        ::[])
-              (Name n1 nm1 :: Name n1 nm2 ::[])
-              (OK (ST.push
-                     (ST.push f' (parameter_name prm1) Undefined)
-                     (parameter_name prm2)
-                     Undefined))).
-      assert (h1:parameter_mode prm1 = Out) by admit.
-      assert (h2:parameter_mode prm2 = Out) by admit.
-      set (
-          XXX:=
-            CopyIn_Mode_Out
-              prm1 f' (ST.push f' (parameter_name prm1) Undefined) stbl ss [prm2] [Name n1 nm2]
-              (OK (ST.push (ST.push f' (parameter_name prm1) Undefined) (parameter_name prm2) Undefined))
-              n1 nm1 h1 eq_refl
-              
-              (CopyIn_Mode_Out
-                 prm2
-                 (ST.push f' (parameter_name prm1) Undefined)
-                 (ST.push (ST.push f' (parameter_name prm1) Undefined) (parameter_name prm2) Undefined)
-                 stbl ss [ ] [ ]
-                 (OK (ST.push (ST.push f' (parameter_name prm1) Undefined) (parameter_name prm2) Undefined))
-                 n1 nm2 h2 eq_refl
-              
-                 (CopyIn_Nil
-                    stbl ss
-                    (ST.push (ST.push f' (parameter_name prm1) Undefined) (parameter_name prm2) Undefined)))).
-      destruct f'.
-      lazy delta[ST.push ST.level_of fst ] beta iota in XXX.
-      simpl in XXX.
-      eapply CopyIn_Mode_Out.
-      all: cycle 2.
-      eapply CopyIn_Mode_Out.
-      5:reflexivity.
-      2:reflexivity.
-      1: assumption.
-      2: assumption.
-      - constructor.
-        Show Proof.
-      + admit.
-      + admit.
-
-
-    Check (CopyIn_Mode_Out _ _ _ _ _ _ _ _ n nm h1 h2 (CopyIn_Mode_Out _ _ _ _ _ _ _ _ xn xnm xh1 xh2 xh3)).
-    Axiom nametab:nametable.
-    Axiom stbl:symboltable.
-   (*:= {|
-                        vars := [(12%nat,(In,Integer))];
-                        procs := nil;
-                        types := nil;
-                        exps := nil;
-                        sloc := nil;
-                        names := nametab |}.*)
-    Definition prms := [{|parameter_astnum:=123%nat;parameter_name:=12%nat;parameter_subtype_mark:=Integer;parameter_mode:=In|};{|parameter_astnum:=123%nat;parameter_name:=28%nat;parameter_subtype_mark:=Integer;parameter_mode:=In|}].
-    Eval vm_compute in (build_frame_lparams stbl ([(4%nat,4)],8) prms).
-
-    Axiom ff:ST.frame.
-    Axiom s:ST.state.
-    Check (CopyIn_Mode_Out {|parameter_astnum:=123%nat;parameter_name:=12%nat;parameter_subtype_mark:=Integer;parameter_mode:=In|} ff (ST.push ff (12%nat) Undefined) stbl) s prms.
-
-*)
-
     !!specialize transl_expr_ok with (3:=h_match_env) as ?.
 
-    Lemma copy_in_cons:
-      ∀ st bigs lprmSpec l_exp_args lvl sto l,
-        copyIn st bigs (lvl,sto) lprmSpec l_exp_args (OK (lvl, l)) ->
-        exists l' : ST.store,
-          l = l' ++ sto
-          ∧ Datatypes.length lprmSpec = Datatypes.length l'
-          ∧ ∀ ll, copyIn st bigs (lvl,ll) lprmSpec l_exp_args (OK (lvl, l' ++ ll)).
-    Proof.
-      !intros until 1.
-      remember (lvl,sto) as x.
-      remember (OK (lvl, l)) as x'.
-      revert l lvl sto Heqx Heqx'.
-      autorename h_copy_in.
-      !induction h_copy_in_x_x';!intros;subst;unfold ST.push in *; simpl in *; try discriminate.
-      - !invclear heq_OK.
-        exists nil;split;[|split];auto.
-        !intros.
-        simpl.
-        constructor.
-      - rename h_forall_l into IHh_copy_in_x_x'.
-        specialize IHh_copy_in_x_x' with (2:=eq_refl)(1:=eq_refl).
-        !!!!decomp IHh_copy_in_x_x'.
-        exists (l' ++ [(parameter_name param, e_v)]).
-        rewrite <- app_assoc;simpl.
-        split;[|split].
-        + reflexivity.
-        + rewrite heq_length.
-          rewrite app_length;simpl.
-          rewrite Nat.add_1_r;auto.
-        + !intros.
-          specialize h_forall_ll with (ll:=(parameter_name param, e_v) :: ll).
-          rewrite  <- app_assoc.
-          simpl.
-          econstructor 3;eauto.
-      - rename h_forall_l into IHh_copy_in_x_x'.
-        specialize IHh_copy_in_x_x' with (2:=eq_refl)(1:=eq_refl).
-        !!!!decomp IHh_copy_in_x_x'.
-        exists (l' ++ [(parameter_name param, Int v)]).
-        rewrite <- app_assoc;simpl.
-        split;[|split].
-        + reflexivity.
-        + rewrite heq_length.
-          rewrite app_length;simpl.
-          rewrite Nat.add_1_r;auto.
-        + !intros.
-          specialize h_forall_ll with (ll:=(parameter_name param, Int v) :: ll).
-          rewrite  <- app_assoc.
-          simpl.
-          econstructor 5;eauto.
-      - rename h_forall_l into IHh_copy_in_x_x'.
-        specialize IHh_copy_in_x_x' with (2:=eq_refl)(1:=eq_refl).
-        !!!!decomp IHh_copy_in_x_x'.
-        exists (l' ++ [(parameter_name param, v)]).
-        rewrite <- app_assoc;simpl.
-        split;[|split].
-        + reflexivity.
-        + rewrite heq_length.
-          rewrite app_length;simpl.
-          rewrite Nat.add_1_r;auto.
-        + !intros.
-          specialize h_forall_ll with (ll:=(parameter_name param, v) :: ll).
-          rewrite  <- app_assoc.
-          simpl.
-          econstructor 7;eauto.
-      - rename h_forall_l into IHh_copy_in_x_x'.
-        specialize IHh_copy_in_x_x' with (2:=eq_refl)(1:=eq_refl).
-        !!!!decomp IHh_copy_in_x_x'.
-        exists (l' ++ [(parameter_name param, Int v)]).
-        rewrite <- app_assoc;simpl.
-        split;[|split].
-        + reflexivity.
-        + rewrite heq_length.
-          rewrite app_length;simpl.
-          rewrite Nat.add_1_r;auto.
-        + !intros.
-          specialize h_forall_ll with (ll:=(parameter_name param, Int v) :: ll).
-          rewrite  <- app_assoc.
-          simpl.
-          econstructor 9;eauto.
-      - rename h_forall_l into IHh_copy_in_x_x'.
-        specialize IHh_copy_in_x_x' with (2:=eq_refl)(1:=eq_refl).
-        !!!!decomp IHh_copy_in_x_x'.
-        exists (l' ++ [(parameter_name param, Undefined)]).
-        rewrite <- app_assoc;simpl.
-        split;[|split].
-        + reflexivity.
-        + rewrite heq_length.
-          rewrite app_length;simpl.
-          rewrite Nat.add_1_r;auto.
-        + !intros.
-          specialize h_forall_ll with (ll:=(parameter_name param, Undefined) :: ll).
-          rewrite  <- app_assoc.
-          simpl.
-          econstructor 10;eauto.
-    Qed.
-
-
-    Inductive Forall3_rev1 {A B C: Type} (R : A → B → C → Prop) : list A → list B → list C → Prop :=
-      Forall3r1_nil : Forall3_rev1 R [] [] []
-    | Forall3r1_cons : ∀ x y z l l' l'',
-        R x y z → Forall3_rev1 R l l' l'' → Forall3_rev1 R (l++[x]) (y :: l') (z :: l'').
-
-    Ltac rename_f3 h th :=
-      match th with
-      | Forall3_rev1 ?R ?A ?B ?C => fresh "for3_" A "_" B "_" C
-      | Forall3_rev1 ?R ?A ?B ?C => fresh "for3_" A "_" B
-      | Forall3_rev1 ?R ?A ?B ?C => fresh "for3_" A
-      | Forall3_rev1 ?R ?A ?B ?C => fresh "for3"
-      | _ => rename_wf_st h th
-      end.
-    Ltac rename_sparkprf ::= rename_f3.
-
-
-    Lemma Forall3r1_impl_strong:
-      ∀ (A B C : Type) (P Q : A → B → C → Prop) (l : list A) (l' : list B) (l'':list C),
-        Forall3_rev1 (λ a b c, P a b c → Q a b c) l l' l'' →
-        Forall3_rev1 P l l' l'' →
-        Forall3_rev1 Q l l' l''.
-    Proof.
-      intros until 0. (* bad naming of variables *)
-      !intros until 2.
-      revert h_for3_l_l'_l''.
-      induction h_for3_l_l'_l''0;!intros.
-      - constructor.
-      - !!!inversion h_for3.
-        !assert (l0 = l ∧ x0 = x) as ?. {
-          !assert (Datatypes.length (l0 ++ [x0]) = Datatypes.length (l ++ [x])). {
-            rewrite heq_app.
-            reflexivity. }
-          setoid_rewrite app_length in heq_length.
-          simpl in heq_length.
-          !assert (Datatypes.length l0 = Datatypes.length l). {
-            omega. }
-          !specialize app_same_length_eq with (1:=heq_length0)(2:=heq_app) as ?.
-          decomp h_and.
-          inversion heq_cons.
-          split;auto. }
-        decomp h_and.
-        subst.
-        constructor;auto.
-    Qed.
-
-
-    Lemma copyIn_init:
-      ∀ st x y args lparams s, 
-        copyIn st s x lparams args y ->
-        ∀ lvl initf sto',
-          x = (lvl, initf) ->
-          y = OK (lvl, sto') -> 
-          exists sto'',
-            sto' = sto''++ initf
-            ∧ Datatypes.length sto'' = Datatypes.length lparams
-            ∧ Forall3_rev1 (fun (prm:idnum * V) prm_prof e =>
-                         forall k',
-                           let (k,v) := prm in
-                           transl_paramid k = k' ->
-                           match parameter_mode prm_prof with
-                           | In => evalExp st s e (OK v)
-                           | Out => v = Undefined
-                           | InOut => evalExp st s e (OK v)
-                           end) sto'' lparams args.
-    Proof.
-      !intros until 1.
-      !induction h_copy_in_x_y;!intros;try discriminate;subst.
-      - !!!inversion heq_OK.
-        exists nil.
-        split;[|split].
-        + auto.
-        + auto.
-        + constructor.
-      - unfold ST.push in h_forall_lvl.
-        simpl in *.
-        specialize h_forall_lvl with  (1:=eq_refl).
-        specialize h_forall_lvl with (1:=eq_refl).
-        decomp h_forall_lvl;eauto.
-        subst.
-        exists (sto'' ++ [(parameter_name param, e_v)]).
-        rewrite <- app_assoc.
-        simpl.
-        split;[|split].
-        + reflexivity.
-        + rewrite app_length .
-          simpl.
-          omega.
-        + constructor.
-          * !intros.
-            rewrite heq_parameter_mode.
-            assumption.
-          * assumption.
-      - unfold ST.push in h_forall_lvl.
-        simpl in *.
-        specialize h_forall_lvl with  (1:=eq_refl).
-        specialize h_forall_lvl with (1:=eq_refl).
-        decomp h_forall_lvl;eauto.
-        subst.
-        exists (sto'' ++ [(parameter_name param, Int v)]).
-        rewrite <- app_assoc.
-        simpl.
-        split;[|split].
-        + reflexivity.
-        + rewrite app_length .
-          simpl.
-          omega.
-        + constructor.
-          * !intros.
-            rewrite heq_parameter_mode.
-            assumption.
-          * assumption.
-      - unfold ST.push in h_forall_lvl.
-        simpl in *.
-        specialize h_forall_lvl with  (1:=eq_refl).
-        specialize h_forall_lvl with  (1:=eq_refl).
-        decomp h_forall_lvl;eauto.
-        subst.
-        exists (sto'' ++ [(parameter_name param, v)]).
-        rewrite <- app_assoc.
-        simpl.
-        split;[|split].
-        + reflexivity.
-        + rewrite app_length .
-          simpl.
-          omega.
-        + constructor.
-          * !intros.
-            rewrite heq_parameter_mode.
-            constructor.
-            assumption.
-          * assumption.
-      - unfold ST.push in h_forall_lvl.
-        simpl in *.
-        specialize h_forall_lvl with  (1:=eq_refl).
-        specialize h_forall_lvl with  (1:=eq_refl).
-        decomp h_forall_lvl;eauto.
-        subst.
-        exists (sto'' ++ [(parameter_name param, Int v)]).
-        rewrite <- app_assoc.
-        simpl.
-        split;[|split].
-        + reflexivity.
-        + rewrite app_length .
-          simpl.
-          omega.
-        + constructor.
-          * !intros.
-            rewrite heq_parameter_mode.
-            constructor.
-            assumption.
-          * assumption.
-      - unfold ST.push in h_forall_lvl.
-        simpl in *.
-        specialize h_forall_lvl with  (1:=eq_refl).
-        specialize h_forall_lvl with  (1:=eq_refl).
-        decomp h_forall_lvl;eauto.
-        subst.
-        exists (sto'' ++ [(parameter_name param, Undefined)]).
-        rewrite <- app_assoc.
-        simpl.
-        split;[|split].
-        + reflexivity.
-        + rewrite app_length .
-          simpl.
-          omega.
-        + constructor.
-          * !intros.
-            rewrite heq_parameter_mode.
-            reflexivity.
-          * assumption.
-    Qed.
 
     (*Lemma copy_in_push:
       ∀ l' st s lvl initf prm_prof e lexp l i v,
@@ -10114,42 +10093,9 @@ Proof.
                   | H: parameter_mode ?a = ?x, H': parameter_mode ?a = ?y |- _ => try now (rewrite H in H';discriminate)
                   end.
 
-Lemma transl_name_ok : forall stbl CE nme nme' typ_nme cm_typ_nme load_addr_nme,
-    transl_name stbl CE nme = Errors.OK nme' ->
-    type_of_name stbl nme =: typ_nme ->
-    transl_type stbl typ_nme =: cm_typ_nme ->
-    make_load nme' cm_typ_nme =: load_addr_nme ->
-    
-    forall locenv g m (s:STACK.state)  (v:value) stkptr,
-      evalName stbl s nme (OK v) ->
-      match_env stbl s CE stkptr locenv g m ->
-      exists v_t ,
-        (transl_value v v_t
-         /\ Cminor.eval_expr g stkptr locenv m load_addr_nme v_t).
-Proof.
-  !intros.
-  assert (forall n, evalExp stbl s (Name n nme) (OK v)). {
-    !intros. 
-    constructor.
-    assumption. }
-  
-  !specialize (h_match_env.(me_safe_cm_env).(me_stack_match_addresses)) as ?.
-  red in h_stk_mtch_addr_stkptr_m.
-  specialize h_stk_mtch_addr_stkptr_m with (1:=heq_transl_name).
-  decomp h_stk_mtch_addr_stkptr_m.
-  
-  !specialize (h_match_env.(me_stack_match)) as ?.
-  red in h_stk_mtch_s_m.
-  specialize h_stk_mtch_s_m with (1:=heq_transl_name) (2:=h_CM_eval_expr_nme_t_nme_t_v)
-                                 (3:=h_eval_name_nme_v)(4:=heq_transl_type) (5:=heq_type_of_name)
-                                 (6:=heq_make_load).
-  decomp h_stk_mtch_s_m.
-  eexists.
-    split;eauto.
-Qed.
 
 
-
+(*
   
 
   unfold transl_name in heq_transl_name.
@@ -10235,31 +10181,10 @@ Qed.
       unfold Values.Val.of_bool.
       reflexivity.
 Qed.
+*)
+Admitted.
 
 
-
-
-
-                
-                !specialize transl_expr_ok with (1:=heq_tr_expr_e)
-                                               (2:=h_forall_k') (3:=h_match_env) as ?.
-                decomp h_ex.
-                exists e_t_v.
-                split.
-
-
-                
-
-
-
-
-                !!!functional inversion heq_transl_lparameter_specification_to_lident.
-                exists args_t_v.
-            
-              
-              
-          
-        Qed.
 
 
     Lemma copyIn_store_params_ok:
@@ -10298,7 +10223,7 @@ Qed.
         try (now (simpl in *; discriminate));!intros.
       - inversion h_copy_in.
         constructor.
-      - rename p1 into prmSpec.
+      - admit. (*rename p1 into prmSpec.
         rename p2 into lprmSpec.
         rename e2 into l_exp_args.
         rename e into exp_args.
@@ -10386,29 +10311,6 @@ Qed.
                   !assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))). {
 
                     apply transl_lparameter_specification_to_lident_nodup;auto. }
-                    Lemma set_params_in : ∀ l vl k v,
-                      Maps.PTree.get k (set_params vl l) = Some v ->
-                      List.In k l.
-                    Proof.
-                      induction l;simpl;!intros.
-                      - rewrite Maps.PTree.gempty in heq_mget_k_v.
-                        inversion heq_mget_k_v.
-                      - destruct vl;simpl in *.
-                        + destruct (Pos.eq_dec a k).
-                          * left;auto.
-                          * right.
-                            rewrite Maps.PTree.gso in heq_mget_k_v.
-                            -- eapply IHl;eauto.
-                            -- symmetry.
-                               assumption.
-                        + destruct (Pos.eq_dec a k).
-                          * left;auto.
-                          * right.
-                            rewrite Maps.PTree.gso in heq_mget_k_v.
-                            -- eapply IHl;eauto.
-                            -- symmetry.
-                               assumption.
-                    Qed.
 
                     !specialize set_params_in with (1:=heq_mget_k'_t_t) as?.
                   simpl in h_nodup.
@@ -10507,7 +10409,7 @@ Qed.
                   rewrite abs in *.
                   rewrite NoDup_cons_iff in h_nodup.
                   !destruct h_nodup.
-                  apply h_neg_lst_in;auto.
+                  apply h_neg_lst_in;auto. *)
       - rename p1 into prmSpec.
         rename p2 into lprmSpec.
         rename e2 into l_exp_args.
@@ -10517,6 +10419,7 @@ Qed.
         !!!inversion h_NoDupA.
         specialize h_forall_args_t with (bigs:=bigs)(lvl:=lvl)
                                         (1:=htrans_prmexprl)(5:=h_NoDupA_lprmSpec).
+        admit. (*
         !invclear heq_OK.
         !!!!inversion h_CM_eval_exprl_args_t_args_t_v.
         clear h_CM_eval_exprl_args_t_args_t_v.
@@ -10587,7 +10490,7 @@ Qed.
                   rewrite abs in *.
                   rewrite NoDup_cons_iff in h_nodup.
                   !destruct h_nodup.
-                  apply h_neg_lst_in;auto.
+                  apply h_neg_lst_in;auto. *)
       - rename p1 into prmSpec.
         rename p2 into lprmSpec.
         rename e2 into l_exp_args.
@@ -10597,6 +10500,7 @@ Qed.
         !!!inversion h_NoDupA.
         specialize h_forall_args_t with (bigs:=bigs)(lvl:=lvl)
                                         (1:=htrans_prmexprl)(5:=h_NoDupA_lprmSpec).
+        admit. (*
         !invclear heq_OK.
         !!!!inversion h_CM_eval_exprl_args_t_args_t_v.
         clear h_CM_eval_exprl_args_t_args_t_v.
@@ -10801,34 +10705,40 @@ Qed.
                   rewrite abs in *.
                   rewrite NoDup_cons_iff in h_nodup.
                   !destruct h_nodup.
-                  apply h_neg_lst_in;auto.
-Qed.
+                  apply h_neg_lst_in;auto.*)
+Admitted.
         
     !assert (NoDupA (λ x y : paramSpec, parameter_name x = parameter_name y)
                    procedure_parameter_profile). {
       admit. (* well formed/typed function *) }
 
     !specialize copyIn_store_params_ok
-      with (1:=heq_transl_params_p_x) (2:=h_CM_eval_exprl_args_t_args_t_v)
-           (3:=h_copy_in) (4:=h_match_env)(5:=h_NoDupA_procedure_parameter_profile)
+      with (1:=heq_transl_params_p_x) (3:=h_CM_eval_exprl_args_t_args_t_v)
+           (2:=h_copy_in) (4:=h_match_env) (5:=h_NoDupA_procedure_parameter_profile)
            (6:=eq_refl) (7:=eq_refl) as ?.
-    rename h_lst_forall_procedure_parameter_profile into h_init_params.
+    rename h_for3_f_procedure_parameter_profile_args into h_init_params.
     (* Actually the arguments are (chaining_expr_from_caller_v :: args_t_v) instead of just args_t_, but thanks to uniqueness of chaining_param   *)
-    apply Forall2_impl_strong with (Q:=(λ (prm : idnum * V) (prm_prof : paramSpec), 
-                     ∀ (k' : positive),
+        apply Forall3r1_impl_strong
+          with (Q:=(λ (prm : idnum * V) (prm_prof : paramSpec) (_ : exp), 
+                     ∀ k' : positive,
                      let (k, v) := prm in
                      transl_paramid k = k'
                      → match parameter_mode prm_prof with
-                       | In => exists v',
-                           transl_value v v' → Maps.PTree.get k' (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc)) = Some v'
+                       | In =>
+                           ∃ v' : Values.val, 
+                           transl_value v v' ∧ Maps.PTree.get k' (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc)) = Some v'
                        | Out => v = Undefined
-                       | In_Out => exists v',
+                       | In_Out =>
+                           ∃ (v' : Values.val) (chk : AST.memory_chunk), 
                            transl_value v v'
-                           → ∀ chk : AST.memory_chunk,
-                             compute_chnk_of_type st (parameter_subtype_mark prm_prof) =: chk
-                             → ∃ addr : Values.val, 
-                               Maps.PTree.get k' (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc)) = Some addr
-                       end)) in h_init_params.
+                           ∧ (compute_chnk_of_type st (parameter_subtype_mark prm_prof) =: chk)
+                             ∧ (∃ addr : Values.val, 
+                                Maps.PTree.get k' (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc)) = Some addr
+                                ∧ Mem.loadv chk m addr = Some v')
+                       end))
+      in h_init_params.
+
+
     all:swap 1 2.
     { simpl fn_params.
       unfold set_params at 3 4.
@@ -10849,129 +10759,55 @@ Qed.
       - constructor.
         + !intros.
           !!destruct x;!intros.
-          specialize h_forall_k' with (1:= heq_transl_paramid) (v':=v').
+          specialize h_forall_k' with (1:= heq_transl_paramid).
           !destruct (parameter_mode y);!intros.
           all: swap 1 2.
           * assumption.
           * rewrite Maps.PTree.gso;auto.
             intro abs.
             subst.
-            specialize (h_forall_k' h_transl_value_t_v').
             rewrite abs in h_forall_k'.
-
-            specialize h_forall_k'0 with (1:=abs)(2:=h_transl_value_t_v').
+            decomp h_forall_k'.
+            specialize h_forall_k'0 with (1:=abs).
             rewrite heq_get in h_forall_k'0.
-            discriminate h_forall_k'0.
+            decomp h_forall_k'0.
+            discriminate heq_None.
           * rewrite Maps.PTree.gso;auto.
-            -- eapply h_forall_k';eauto.
             -- intro abs.
                subst.
-               specialize h_forall_k' with (1:=h_transl_value_t_v')(2:=heq_compute_chnk_of_type).
-               rewrite abs in h_forall_k'.
-               specialize h_forall_k'0 with (1:=abs)(2:=h_transl_value_t_v')(3:=heq_compute_chnk_of_type).
                decomp h_forall_k'.
+               (* specialize h_forall_k' with (1:=h_transl_value_t_v')(2:=heq_compute_chnk_of_type). *)
+               rewrite abs in heq_mget.
+               specialize h_forall_k'0 with (1:=abs).
                decomp h_forall_k'0.
                rewrite heq_mget_chaining_param_addr0 in heq_get.
                discriminate.
-        + apply h_impl_lst_forall_l0_l';auto. }
-    (* xxx TODO replace foall v' by exists v' inside match *)
-    apply Forall2_impl_strong with (Q:=(λ (prm : idnum * V) (prm_prof : paramSpec), 
-                     ∀ (k' : positive) (v' : Values.val),
-                     let (k, v) := prm in
-                     transl_paramid k = k'
-                     → match parameter_mode prm_prof with
-                       | In =>
-                           transl_value v v' → Maps.PTree.get k' (set_locals (fn_vars the_proc) (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc))) = Some v'
-                       | Out => v = Undefined
-                       | In_Out =>
-                           transl_value v v'
-                           → ∀ chk : AST.memory_chunk,
-                             compute_chnk_of_type st (parameter_subtype_mark prm_prof) =: chk
-                             → ∃ addr : Values.val, 
-                               Maps.PTree.get k' (set_locals (fn_vars the_proc) (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc))) = Some addr
-                       end)) in h_init_params.
-    all:swap 1 2.
-    { !intros.
-      (* remember procedure_parameter_profile as l in |- *. *)
-      (* revert Heql. *)
-      !assert
-        (forall id,
-            List.In id (fn_vars the_proc)
-            -> (Maps.PTree.get
-                  id
-                  (set_params (chaining_expr_from_caller_v :: args_t_v)
-                              (chaining_param
-                                 :: transl_lparameter_specification_to_lident
-                                      st procedure_parameter_profile))
-                = None)). {
-        admit. (* well formedness *) }
-      revert h_forall_id.
-      (* removes the occurrence of procedure_parameter_profile that we do not want
-         to induct on. *)
-      remember (transl_decl_to_lident st procedure_declarative_part) as l.
-      remember (transl_lparameter_specification_to_lident st procedure_parameter_profile) as lprm.
-      (* do no get it back (elim instead of induction) *)
-      !elim h_init_params;!intros.
-      - constructor.
-      - constructor.
-        + !intros.
-          !!destruct x;!intros.
-          specialize h_forall_k' with (1:= heq_transl_paramid) (v':=v').
-          !destruct (parameter_mode y);!intros.
-          all: swap 1 2.
-          * auto.
-          * rewrite map_get_set_locals_diff.
-            -- auto.
-            -- subst.
-               lazy beta iota delta [set_params] in h_forall_k'0.
-               fold set_params in h_forall_k'0.
-               intro abs.
-               specialize h_forall_id with (1:=abs).
-               specialize h_forall_k'0 with (1:=eq_refl)(2:=h_transl_value_t_v').
-               specialize h_forall_k' with (1:=h_transl_value_t_v').
-               unfold the_proc in h_forall_k'.
-               simpl fn_params in h_forall_k'.
-               
-               unfold fn_params , the_proc in h_forall_k'0.
-               rewrite h_forall_id in h_forall_k'0.
-               discriminate h_forall_k'0.
-          * rewrite map_get_set_locals_diff.
-            -- eapply h_forall_k'0;eauto.
-            -- intro abs.
-               subst.
-               specialize h_forall_k' with (1:=h_transl_value_t_v')(2:=heq_compute_chnk_of_type).
-               specialize h_forall_id with (1:=abs).
-               specialize h_forall_k'0 with (1:=eq_refl)(2:=h_transl_value_t_v')(3:=heq_compute_chnk_of_type).
-               decomp h_forall_k'.
-               lazy beta iota delta [fn_params the_proc] in heq_mget.
-               rewrite heq_mget in h_forall_id.
-               discriminate h_forall_id.
-        + apply h_impl_lst_forall_l0_l';auto. }
+        + apply h_impl_for3_l0_l'_l'';auto. }
 
     Lemma exec_params_succeeds:
       forall st the_proc CE_sufx sto proc_param_prof s_parms g initf f
-             args stkptr_proc s suffix_s revf 
+             (args:list exp) stkptr_proc s suffix_s revf  args
              s_init_frame locenv_postchainarg m_postchainarg locenv,
-        Forall2 (λ (prm : idnum * V) (prm_prof : paramSpec), 
-                 ∀ (k' : positive) (v' : Values.val),
-                   let (k, v) := prm in
-                   transl_paramid k = k'
-                   → match parameter_mode prm_prof with
-                     | In => transl_value v v' → Maps.PTree.get k' locenv = Some v'
-                     | Out => v = Undefined
-                     | In_Out =>
-                       transl_value v v'
-                       → ∀ chk : AST.memory_chunk,
-                           compute_chnk_of_type st (parameter_subtype_mark prm_prof) =: chk
-                           → ∃ addr : Values.val, Maps.PTree.get k' locenv = Some addr
-                     end)
-                revf proc_param_prof →
-        f = rev revf++initf →
-        store_params st ((Datatypes.length suffix_s, sto) :: CE_sufx) proc_param_prof =: s_parms →       
+        Forall3_rev1
+          (λ (prm : idnum * V) (prm_prof : paramSpec) (_ : exp), 
+           ∀ k' : positive,
+             let (k, v) := prm in
+             transl_paramid k = k'
+             → match parameter_mode prm_prof with
+               | In =>
+                 ∃ v' : Values.val, transl_value v v' ∧ Maps.PTree.get k' locenv = Some v'
+          | Out => v = Undefined
+          | In_Out =>
+            ∃ (v' : Values.val) (chk : AST.memory_chunk), 
+             transl_value v v'
+             ∧ (compute_chnk_of_type st (parameter_subtype_mark prm_prof) =: chk)
+             ∧ (∃ addr : Values.val, 
+                   Maps.PTree.get k' locenv = Some addr ∧ Mem.loadv chk m_postchainarg addr = Some v')
+           end) revf proc_param_prof args ->
+        f = rev revf++initf ->
         copyIn st s (Datatypes.length suffix_s, initf) proc_param_prof args (OK (Datatypes.length CE_sufx, f)) → 
-        invariant_compile ((Datatypes.length suffix_s, sto) :: CE_sufx) st →
         match_env st (s_init_frame :: suffix_s) ((Datatypes.length suffix_s, sto) :: CE_sufx)
-                  stkptr_proc locenv_postchainarg g m_postchainarg →
+                  stkptr_proc locenv_postchainarg g m_postchainarg ->
         ∃ (locenv' : env) (t2 : Events.trace) (m' : mem), 
           exec_stmt g the_proc stkptr_proc locenv m_postchainarg s_parms t2 locenv' m'  Out_normal.
     Proof.
@@ -11150,8 +10986,9 @@ Qed.
                 + simpl.
                   eapply heq_store_v_m2.  }
             +
-
-
+}
+*)
+(*
     Lemma exec_params_succeeds:
       ∀ st procedure_declarative_part procedure_parameter_profile s_pbdy CE_init_frame CE_init_frame_sz
         CE CE_sufx (CE_prefx: CompilEnv.state) stkptr
@@ -11254,7 +11091,7 @@ Qed.
       - up_type.
         !!!!rew store_params_ok with functional inversion heq_store_prms.
         !!!!rew transl_paramexprlist_ok with functional inversion htrans_prmexprl.
-        rename h_forall_sto into IH.
+        rename h_impl_impl_forall_sto into IH.
         !!!inversion h_NoDupA.
         !!!inversion h_NoDupA0.
         (* !!!inversion h_NoDupA_procedure_parameter_profile. *)
