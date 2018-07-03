@@ -10785,9 +10785,7 @@ Admitted.
         + apply h_impl_for3_l0_l'_l'';auto. }
 
     Lemma exec_params_succeeds:
-      forall st the_proc CE_sufx sto proc_param_prof s_parms g initf f
-             (args:list exp) stkptr_proc s suffix_s revf  args
-             s_init_frame locenv_postchainarg m_postchainarg locenv,
+      forall st proc_param_prof revf args m_postchainarg locenv,
         Forall3_rev1
           (λ (prm : idnum * V) (prm_prof : paramSpec) (_ : exp), 
            ∀ k' : positive,
@@ -10802,21 +10800,26 @@ Admitted.
              transl_value v v'
              ∧ (compute_chnk_of_type st (parameter_subtype_mark prm_prof) =: chk)
              ∧ (∃ addr : Values.val, 
-                   Maps.PTree.get k' locenv = Some addr ∧ Mem.loadv chk m_postchainarg addr = Some v')
+                   Maps.PTree.get k' locenv = Some addr
+                   ∧ Mem.loadv chk m_postchainarg addr = Some v')
            end) revf proc_param_prof args ->
-        f = rev revf++initf ->
-        copyIn st s (Datatypes.length suffix_s, initf) proc_param_prof args (OK (Datatypes.length CE_sufx, f)) → 
-        match_env st (s_init_frame :: suffix_s) ((Datatypes.length suffix_s, sto) :: CE_sufx)
-                  stkptr_proc locenv_postchainarg g m_postchainarg ->
-        ∃ (locenv' : env) (t2 : Events.trace) (m' : mem), 
-          exec_stmt g the_proc stkptr_proc locenv m_postchainarg s_parms t2 locenv' m'  Out_normal.
+        forall the_proc CE_sufx sto s_parms initf g f stkptr_proc s suffix_s
+               s_init_frame locenv_postchainarg ,
+          f = rev revf++initf ->
+          copyIn st s (Datatypes.length suffix_s, initf) proc_param_prof args
+                 (OK (Datatypes.length CE_sufx, f)) → 
+          match_env st (s_init_frame :: suffix_s) ((Datatypes.length suffix_s, sto) :: CE_sufx)
+                    stkptr_proc locenv_postchainarg g m_postchainarg ->
+          ∃ (locenv' : env) (t2 : Events.trace) (m' : mem), 
+            exec_stmt g the_proc stkptr_proc locenv m_postchainarg s_parms
+                      t2 locenv' m'  Out_normal.
     Proof.
         !intros until 1.
-        rename h_lst_forall_revf_proc_param_prof into h_cpinOK.
-        revert CE_sufx sto s_parms g args stkptr_proc s f suffix_s s_init_frame locenv_postchainarg
-               m_postchainarg initf.
+        rename h_for3_revf_proc_param_prof_args into h_cpinOK.
         !!!!(induction h_cpinOK;!intros).
-        - !!!!rew store_params_ok with functional inversion heq_store_prms.
+        - do 3 eexists.
+          
+          !!!!rew store_params_ok with functional inversion heq_store_prms.
           do 3 eexists.
           constructor.
         - !!!!rew store_params_ok with functional inversion heq_store_prms.
