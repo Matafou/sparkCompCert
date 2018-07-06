@@ -4982,7 +4982,7 @@ Proof.
       assumption.
     + red.
       reflexivity.
-  (* The three following cases are identical, i.e. the parameter mode
+  (* to avoid duplicating In and In_Out The three following cases are identical, i.e. the parameter mode
        should not be case split but functional induction does and I don't
        want to make the induction by hand. *)
   - specialize (h_forall_initparams _ h_exct_lvlG_CE h_nonul_ofs_CE h_no_overf_CE heq_store_params).
@@ -4990,11 +4990,27 @@ Proof.
     specialize h_forall_initparams with (astnum:=astnum)(1:=heq_length)(4:=h_exec_stmt_x0_Out_normal).
     rename m1 into m_mid.
     rename e1 into e_mid.
-    !invclear h_exec_stmt.
-    up_type.
-
+    !assert ({parameter_mode prm = Out} + {parameter_mode prm <> Out}) as h. {
+      destruct (parameter_mode prm);auto.
+      all:right;intro abs;discriminate. }
+    !destruct h.
+    { rewrite heq_parameter_mode in *|-*.
+      simpl in *.
+      !!!inversion h_exec_stmt.
+      apply h_forall_initparams;auto. }
+    !assert (exists v_x1, (build_param_copyin_assign (parameter_mode prm) x1 x (transl_paramid (parameter_name prm))) = (Sstore x x1 v_x1)). {
+      unfold build_param_copyin_assign in *.
+      !destruct (parameter_mode prm);simpl in h_exec_stmt|-*.
+      - eauto.
+      - exfalso; apply hneq_Out.
+        reflexivity.
+      - eauto. }
+    decomp h_ex.
+    rewrite heq_build_param_copyin_assign in h_exec_stmt.
+    !!!inversion h_exec_stmt.
     !assert (stack_localstack_aligned (Datatypes.length CE) e_mid g m_mid sp).
-    { unfold Mem.storev in heq_storev_v_m_mid.
+    { 
+      unfold Mem.storev in heq_storev_v_x1_v_m_mid.
       destruct x1_v; try discriminate.
       eapply wf_chain_load_aligned;eauto.
       eapply eval_build_loads_offset_non_null_var;eauto. }
@@ -5021,12 +5037,12 @@ Proof.
                         id id_t id_chk spb_id ofs_id0 heq_transl_variable heq_compute_chnk_id).
           set (val_id_t:=(Values.Vptr spb_id ofs_id0)) in *;up_type.
           !assert (Cminor.eval_expr g sp e_mid m id_t val_id_t).
-          { unfold Mem.storev in heq_storev_v_m_mid.
+          { unfold Mem.storev in heq_storev_v_x1_v_m_mid.
             destruct x1_v; try discriminate.
             eapply eval_expr_transl_variable_inv_locenv with (locenv:=e_chain');eauto.
             eapply wf_chain_load_var'.
             - eassumption.
-            - cbn. eapply heq_storev_v_m_mid.
+            - cbn. eapply heq_storev_v_x1_v_m_mid.
             - assumption.
             - eapply eval_build_loads_offset_non_null_var.
               + eassumption.
@@ -5045,7 +5061,7 @@ Proof.
           apply h_neg_free_blck_m_sp_id_ofs_id.
           intros perm. 
           intro abs2.
-          unfold Mem.storev in heq_storev_v_m_mid.
+          unfold Mem.storev in heq_storev_v_x1_v_m_mid.
           destruct x1_v; try discriminate.
           eapply Mem.perm_store_1 in abs2;eauto.
           eapply abs;eassumption.
@@ -5058,7 +5074,7 @@ Proof.
                         id id_t id_chk spb_id ofs_id0 heq_transl_variable heq_compute_chnk_id).
           set (val_id_t:=(Values.Vptr spb_id ofs_id0)) in *;up_type.
           !assert (Cminor.eval_expr g sp e_mid m_mid id_t val_id_t).
-          { unfold Mem.storev in heq_storev_v_m_mid.
+          { unfold Mem.storev in heq_storev_v_x1_v_m_mid.
             destruct x1_v; try discriminate.
             eapply eval_expr_transl_variable_inv_locenv with (locenv:=e_mid);eauto.
             eapply wf_chain_load_var.
@@ -5080,7 +5096,7 @@ Proof.
           apply h_neg_free_blck_m_mid_sp_id_ofs_id.
           intros perm. 
           intro abs2.
-          unfold Mem.storev in heq_storev_v_m_mid.
+          unfold Mem.storev in heq_storev_v_x1_v_m_mid.
           destruct x1_v; try discriminate.
           eapply Mem.perm_store_2 in abs2;eauto.
           eapply abs;eassumption. }
@@ -5125,44 +5141,87 @@ Proof.
     !invclear heq_OK.
     !invclear h_exec_stmt_initparams_Out_normal; eq_same_clear.
     !assert (stack_localstack_aligned (Datatypes.length CE) e1 g m1 sp).
-    { !inversion h_exec_stmt.
-      destruct prm_name_t_v;try now (cbn in heq_storev_v_m1; discriminate).
-      eapply wf_chain_load_aligned;eauto.
-      eapply eval_build_loads_offset_non_null_var;eauto. }
+    { destruct (parameter_mode prm);simpl in h_exec_stmt.
+      - !inversion h_exec_stmt.
+        destruct prm_name_t_v;try now (cbn in heq_storev_v_m1; discriminate).
+        eapply wf_chain_load_aligned;eauto.
+        eapply eval_build_loads_offset_non_null_var;eauto.
+      - !inversion h_exec_stmt.
+        assumption.
+      - !inversion h_exec_stmt.
+        destruct prm_name_t_v;try now (cbn in heq_storev_v_m1; discriminate).
+        eapply wf_chain_load_aligned;eauto.
+        eapply eval_build_loads_offset_non_null_var;eauto. }
     specialize (h_forall_initparams _ h_exct_lvlG_CE h_nonul_ofs_CE heq_store_params astnum
                     _ _ _ _ _ _ _ _ _ heq_length h_aligned_g_m1 h_exec_stmt_initparams'_Out_normal).
     rename m1 into m_mid.
     rename e1 into e_mid.
-    !invclear h_exec_stmt.
+    (* !invclear h_exec_stmt. *)
     up_type.
     !assert (chained_stack_structure m_mid lvl sp).
-    { destruct prm_name_t_v eqn:heqstorev;try now (cbn in heq_storev_v_m_mid; discriminate).
-      subst.
-      eapply assignment_preserve_chained_stack_structure with (m:=m);eauto. }
+    { destruct (parameter_mode prm);simpl in h_exec_stmt.
+      - !invclear h_exec_stmt.
+        destruct prm_name_t_v eqn:heqstorev;try now (cbn in heq_storev_v_m_mid; discriminate).
+        subst.
+        eapply assignment_preserve_chained_stack_structure with (m:=m);eauto.
+      - !invclear h_exec_stmt.
+        assumption.
+      - !invclear h_exec_stmt.
+        destruct prm_name_t_v eqn:heqstorev;try now (cbn in heq_storev_v_m_mid; discriminate).
+        subst.
+        eapply assignment_preserve_chained_stack_structure with (m:=m);eauto. }
     !assert (chained_stack_structure m' lvl sp ∧ unchange_forbidden st CE g astnum e_mid e_postchain sp m_mid m').
     { eapply exec_store_params_preserve_forbidden_subproof;eauto. }
     decomp h_and.
     !assert (unchange_forbidden st CE g astnum e_mid e_mid sp m m_mid).
-    { eapply unchange_forbidden_trans with (e2:= e_postchain)(m2:=m');eauto.
-      apply unchange_forbidden_sym;auto. }
+    { destruct (parameter_mode prm);simpl in h_exec_stmt.
+      - !invclear h_exec_stmt.
+        eapply unchange_forbidden_trans with (e2:= e_postchain)(m2:=m');eauto.
+        apply unchange_forbidden_sym;auto.
+      - !invclear h_exec_stmt.
+        eapply unchange_forbidden_trans with (e2:= e_postchain)(m2:=m');eauto.
+        apply unchange_forbidden_sym;auto.
+      - !invclear h_exec_stmt.
+        eapply unchange_forbidden_trans with (e2:= e_postchain)(m2:=m');eauto.
+        apply unchange_forbidden_sym;auto. }
       
     specialize (h_forall_initparams h_unch_forbid_m_mid_m' h_chain_m_mid_lvl_sp h_chain_m'_lvl_sp0).
 
-    apply trans_unchanged with m_mid;auto.
-    + unfold Mem.storev in heq_storev_v_m_mid.
-      destruct prm_name_t_v;try now discriminate.
-      eapply Mem.store_unchanged_on;eauto;!intros.
-      unfold forbidden.
-      intros [abs1 abs2].
-      red in abs1.
-      cbn in heq_transl_name.
-      setoid_rewrite <- transl_variable_astnum with (a:=astnum) in heq_transl_name;eauto.
-      specialize (abs1 (parameter_name prm) prm_name_t x b i heq_transl_name heq_compute_chnk h_CM_eval_expr_prm_name_t_prm_name_t_v).
-      !destruct abs1; try omega.
-      apply hneq_b;auto.
-    + eapply unchanged_on_iff  ;eauto.
-      red; red ; !intros;subst.
-      eapply h_unch_forbid_m_m_mid.
+    destruct (parameter_mode prm);simpl in h_exec_stmt.
+    { !invclear h_exec_stmt.
+      apply trans_unchanged with m_mid;auto.
+      + unfold Mem.storev in heq_storev_v_m_mid.
+        destruct prm_name_t_v;try now discriminate.
+        eapply Mem.store_unchanged_on;eauto;!intros.
+        unfold forbidden.
+        intros [abs1 abs2].
+        red in abs1.
+        cbn in heq_transl_name.
+        setoid_rewrite <- transl_variable_astnum with (a:=astnum) in heq_transl_name;eauto.
+        specialize (abs1 (parameter_name prm) prm_name_t x b i heq_transl_name heq_compute_chnk h_CM_eval_expr_prm_name_t_prm_name_t_v).
+        !destruct abs1; try omega.
+        apply hneq_b;auto.
+      + eapply unchanged_on_iff  ;eauto.
+        red; red ; !intros;subst.
+        eapply h_unch_forbid_m_m_mid. }
+    { !invclear h_exec_stmt.
+      assumption. }
+    { !invclear h_exec_stmt.
+      apply trans_unchanged with m_mid;auto.
+      + unfold Mem.storev in heq_storev_v_m_mid.
+        destruct prm_name_t_v;try now discriminate.
+        eapply Mem.store_unchanged_on;eauto;!intros.
+        unfold forbidden.
+        intros [abs1 abs2].
+        red in abs1.
+        cbn in heq_transl_name.
+        setoid_rewrite <- transl_variable_astnum with (a:=astnum) in heq_transl_name;eauto.
+        specialize (abs1 (parameter_name prm) prm_name_t x b i heq_transl_name heq_compute_chnk h_CM_eval_expr_prm_name_t_prm_name_t_v).
+        !destruct abs1; try omega.
+        apply hneq_b;auto.
+      + eapply unchanged_on_iff  ;eauto.
+        red; red ; !intros;subst.
+        eapply h_unch_forbid_m_m_mid. }
 Qed.
 
 
@@ -10787,44 +10846,214 @@ Admitted.
     Lemma exec_params_succeeds:
       forall st proc_param_prof revf args m_postchainarg locenv,
         Forall3_rev1
-          (λ (prm : idnum * V) (prm_prof : paramSpec) (_ : exp), 
+          (λ (prm : idnum * V) (prm_prof : paramSpec) (e : exp), 
            ∀ k' : positive,
              let (k, v) := prm in
-             transl_paramid k = k'
-             → match parameter_mode prm_prof with
-               | In =>
-                 ∃ v' : Values.val, transl_value v v' ∧ Maps.PTree.get k' locenv = Some v'
-          | Out => v = Undefined
-          | In_Out =>
-            ∃ (v' : Values.val) (chk : AST.memory_chunk), 
-             transl_value v v'
-             ∧ (compute_chnk_of_type st (parameter_subtype_mark prm_prof) =: chk)
-             ∧ (∃ addr : Values.val, 
-                   Maps.PTree.get k' locenv = Some addr
-                   ∧ Mem.loadv chk m_postchainarg addr = Some v')
-           end) revf proc_param_prof args ->
+             transl_paramid k = k' →
+             match parameter_mode prm_prof with
+             | In => (∃ v' : Values.val, transl_value v v' ∧ Maps.PTree.get k' locenv = Some v')
+             | Out => (v = Undefined)
+             | In_Out =>
+               (∃ (v' : Values.val) (chk : AST.memory_chunk), 
+                   (transl_value v v')
+                   ∧ (compute_chnk_of_type st (parameter_subtype_mark prm_prof) =: chk)
+                   ∧ (∃ addr : Values.val, 
+                         Maps.PTree.get k' locenv = Some addr
+                         ∧ Mem.loadv chk m_postchainarg addr = Some v'))
+             end) revf proc_param_prof args ->
         forall the_proc CE_sufx sto s_parms initf g f stkptr_proc s suffix_s
-               s_init_frame locenv_postchainarg ,
-          f = rev revf++initf ->
+               s_init_frame,
+          f = revf++initf ->
+          store_params st ((Datatypes.length CE_sufx, sto) :: CE_sufx)
+                       proc_param_prof =: s_parms ->
           copyIn st s (Datatypes.length suffix_s, initf) proc_param_prof args
                  (OK (Datatypes.length CE_sufx, f)) → 
+          invariant_compile ((Datatypes.length CE_sufx, sto) :: CE_sufx) st ->
           match_env st (s_init_frame :: suffix_s) ((Datatypes.length suffix_s, sto) :: CE_sufx)
-                    stkptr_proc locenv_postchainarg g m_postchainarg ->
+                    stkptr_proc locenv g m_postchainarg ->
           ∃ (locenv' : env) (t2 : Events.trace) (m' : mem), 
             exec_stmt g the_proc stkptr_proc locenv m_postchainarg s_parms
-                      t2 locenv' m'  Out_normal.
+                      t2 locenv' m' Out_normal.
     Proof.
         !intros until 1.
         rename h_for3_revf_proc_param_prof_args into h_cpinOK.
         !!!!(induction h_cpinOK;!intros).
-        - do 3 eexists.
-          
-          !!!!rew store_params_ok with functional inversion heq_store_prms.
+        - rew store_params_ok with functional inversion heq_store_prms.
+          subst.
           do 3 eexists.
           constructor.
         - !!!!rew store_params_ok with functional inversion heq_store_prms.
           rename x1 into s_params'.
           destruct x.
+          !destruct (parameter_mode y) eqn:?.
+          all:swap 1 2.
+          + (* Out mode *)
+            unfold stmt0.
+            simpl.
+            !!!inversion h_copy_in;
+              match goal with
+              | H:parameter_mode y = ?X, H':parameter_mode y = ?Y |- _ =>
+                try now (rewrite H in H'; discriminate)
+              end.
+            !assert ((i,t)=(parameter_name y, Undefined)). {
+              admit. (* TODO: lemma similar to copy_in_cons *)
+            }
+            !invclear heq_pair.
+            rewrite <- app_assoc in h_copy_in0.
+            simpl in h_copy_in0.
+            specialize h_forall_the_proc with
+                (initf:=(parameter_name y, Undefined)::initf) (the_proc:=the_proc)
+                (1:=eq_refl) (2:=heq_store_prms_l'_x1)(3:=h_copy_in0)(4:=h_inv_comp_st)
+                (5:=h_match_env).
+            decomp h_forall_the_proc.
+            exists locenv',(Events.Eapp Events.E0 t2),m'.
+            eapply exec_Sseq_continue.
+            * constructor.
+            * eassumption.
+            * reflexivity.
+          + (*In Mode*)
+            simpl in stmt0.
+            subst stmt0 id0.
+            specialize h_forall_k' with (1:=eq_refl).
+            decomp h_forall_k'.
+            !!!!inversion h_copy_in;
+              match goal with
+              | H:parameter_mode y = ?X, H':parameter_mode y = ?Y |- _ =>
+                try now (rewrite H in H'; discriminate)
+              end.
+            * !assert ((i,t)=(parameter_name y, e_v)). {
+                admit. (* TODO: lemma similar to copy_in_cons *)
+              }
+              !invclear heq_pair.
+              rewrite <- app_assoc in h_copy_in0.
+              simpl in h_copy_in0.
+              specialize h_forall_the_proc with
+                  (initf:=(parameter_name y, e_v)::initf) (the_proc:=the_proc)
+                  (1:=eq_refl) (2:=heq_store_prms_l'_x1)(3:=h_copy_in0)(4:=h_inv_comp_st)
+                  (5:=h_match_env).
+              decomp h_forall_the_proc.
+              !assert (Datatypes.length suffix_s = Datatypes.length CE_sufx). {
+                admit. }
+              !assert (exists t1 e1 m1, exec_stmt g the_proc stkptr_proc locenv m_postchainarg
+                                                 (Sstore x0 x2 (Evar (transl_paramid (parameter_name y))))
+                                                 t1 e1 m1 Out_normal). {
+                 !specialize (h_match_env.(me_safe_cm_env).(me_stack_match_addresses)) as ?.
+                 red in h_stk_mtch_addr_stkptr_proc_m_postchainarg.
+                 rewrite heq_length in h_stk_mtch_addr_stkptr_proc_m_postchainarg.
+                 specialize h_stk_mtch_addr_stkptr_proc_m_postchainarg
+                            with (1:=heq_transl_name).
+                 decomp h_stk_mtch_addr_stkptr_proc_m_postchainarg.
+                 !assert (exists aa bb, stkptr_proc = Values.Vptr aa bb). {
+                   !specialize match_env_sp_zero with (1:=h_match_env) as ?.
+                   decomp h_ex.
+                   exists b, Ptrofs.zero.
+                   assumption. }
+                   decomp h_ex.
+                   subst.
+                   simpl in heq_transl_name.
+                   !specialize transl_variable_Vptr
+                   with (1:=h_inv_comp_st) (3:=heq_transl_name)
+                        (2:=me_stack_localstack_aligned (me_safe_cm_env h_match_env))
+                   as ?.
+                 specialize h_forall_nme_t_v with (1:=h_CM_eval_expr_x2_x2_v).
+                 decomp h_forall_nme_t_v.
+                 subst.
+                 !specialize Mem.valid_access_store as ?.
+                 !specialize h_match_env.(me_safe_cm_env).(me_stack_freeable) as ?.
+                 red in h_freeable_m_postchainarg.
+                 rewrite heq_length in *.
+                 specialize h_freeable_m_postchainarg with
+                     (1:=heq_transl_name)
+                     (2:=h_CM_eval_expr_x2_x2_v)
+                     (3:=heq_compute_chnk).
+                 apply Mem.valid_access_freeable_any with (p:=Writable)
+                   in h_freeable_m_postchainarg.
+                 specialize forall_m1 with (v:=t_t)(1:=h_freeable_m_postchainarg).
+                 decomp forall_m1.
+                 simpl.
+                do 3 eexists.
+                econstructor.
+                -- eassumption.
+                -- constructor.
+                   rewrite heq_mget.
+                   reflexivity.
+                -- eapply heq_store_t_t_m2. }
+              decomp h_ex. 
+              !assert (exists t2, exec_stmt g the_proc stkptr_proc e1 m1
+                                           s_params' t2 locenv' m' Out_normal). {
+                admit. xxx TODO
+              }
+              decomp h_ex.
+              exists locenv',(Events.Eapp t1 t0),m'.
+              eapply exec_Sseq_continue with (t1:=t1)(e1:=e1)(m1:=m1).
+              -- assumption.
+              -- eassumption.
+              -- reflexivity.
+            * !assert ((i,t)=(parameter_name y, Int v)). {
+                admit. (* TODO: lemma similar to copy_in_cons *)
+              }
+              !invclear heq_pair.
+              rewrite <- app_assoc in h_copy_in0.
+              simpl in h_copy_in0.
+              specialize h_forall_the_proc with
+                  (initf:=(parameter_name y, Int v)::initf) (the_proc:=the_proc)
+                  (1:=eq_refl) (2:=heq_store_prms_l'_x1)(3:=h_copy_in0)(4:=h_inv_comp_st)
+                  (5:=h_match_env).
+              decomp h_forall_the_proc.
+              !assert (exists t1 e1 m1, exec_stmt g the_proc stkptr_proc locenv m_postchainarg
+                                                 (Sstore x0 x2 (Evar (transl_paramid (parameter_name y))))
+                                                 t1 e1 m1 Out_normal). {
+                admit.
+              }
+              decomp h_ex. 
+              !assert (exists t2, exec_stmt g the_proc stkptr_proc e1 m1
+                                           s_params' t2 locenv' m' Out_normal). {
+                admit.
+              }
+              decomp h_ex.
+              exists locenv',(Events.Eapp t1 t0),m'.
+              eapply exec_Sseq_continue with (t1:=t1)(e1:=e1)(m1:=m1).
+              -- assumption.
+              -- eassumption.
+              -- reflexivity.
+
+          + (* in_Out *)
+xxxx
+                !!!functional inversion heq_transl_name.
+                 !specialize match_env_sp_zero with (1:=h_match_env) as ?.
+                 decomp h_ex.
+                 rename b into proc_addr.
+                 subst stkptr_proc.
+                 !assert (Datatypes.length suffix_s = Datatypes.length CE_sufx). {
+                   admit.
+                 }
+                 !specialize (h_match_env.(me_safe_cm_env).(me_stack_match_addresses)) as ?.
+                 red in h_stk_mtch_addr.
+                 rewrite heq_length in h_stk_mtch_addr.
+                 specialize h_stk_mtch_addr with (1:=heq_transl_name).
+                 decomp h_stk_mtch_addr.
+                 !specialize transl_variable_Vptr
+                   with (1:=h_inv_comp_st)(3:=heq_transl_variable)
+                        (2:=me_stack_localstack_aligned (me_safe_cm_env h_match_env))
+                   as ?.
+                 specialize h_forall_nme_t_v with (1:=h_CM_eval_expr_x2_x2_v).
+                 decomp h_forall_nme_t_v.
+                 subst.
+                 specialize h_forall_k' with (1:=eq_refl).
+                 exists locenv.
+                 assert (i = (parameter_name y)). {
+                   admit. (* TODO: lemma of copyIn. *)
+                 }
+                 subst i.
+              (* Dealing with permissions *)
+
+
+xxx
+              -- eassumption.
+              -- admit. (* reflexivity. *)
+
+
+          
           assert (∃ (locenv'_fst : env) (t_fst : Events.trace) (m_fst : mem), 
                      exec_stmt g the_proc stkptr_proc locenv m_postchainarg
                                (Sstore x0 x2 rexp) t_fst locenv'_fst m_fst Out_normal). {
@@ -10833,17 +11062,119 @@ Admitted.
              decomp h_ex.
              rename b into proc_addr.
              subst.
+             !assert (Datatypes.length suffix_s = Datatypes.length CE_sufx). {
+               admit.
+             }
+             !specialize (h_match_env.(me_safe_cm_env).(me_stack_match_addresses)) as ?.
+             red in h_stk_mtch_addr.
+             rewrite heq_length in h_stk_mtch_addr.
+             specialize h_stk_mtch_addr with (1:=heq_transl_name).
+             decomp h_stk_mtch_addr.
             !specialize transl_variable_Vptr
               with (1:=h_inv_comp_st)(3:=heq_transl_variable)
                    (2:=me_stack_localstack_aligned (me_safe_cm_env h_match_env))
                as ?.
-            !assert (Datatypes.length suffix_s = Datatypes.length CE_sufx). {
-              admit.
+            specialize h_forall_nme_t_v with (1:=h_CM_eval_expr_x2_x2_v).
+            decomp h_forall_nme_t_v.
+            subst.
+            subst rexp.
+            specialize h_forall_k' with (1:=eq_refl).
+            exists locenv.
+            assert (i = (parameter_name y)). {
+              admit. (* TODO: lemma of copyIn. *)
             }
+            subst i.
+            (* Dealing with permissions *)
+            !specialize Mem.valid_access_store as ?.
+            !specialize h_match_env.(me_safe_cm_env).(me_stack_freeable) as ?.
+            red in h_freeable_m_postchainarg.
+            rewrite heq_length in *.
+            specialize h_freeable_m_postchainarg with
+                (1:=heq_transl_variable)
+                (2:=h_CM_eval_expr_x2_x2_v)
+                (3:=heq_compute_chnk).
+              apply Mem.valid_access_freeable_any with (p:=Writable)
+                in h_freeable_m_postchainarg.
+
+
+            destruct (parameter_mode y) eqn:heq_prmmode;simpl.
+            + decomp h_forall_k'.
+              specialize forall_m1 with (v:=t_t)(1:=h_freeable_m_postchainarg).
+              decomp forall_m1.
+              do 2 eexists.
+              econstructor.
+              * eapply h_CM_eval_expr_x2_x2_v.
+              * econstructor.
+                eapply heq_mget.
+              * simpl.
+                eapply heq_store_t_t_m2.
+            + subst t.
+              specialize forall_m1 with (1:=h_freeable_m_postchainarg).
+              (* decomp forall_m1. *)
+              do 2 eexists.
+              econstructor.
+              * eapply h_CM_eval_expr_x2_x2_v.
+              * econstructor.
+                -- econstructor.
+                   admit.
+                -- !edestruct forall_m1. 
+                   econstructor.
+                eapply heq_mget.
+              * simpl.
+                eapply heq_store_t_t_m2.
+            + 
+                
+              
+
+
+
+
+
+
+             (* temporay *)
+             do 3 eexists.
+             econstructor.
+            + eapply h_CM_eval_expr_x2_x2_v.
+            + subst id0.
+              assert (i = (parameter_name y)). {
+                admit. (* TODO: lemma of copyIn. *)
+              }
+              subst i.
+              
+              destruct (parameter_mode y) eqn:heq_prmmode;simpl.
+              * econstructor.
+                specialize h_forall_k' with (1:=eq_refl).
+                decomp h_forall_k'.
+                eapply heq_mget.
+                rewrite heq_compute_chnk,heq_store_prms_l'_x1,heq_transl_variable in heq_store_prms.
+                simpl in heq_store_prms.
+              
+
+            !specialize transl_variable_Vptr
+              with (1:=h_inv_comp_st)(3:=heq_transl_variable)
+                   (2:=me_stack_localstack_aligned (me_safe_cm_env h_match_env))
+               as ?.
             rewrite heq_length in h_copy_in.
-            destruct args.
-            { inversion h_copy_in. }
+            (* destruct args. *)
+            (* { inversion h_copy_in. } *)
             simpl in h_copy_in.
+            (* !!!inversion h_copy_in. *)
+
+            assert (exists nme_t_v,eval_expr g (Values.Vptr proc_addr Ptrofs.zero)
+                                             locenv_postchainarg m_postchainarg x2 nme_t_v). {
+              !specialize (me_stack_match(h_match_env)) as ?.
+              red in h_stk_mtch.
+              rewrite heq_length in h_stk_mtch.
+              specialize h_stk_mtch with (1:=heq_transl_name).
+              
+              !!!functional inversion heq_transl_variable.
+
+
+
+              !specialize transl_expr_ok with (2:=h_eval_expr_e_e_v) as ?.
+              
+
+            }
             rewrite <- app_assoc in h_copy_in.
             simpl in h_copy_in.
             !specialize copy_in_push with (1:=h_copy_in) as ?.

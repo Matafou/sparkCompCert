@@ -780,12 +780,13 @@ Fixpoint store_params stbl (CE:compilenv) (lparams:list paramSpec)
       do chnk <- compute_chnk stbl (Identifier 0%nat (prm.(parameter_name))) ;
       do recres <- store_params stbl CE lparams' ;
       do lexp <- transl_name stbl CE (Identifier 0%nat (prm.(parameter_name))) ;
-      let rexp := (* Should I do nothing for in (except in_out) params? *)
+      let stmt := (* Should I do nothing for in (except in_out) params? *)
           match prm.(parameter_mode) with
-            | In => Evar id
-            | _ => (Eload chnk (Evar id))
+            | In => Sstore chnk lexp (Evar id)
+            | Out => Sskip
+            | In_Out => Sstore chnk lexp (Eload chnk (Evar id))
           end in
-      OK (Sseq (Sstore chnk lexp rexp) recres)
+      OK (Sseq stmt recres)
   end.
 
 

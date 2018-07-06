@@ -796,9 +796,13 @@ Definition indirection_according_to_mode mode x id :=
   | In_Out => Eload x (Evar id)
   end .
 
-Function store_params (stbl : Symbol_Table_Module.symboltable) (CE : compilenv)
-             (lparams : list paramSpec) {struct lparams} : 
-res stmt :=
+Definition build_param_copyin_assign mode addr x id :=
+  match mode with
+  | Out => Sskip
+  | _ => Sstore x addr (indirection_according_to_mode mode x id)
+  end.
+
+Function store_params (stbl : symboltable) (CE : compilenv) (lparams : list paramSpec) {struct lparams} : res stmt :=
   match lparams with
   | [ ] => OK Sskip
   | prm :: lparams' =>
@@ -809,9 +813,8 @@ res stmt :=
           | OK x0 =>
               match transl_name stbl CE (Identifier 0%nat (parameter_name prm)) with
               | OK x1 =>
-                  let rexp :=
-                  indirection_according_to_mode (parameter_mode prm) x id in
-                  OK (Sseq (Sstore x x1 rexp) x0)
+                  let stmt0 := build_param_copyin_assign (parameter_mode prm) x1 x id in
+                  OK (Sseq stmt0 x0)
               | Error msg => Error msg
               end
           | Error msg => Error msg
@@ -822,7 +825,17 @@ res stmt :=
 
 Lemma store_params_ok : forall stbl CE lparams, store_params stbl CE lparams = spark2Cminor.store_params stbl CE lparams.
 Proof.
-  reflexivity.
+  intros until lparams.
+  unfold spark2Cminor.store_params.
+  !functional induction store_params stbl CE lparams;try fold spark2Cminor.store_params in *;auto.
+  all:rewrite heq_compute_chnk.
+  all:try rewrite <- heq_store_params0.
+  all:try rewrite heq_store_params.
+  all: try rewrite heq_transl_name.
+  all:simpl;auto.
+  unfold build_param_copyin_assign.
+  unfold indirection_according_to_mode.
+  destruct (parameter_mode prm);auto.
 Qed.
 
 (* Definition init_locals:= Eval lazy beta iota delta [init_locals bind] in init_locals. *)
