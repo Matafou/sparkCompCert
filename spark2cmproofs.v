@@ -10987,9 +10987,10 @@ Admitted.
                 Lemma store_param_nosideeffect: 
                   forall st CE proc_param_prof s_parms ,
                     store_params st CE proc_param_prof =: s_parms ->
-                    forall g m m' locenv locenv' t2 m1 the_proc stkptr_proc x0 v x2_v,
+                    forall g m m' locenv locenv' t2 m1 the_proc stkptr_proc x0 v x2_b x2_ofs,
                       exec_stmt g the_proc stkptr_proc locenv m s_parms t2 locenv' m' Out_normal -> 
-                      Mem.storev x0 m x2_v v = Some m1 ->
+                      Mem.store x0 m x2_b (Ptrofs.unsigned x2_ofs) v = Some m1 ->
+                      (Ptrofs.unsigned x2_ofs) >= 4 ->
                       exists m1',
                         exec_stmt g the_proc stkptr_proc locenv m1 s_parms t2 locenv' m1' Out_normal.
                 Proof.
@@ -11014,11 +11015,9 @@ Admitted.
                                          (build_param_copyin_assign (parameter_mode prm) x1 x
                                             (transl_paramid (parameter_name prm)))
                                          t1 e1 m2' Out_normal). {
-                      unfold Mem.storev in heq_storev_v_m1.
-                      destruct x2_v; try discriminate.
-                      !specialize Mem.store_valid_access_3 with (1:=heq_storev_v_m1) as  ?.
-                      !specialize Mem.store_valid_access_1 with (1:=heq_storev_v_m1)
-                                                                (2:=h_valid_access_b) as ?.
+                      !specialize Mem.store_valid_access_3 with (1:=heq_store_v_m1) as  ?.
+                      !specialize Mem.store_valid_access_1 with (1:=heq_store_v_m1)
+                                                                (2:=h_valid_access_x2_b) as ?.
                       simpl in heq_transl_name.
                       !!!functional inversion heq_transl_name.
                       (* unfold build_param_copyin_assign in h_exec_stmt. *)
@@ -11034,41 +11033,50 @@ Admitted.
                         destruct vaddr; try discriminate.
                         !specialize Mem.store_valid_access_3 with (1:=heq_storev_v0_m2) as  ?.
                         !specialize Mem.store_valid_access_1 with (1:=heq_storev_v0_m2)
-                                                                  (2:=h_valid_access_b1) as ?.
-                        !assert (exists m2', Mem.storev x m1  (Values.Vptr b0 i0) v0 = Some m2'). {
+                                                                  (2:=h_valid_access_b) as ?.
+                        !assert (exists m2', Mem.storev x m1 (Values.Vptr b i) v0 = Some m2'). {
                           simpl.
                           !specialize Mem.store_valid_access_1
-                            with (1:=heq_storev_v_m1) (2:=h_valid_access_b1) as ?.
-                          !edestruct Mem.valid_access_store with (1:=h_valid_access_b3).
+                            with (1:=heq_store_v_m1) (2:=h_valid_access_b) as ?.
+                          !edestruct Mem.valid_access_store with (1:=h_valid_access_b1).
                           exists x0;eauto. }
                         decomp h_ex.
                         exists m2'.
                         econstructor;eauto.
-                        * admit. (* NoDup in args names. *)
+                        * eapply wf_chain_load';eauto.
+                          -- admit. (* hyp *)
+                          -- omega. (* NoDup in args names. *)
                         * (* TODO: lemma *)
                           !!!inversion h_CM_eval_expr_v0.
-                          econstructor;eauto.
-                      + (* In_Out *)
-                        !!!!inversion h_exec_stmt.
-                        clear h_exec_stmt.
-                        unfold Mem.storev in heq_storev_v0_m2.
-                        destruct vaddr; try discriminate.
-                        !specialize Mem.store_valid_access_3 with (1:=heq_storev_v0_m2) as  ?.
-                        !specialize Mem.store_valid_access_1 with (1:=heq_storev_v0_m2)
-                                                                  (2:=h_valid_access_b1) as ?.
-                        !assert (exists m2', Mem.storev x m1  (Values.Vptr b0 i0) v0 = Some m2'). {
-                          simpl.
-                          !specialize Mem.store_valid_access_1
-                            with (1:=heq_storev_v_m1) (2:=h_valid_access_b1) as ?.
-                          !edestruct Mem.valid_access_store with (1:=h_valid_access_b3).
-                          exists x0;eauto. }
-                        decomp h_ex.
-                        exists m2'.
-                        econstructor;eauto.
-                        * admit. (* NoDup in args names. *)
-                        * !!!inversion h_CM_eval_expr_v0.
-                          up_type.
-                          econstructor.
+                          econstructor;eauto. 
+                         + (* In_Out *)
+                           !!!!inversion h_exec_stmt.
+                           clear h_exec_stmt.
+                           unfold Mem.storev in heq_storev_v0_m2.
+                           destruct vaddr; try discriminate.
+                           !specialize Mem.store_valid_access_3 with (1:=heq_storev_v0_m2) as  ?.
+                           !specialize Mem.store_valid_access_1 with (1:=heq_storev_v0_m2)
+                                                                     (2:=h_valid_access_b) as ?.
+                           !assert (exists m2', Mem.storev x m1  (Values.Vptr b i) v0 = Some m2'). {
+                             simpl.
+                             !specialize Mem.store_valid_access_1
+                               with (1:=heq_store_v_m1) (2:=h_valid_access_b) as ?.
+                             !edestruct Mem.valid_access_store with (1:=h_valid_access_b1).
+                             exists x0;eauto. }
+                           decomp h_ex.
+                           (* Lemma dec_same: forall (b b':Values.block) chunk chunk' ofs ofs',
+                          (b' ≠ b ∨ ofs' + size_chunk chunk' <= ofs ∨ ofs + size_chunk chunk <= ofs')
+                          + ~(b' ≠ b ∨ ofs' + size_chunk chunk' <= ofs ∨ ofs + size_chunk chunk <= ofs').
+                        Proof.
+                        Admitted.
+                        destruct (dec_same b b0 x2 x (Ptrofs.unsigned i) (Ptrofs.unsigned i0)).
+                        {  *)
+                           exists m2'.
+                           econstructor;eauto.
+                           * admit. (* NoDup in args names. *)
+                           * !!!inversion h_CM_eval_expr_v0.
+                             up_type.
+                             econstructor.
                           -- (* TODO: lemma *)
                             !!!inversion h_CM_eval_expr_vaddr0.
                             econstructor;eauto.
@@ -11076,10 +11084,10 @@ Admitted.
                              destruct vaddr;try now discriminate.
                              simpl.
                              
-                             rewrite Mem.load_store_other with (1:=heq_storev_v_m1).
+                             rewrite Mem.load_store_other with (1:=heq_store_v_m1).
                              ++ assumption.
                              ++ admit. (* need ahyp about i, or be more general in this proof. *)
-                    }
+                        }
                     decomp H.
                     !assert
                       (exists m'',
@@ -11090,12 +11098,16 @@ Admitted.
                     exists m''.
                     econstructor;eauto.
                 Admitted.
+                unfold Mem.storev in heq_storev_v_m1.
+                destruct x2_v;try discriminate.
 
-
+                !assert (Ptrofs.unsigned i >= 4). {
+                  admit. (* TODO *) }
                 !specialize store_param_nosideeffect with
                     (1:=heq_store_prms_l'_x1)
                     (2:=h_exec_stmt_s_params'_Out_normal)
                     (3:=heq_storev_v_m1)
+                    (4:=h_ge)
                   as ?.
                 decomp h_ex.
                 exists m1',t2.
