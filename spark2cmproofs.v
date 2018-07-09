@@ -10979,12 +10979,130 @@ Admitted.
                    reflexivity.
                 -- eapply heq_store_t_t_m2. }
               decomp h_ex. 
-              !assert (exists t2, exec_stmt g the_proc stkptr_proc e1 m1
-                                           s_params' t2 locenv' m' Out_normal). {
-                admit. xxx TODO
-              }
+              !assert (exists m'' t2, exec_stmt g the_proc stkptr_proc e1 m1
+                                           s_params' t2 locenv' m'' Out_normal). {
+                !!!inversion h_exec_stmt.
+
+
+                Lemma store_param_nosideeffect: 
+                  forall st CE proc_param_prof s_parms ,
+                    store_params st CE proc_param_prof =: s_parms ->
+                    forall g m m' locenv locenv' t2 m1 the_proc stkptr_proc x0 v x2_v,
+                      exec_stmt g the_proc stkptr_proc locenv m s_parms t2 locenv' m' Out_normal -> 
+                      Mem.storev x0 m x2_v v = Some m1 ->
+                      exists m1',
+                        exec_stmt g the_proc stkptr_proc locenv m1 s_parms t2 locenv' m1' Out_normal.
+                Proof.
+                  !intros until proc_param_prof.
+                  !!!rew store_params_ok
+                    with functional induction function_utils.store_params st CE proc_param_prof;
+                    !intros;(try now discriminate);up_type.
+                  - inversion heq_OK;subst.
+                    exists m1.
+                    !!!inversion h_exec_stmt_s_parms_Out_normal.
+                    econstructor 1.
+                  - rename x0 into s_parms'.
+                    !invclear heq_OK;subst.
+                    specialize h_forall_s_parms with (1:=heq_store_prms_lparams'_x0).
+                    !!!!inversion h_exec_stmt_s_parms_Out_normal;
+                      try match goal with
+                          | H:?X<>?X |- _ => exfalso;apply H;reflexivity
+                          end.
+                    clear h_exec_stmt_s_parms_Out_normal.
+                    assert (exists m2',
+                               exec_stmt g the_proc stkptr_proc locenv m1
+                                         (build_param_copyin_assign (parameter_mode prm) x1 x
+                                            (transl_paramid (parameter_name prm)))
+                                         t1 e1 m2' Out_normal). {
+                      unfold Mem.storev in heq_storev_v_m1.
+                      destruct x2_v; try discriminate.
+                      !specialize Mem.store_valid_access_3 with (1:=heq_storev_v_m1) as  ?.
+                      !specialize Mem.store_valid_access_1 with (1:=heq_storev_v_m1)
+                                                                (2:=h_valid_access_b) as ?.
+                      simpl in heq_transl_name.
+                      !!!functional inversion heq_transl_name.
+                      (* unfold build_param_copyin_assign in h_exec_stmt. *)
+                      destruct (parameter_mode prm) eqn:heq; simpl in *;up_type.
+                      all:swap 1 2.
+                      + (*Out*)!!!inversion h_exec_stmt.
+                        exists m1.
+                        constructor.
+                      + (* In *)
+                        !!!!inversion h_exec_stmt.
+                        clear h_exec_stmt.
+                        unfold Mem.storev in heq_storev_v0_m2.
+                        destruct vaddr; try discriminate.
+                        !specialize Mem.store_valid_access_3 with (1:=heq_storev_v0_m2) as  ?.
+                        !specialize Mem.store_valid_access_1 with (1:=heq_storev_v0_m2)
+                                                                  (2:=h_valid_access_b1) as ?.
+                        !assert (exists m2', Mem.storev x m1  (Values.Vptr b0 i0) v0 = Some m2'). {
+                          simpl.
+                          !specialize Mem.store_valid_access_1
+                            with (1:=heq_storev_v_m1) (2:=h_valid_access_b1) as ?.
+                          !edestruct Mem.valid_access_store with (1:=h_valid_access_b3).
+                          exists x0;eauto. }
+                        decomp h_ex.
+                        exists m2'.
+                        econstructor;eauto.
+                        * admit. (* NoDup in args names. *)
+                        * (* TODO: lemma *)
+                          !!!inversion h_CM_eval_expr_v0.
+                          econstructor;eauto.
+                      + (* In_Out *)
+                        !!!!inversion h_exec_stmt.
+                        clear h_exec_stmt.
+                        unfold Mem.storev in heq_storev_v0_m2.
+                        destruct vaddr; try discriminate.
+                        !specialize Mem.store_valid_access_3 with (1:=heq_storev_v0_m2) as  ?.
+                        !specialize Mem.store_valid_access_1 with (1:=heq_storev_v0_m2)
+                                                                  (2:=h_valid_access_b1) as ?.
+                        !assert (exists m2', Mem.storev x m1  (Values.Vptr b0 i0) v0 = Some m2'). {
+                          simpl.
+                          !specialize Mem.store_valid_access_1
+                            with (1:=heq_storev_v_m1) (2:=h_valid_access_b1) as ?.
+                          !edestruct Mem.valid_access_store with (1:=h_valid_access_b3).
+                          exists x0;eauto. }
+                        decomp h_ex.
+                        exists m2'.
+                        econstructor;eauto.
+                        * admit. (* NoDup in args names. *)
+                        * !!!inversion h_CM_eval_expr_v0.
+                          up_type.
+                          econstructor.
+                          -- (* TODO: lemma *)
+                            !!!inversion h_CM_eval_expr_vaddr0.
+                            econstructor;eauto.
+                          -- unfold Mem.loadv in h_loadv_vaddr_v0.
+                             destruct vaddr;try now discriminate.
+                             simpl.
+                             
+                             rewrite Mem.load_store_other with (1:=heq_storev_v_m1).
+                             ++ assumption.
+                             ++ admit. (* need ahyp about i, or be more general in this proof. *)
+                    }
+                    decomp H.
+                    !assert
+                      (exists m'',
+                          exec_stmt g the_proc stkptr_proc
+                                    e1 m2' s_parms' t0 locenv' m'' Out_normal). {
+                      admit. }
+                    decomp h_ex.
+                    exists m''.
+                    econstructor;eauto.
+                Admitted.
+
+
+                !specialize store_param_nosideeffect with
+                    (1:=heq_store_prms_l'_x1)
+                    (2:=h_exec_stmt_s_params'_Out_normal)
+                    (3:=heq_storev_v_m1)
+                  as ?.
+                decomp h_ex.
+                exists m1',t2.
+                assumption. }
+               
               decomp h_ex.
-              exists locenv',(Events.Eapp t1 t0),m'.
+              exists locenv',(Events.Eapp t1 t0),m''.
               eapply exec_Sseq_continue with (t1:=t1)(e1:=e1)(m1:=m1).
               -- assumption.
               -- eassumption.
@@ -11006,12 +11124,12 @@ Admitted.
                 admit.
               }
               decomp h_ex. 
-              !assert (exists t2, exec_stmt g the_proc stkptr_proc e1 m1
-                                           s_params' t2 locenv' m' Out_normal). {
+              !assert (exists m'' t2, exec_stmt g the_proc stkptr_proc e1 m1
+                                           s_params' t2 locenv' m'' Out_normal). {
                 admit.
               }
               decomp h_ex.
-              exists locenv',(Events.Eapp t1 t0),m'.
+              exists locenv',(Events.Eapp t1 t0),m''.
               eapply exec_Sseq_continue with (t1:=t1)(e1:=e1)(m1:=m1).
               -- assumption.
               -- eassumption.
