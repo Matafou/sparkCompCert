@@ -10984,10 +10984,50 @@ Admitted.
                 !!!inversion h_exec_stmt.
 
 
+                Definition is_transl_name st CE sp locenv g m (k₁ : Values.block) (δ₁ : ptrofs) nme chnk:=
+                  exists addr_nme typ_nme cm_typ_nme,
+                    (type_of_name st nme =: typ_nme)
+                    ∧ (transl_name st CE nme =: addr_nme)
+                    ∧ (transl_type st typ_nme =: cm_typ_nme)
+                    ∧ eval_expr g sp locenv m addr_nme (Values.Vptr k₁ δ₁)
+                    ∧ Ctypes.access_mode cm_typ_nme = By_value chnk.
+
+                Definition stack_separate':=
+                  λ (st : symboltable) (CE : compilenv) (sp : Values.val) (locenv : env)
+                    (g : genv) (m : mem),
+                  ∀  nme₁ nme₂ (k₁ : Values.block) (δ₁ : ptrofs) 
+(k₂ : Values.block) (δ₂ : ptrofs) (chnk₁ chnk₂ : AST.memory_chunk),
+                  is_transl_name st CE sp locenv g m k₁ δ₁ nme₁ chnk₁
+                   -> is_transl_name st CE sp locenv g m k₂ δ₂ nme₂ chnk₂
+                   -> nme₁ ≠ nme₂
+                   → k₂ ≠ k₁ 
+                     ∨ Ptrofs.unsigned δ₂ + size_chunk chnk₂ <= Ptrofs.unsigned δ₁
+                     ∨ Ptrofs.unsigned δ₁ + size_chunk chnk₁ <= Ptrofs.unsigned δ₂.
+
+
+                Lemma stack_separate_equiv :
+                  forall (st : symboltable) (CE : compilenv) (sp : Values.val) (locenv : env)
+                    (g : genv) (m : mem),
+                    stack_separate st CE sp locenv g m <->  stack_separate' st CE sp locenv g m.
+                  Proof.
+                    !intros.
+                    split.
+                    !intro.
+                    red in h_separate_CE_m.
+                    red.
+                    !intros.
+                    intros h1 h2.
+                    red in h1, h2.
+                    decomp h1.
+                    decomp h2.
+xxx                    eapply h_separate_CE_m with (δ₁:=δ₁)(δ₂:=δ₂)(k₁:=k₁)(k₂:=k₂);eauto.
+
                 Lemma store_param_nosideeffect: 
                   forall st CE proc_param_prof s_parms ,
                     store_params st CE proc_param_prof =: s_parms ->
                     forall g m m' locenv locenv' t2 m1 the_proc stkptr_proc x0 v x2_b x2_ofs,
+                      chained_stack_structure m (Datatypes.length CE) stkptr_proc ->
+                      CompilEnv.exact_levelG CE ->
                       exec_stmt g the_proc stkptr_proc locenv m s_parms t2 locenv' m' Out_normal -> 
                       Mem.store x0 m x2_b (Ptrofs.unsigned x2_ofs) v = Some m1 ->
                       (Ptrofs.unsigned x2_ofs) >= 4 ->
@@ -11044,7 +11084,17 @@ Admitted.
                         exists m2'.
                         econstructor;eauto.
                         * eapply wf_chain_load';eauto.
-                          -- admit. (* hyp *)
+                          -- eapply chain_aligned.
+                             ++ eapply assignment_preserve_chained_stack_structure_aux
+                                  with (1:=h_chain_m) (addr_ofs:= x2_ofs).
+                                ** omega.
+                                ** simpl.
+                                   eassumption.
+                             ++ !specialize CompilEnv.exact_lvl_lvl_of_top
+                                  with (1:=h_exct_lvlG_CE)
+                                       (2:=heq_lvloftop_CE_m'0) as ?.
+                                rewrite <- heq_S.
+                                omega.
                           -- omega. (* NoDup in args names. *)
                         * (* TODO: lemma *)
                           !!!inversion h_CM_eval_expr_v0.
@@ -11064,30 +11114,68 @@ Admitted.
                              !edestruct Mem.valid_access_store with (1:=h_valid_access_b1).
                              exists x0;eauto. }
                            decomp h_ex.
-                           (* Lemma dec_same: forall (b b':Values.block) chunk chunk' ofs ofs',
-                          (b' ≠ b ∨ ofs' + size_chunk chunk' <= ofs ∨ ofs + size_chunk chunk <= ofs')
-                          + ~(b' ≠ b ∨ ofs' + size_chunk chunk' <= ofs ∨ ofs + size_chunk chunk <= ofs').
-                        Proof.
-                        Admitted.
-                        destruct (dec_same b b0 x2 x (Ptrofs.unsigned i) (Ptrofs.unsigned i0)).
-                        {  *)
-                           exists m2'.
-                           econstructor;eauto.
-                           * admit. (* NoDup in args names. *)
-                           * !!!inversion h_CM_eval_expr_v0.
+
+                           !assert (stack_localstack_aligned (m'0 - m0) e1 g m1 stkptr_proc). {
+                             eapply chain_aligned.
+                             ++ eapply assignment_preserve_chained_stack_structure_aux
+                                  with (1:=h_chain_m) (addr_ofs:= x2_ofs).
+                                ** omega.
+                                ** simpl.
+                                   eassumption.
+                             ++ !specialize CompilEnv.exact_lvl_lvl_of_top
+                                  with (1:=h_exct_lvlG_CE)
+                                       (2:=heq_lvloftop_CE_m'0) as ?.
+                                rewrite <- heq_S.
+                                omega. }
+                           !assert (4 <= Ptrofs.unsigned x2_ofs). {
+                             omega. }
+                           !assert (m'0 - m0 ≤ m'0 - m0). {
+                             omega. }
+                           
+                           (* bug of "specialize with" in presence of letins: *)
+                           !specialize wf_chain_load' as ?.
+                           lazy zeta in h_forall_lvl.
+                           specialize h_forall_lvl with
+                                 (1:=heq_store_v_m1)
+                                 (2:=h_aligned_g_m1)
+                                 (3:=h_le)
+                                 (4:=h_le0)
+                                 (5:=h_CM_eval_expr_vaddr).
+
+                           !!!inversion h_CM_eval_expr_v0.
+                           destruct vaddr;try now discriminate.
+                           assert ({b0 ≠ x2_b ∨ Ptrofs.unsigned i0 + size_chunk x <= Ptrofs.unsigned x2_ofs ∨ Ptrofs.unsigned x2_ofs + size_chunk x2 <= Ptrofs.unsigned i0} + {~(b0 ≠ x2_b ∨ Ptrofs.unsigned i0 + size_chunk x <= Ptrofs.unsigned x2_ofs ∨ Ptrofs.unsigned x2_ofs + size_chunk x2 <= Ptrofs.unsigned i0)}) as h_or. {
+                             admit. }
+                           destruct h_or.
+                           { exists m2'.
+                             econstructor;eauto.
                              up_type.
                              econstructor.
-                          -- (* TODO: lemma *)
-                            !!!inversion h_CM_eval_expr_vaddr0.
-                            econstructor;eauto.
-                          -- unfold Mem.loadv in h_loadv_vaddr_v0.
-                             destruct vaddr;try now discriminate.
-                             simpl.
-                             
-                             rewrite Mem.load_store_other with (1:=heq_store_v_m1).
-                             ++ assumption.
-                             ++ admit. (* need ahyp about i, or be more general in this proof. *)
-                        }
+                             -- (* TODO: lemma *)
+                               !!!inversion h_CM_eval_expr_vaddr0.
+                               econstructor;eauto.
+                             -- unfold Mem.loadv in h_loadv_vaddr_v0.
+                                simpl.
+                                rewrite Mem.load_store_other with (1:=heq_store_v_m1).
+                                ++ assumption.
+                                ++ assumption. }
+                           { !assert (i0 = x2_ofs ∧ b0 = x2_b). {
+                               
+                               admit.
+                             }
+                             !!!decomp h_and.
+                             !assert(exists v0',
+                                       eval_expr g stkptr_proc e1 m1 
+                                                 (Eload x (Evar (transl_paramid (parameter_name prm))))
+                                                 v0'). {
+                               admit.
+                             }
+                             decomp h_ex.
+                             !edestruct Mem.valid_access_store with (v:=v0').
+                             { admit. (* eapply Mem.store_valid_access_3. *) }
+                             exists x0.
+                             eapply exec_Sstore with (2:=h_CM_eval_expr_v0');eauto. }
+                    }
                     decomp H.
                     !assert
                       (exists m'',
@@ -11101,18 +11189,29 @@ Admitted.
                 unfold Mem.storev in heq_storev_v_m1.
                 destruct x2_v;try discriminate.
 
+                !assert (chained_stack_structure
+                          m_postchainarg
+                          (Datatypes.length ((Datatypes.length CE_sufx, sto) :: CE_sufx))
+                          stkptr_proc). {
+                  apply h_match_env.
+                }
+                !assert (CompilEnv.exact_levelG ((Datatypes.length CE_sufx, sto) :: CE_sufx)). {
+                  apply h_inv_comp_st.
+                }
                 !assert (Ptrofs.unsigned i >= 4). {
                   admit. (* TODO *) }
                 !specialize store_param_nosideeffect with
                     (1:=heq_store_prms_l'_x1)
-                    (2:=h_exec_stmt_s_params'_Out_normal)
-                    (3:=heq_storev_v_m1)
-                    (4:=h_ge)
+                    (2:=h_chain_m_postchainarg)
+                    (3:=h_exct_lvlG)
+                    (4:=h_exec_stmt_s_params'_Out_normal)
+                    (5:=heq_storev_v_m1)
+                    (6:=h_ge)
                   as ?.
                 decomp h_ex.
                 exists m1',t2.
                 assumption. }
-               
+               xxx Finish TODO above.
               decomp h_ex.
               exists locenv',(Events.Eapp t1 t0),m''.
               eapply exec_Sseq_continue with (t1:=t1)(e1:=e1)(m1:=m1).
