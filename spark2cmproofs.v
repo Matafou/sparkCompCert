@@ -1587,7 +1587,7 @@ Definition all_frm_increasing CE := Forall increasing_order_fr CE.
 
 
 Definition upper_bound fr sz := forall nme nme_ofs,
-    CompilEnv.fetches nme fr = Some nme_ofs -> Zlt nme_ofs sz.
+    CompilEnv.fetches nme fr = Some nme_ofs -> Z.lt nme_ofs sz.
 
 (* the global stack is in incresing level. *)
 (* Lemma exact_level_increasing_orderG: ∀ stk: CompilEnv.stack, *)
@@ -3077,7 +3077,7 @@ Lemma fetches_none_notinA: ∀ (a : localframe) (id : idnum) (st : CompilEnv.V),
     CompilEnv.fetches id a = None →
     ~InA eq_fst_idnum (id, st) a.
 Proof.
-  !intros until 0.
+  !intros *.
   !!!!(functional induction (CompilEnv.fetches id a);intros; try discriminate).
   - specialize (h_impl_neg_inA heq_CEfetches_id_s').
     intro abs.
@@ -3124,7 +3124,7 @@ Lemma add_to_frame_nodup: forall stbl subtyp_mrk new_sz nme fram_sz new_fram,
     -> NoDupA eq_fst_idnum (fst fram_sz)
     -> NoDupA eq_fst_idnum new_fram.
 Proof.
-  !intros until 0.
+  !intros *.
   rew add_to_frame_ok with (idtac;!functional induction (function_utils.add_to_frame stbl fram_sz nme subtyp_mrk);simpl;!intros;
     try discriminate).
   !invclear heq_OK.
@@ -3313,7 +3313,7 @@ Lemma CEfetchG_inj : forall CE id₁ id₂,
       id₁ ≠ id₂ ->
       (k₁ <> k₂ \/ δ₁ <> δ₂).
 Proof.
-  intros until 0.
+  intros *.
   !intro.
   induction h_exct_lvlG_CE;!!intros;simpl in *;try discriminate.
   unfold CompilEnv.level_of in *.
@@ -3707,10 +3707,8 @@ Proof.
   unfold build_loads in *.
   !invclear h_CM_eval_expr_load_id_load_id_v.
   econstructor;eauto.
-  Focus 2.
-  { inversion h_CM_eval_expr_v2;econstructor;eauto. }
-  Unfocus.
-  eapply wf_chain_load'3;eauto.
+  - eapply wf_chain_load'3;eauto.
+  - inversion h_CM_eval_expr_v2;econstructor;eauto.
 Qed.
 
 
@@ -3735,10 +3733,8 @@ Proof.
   unfold build_loads in *.
   !invclear h_CM_eval_expr_load_id_load_id_v.
   econstructor;eauto.
-  Focus 2.
-  { inversion h_CM_eval_expr_v2;econstructor;eauto. }
-  Unfocus.
-  eapply wf_chain_load'2;eauto.
+  - eapply wf_chain_load'2;eauto.
+  - inversion h_CM_eval_expr_v2;econstructor;eauto.
 Qed.
 
 (* Well-formedness of the chained stack: store never modify the
@@ -6403,7 +6399,7 @@ Lemma build_frame_lparams_preserve_increasing_order:
     -> increasing_order init
     -> increasing_order fr ∧ Forall (gt_x_snd_y lvl) fr.
 Proof.
-  !intros until 0.
+  !intros *.
   remember (init,z) as initz.
   revert init z Heqinitz.
   rew build_frame_lparams_ok
@@ -6436,7 +6432,7 @@ Lemma build_frame_decl_preserve_increasing_order:
     -> increasing_order init
     -> increasing_order fr ∧ Forall (gt_x_snd_y lvl) fr.
 Proof.
-  !intros until 0.
+  !intros *.
   remember (init,z) as initz.
   revert init z Heqinitz lvl fr.
   rew build_frame_decl_ok with
@@ -6900,8 +6896,6 @@ Proof.
       simpl.
       unfold transl_paramid, transl_num in heq_transl_paramid.
       apply SuccNat2Pos.inj in heq_transl_paramid;try omega.
-      rewrite  Nat.add_cancel_r in heq_transl_paramid.
-      auto.
     + constructor 2.
       apply h_forall_x.
       assumption.

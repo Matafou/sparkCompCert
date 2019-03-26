@@ -411,7 +411,7 @@ Definition concrete_type_of_value (v:value): res base_type :=
     | Undefined => Error (msg "concrete_type_of_value: Undefined type not yet implemented!!.")
   end.
 
-Variable ERROR_value: Values.val.
+(* Variable ERROR_value: Values.val. *)
 
 Inductive transl_value : value -> Values.val -> Prop :=
   | tr_Int: forall v:Z, transl_value (Int v) (Values.Vint (Integers.Int.repr v))

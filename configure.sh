@@ -5,7 +5,7 @@
 
 function usage {
     echo
-    echo usage:  configure.sh [-coqtags bin] [-compcert path] [-spark path] [-sireum path]
+    echo usage:  configure.sh [-reuseconf] [-coqtags bin] [-compcert path] [-spark path] [-sireum path]
     echo 
 
     echo "  builds the _CoqProject and makefile (coq_makefile -f _CoqProject) of the"
@@ -13,7 +13,9 @@ function usage {
     echo "  targets (mainly tags)."
     echo "  Default paths are (see Config/config.in):"
     cat < Config/config.in
-    echo
+    echo ""
+    echo "  options are stored in .config file, option -reuseconf rereads from there."
+    echo ""
     echo "  NOTE: coq_makefile generates a warning about compcert directory not"
     echo "    being a subdirectory. Don't pay attention, this concerns make install"
     echo "    that we don't use anyway."
@@ -39,12 +41,15 @@ resourcedir=${0%/*}
 # loading path given explicitely by the user
 for i in $*; do
     case $i in
+        "-reuseconf")
+            # loading previous config
+            . $resourcedir/.config;;
 	"-coqtags") FOUNDCOQTAGS=yes;;
 	"-spark") FOUNDSPARK=yes;;
 	"-compcert") FOUNDCOMPCERT=yes;;
 	"-sireum") SIREUM=yes;;
 	*)
-	    if [[ $FOUNDCOQTAGS == yes ]] ;
+            if [[ $FOUNDCOQTAGS == yes ]] ;
 	    then
 		COQTAGS=$i
 		FOUNDCOQTAGS=finished;
@@ -94,7 +99,7 @@ echo "***************************"
 echo "" >> _CoqProject
 echo "### SECOND PART: Files added automatically by configure.sh." >> _CoqProject
 
-ls -1 *.v >> _CoqProject 
+ls -1 *.v | grep -v TemporaryNotations >> _CoqProject 
 
 # find $resourcedir/sparktests -name "*svn*" -prune -o -name "language_template\.v" -prune -o \( -name "*\.v" -print \) >>  ./_CoqProject
 
