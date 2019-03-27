@@ -2,7 +2,8 @@ Require Import FunInd ZArith Sorted Relations SetoidList.
 Require Import compcert.common.Errors compcert.backend.Cminor
         compcert.lib.Integers compcert.common.Memory compcert.cfrontend.Ctypes.
 Require Import spark.symboltable spark.eval.
-Require Import sparkfrontend.function_utils sparkfrontend.LibHypsNaming sparkfrontend.LibTac
+Require Import sparkfrontend.function_utils sparkfrontend.LibHypsNaming
+        sparkfrontend.LibDecomp sparkfrontend.LibTac
         sparkfrontend.spark2Cminor sparkfrontend.semantics_properties
         sparkfrontend.compcert_utils sparkfrontend.more_stdlib
         sparkfrontend.chained_structure sparkfrontend.spark_utils.
@@ -1034,7 +1035,7 @@ Proof.
         destruct h_stk_mtch_CE as [h1 h2].
         split;!intros.
         -- specialize (h1 sto).
-           !assert (STACK.frameG nme ((Datatypes.length s, s1) :: s) = Some (lvl, sto)).
+           !proveprem h1 at 1.
            { !assert (STACK.resideG nme s = true).
              { eapply STACK.frameG_resideG_1;eauto. }
              specialize STACK.nodup_G_cons with (1:=h_nodup_G) (2:=heq_resideG);intro h.
@@ -1042,7 +1043,6 @@ Proof.
              cbn in h.
              rewrite h.
              assumption. }
-           specialize h1 with (1:=heq_frameG0).
            decomp h1.
            cbn in heq_CEframeG_nme.
            !destruct (CompilEnv.resides nme s3) eqn:?.
@@ -1055,8 +1055,7 @@ Proof.
               omega.
            ++ eauto.
         -- specialize (h2 CE_sto).
-           !assert (CompilEnv.frameG nme ((Datatypes.length CE, s3) :: CE)
-                    = Some (lvl, CE_sto)).
+           !proveprem h2 at 1.
            { !assert (CompilEnv.resideG nme CE = true).
              { eapply CompilEnv.frameG_resideG_1;eauto. }
              specialize CompilEnv.nodup_G_cons with (1:=h_nodup_G_CE) (2:=heq_resideG);intro h.
@@ -1064,7 +1063,6 @@ Proof.
              cbn in h.
              rewrite h.
              assumption. }
-           specialize h2 with (1:=heq_CEframeG_nme).
            decomp h2.
            cbn in heq_frameG.
            !destruct (STACK.resides nme s1) eqn:?.
@@ -8539,16 +8537,17 @@ Proof.
 Qed.
 
 
-Lemma store_param_nosideeffect: 
+Lemma store_param_nosideeffect:
   forall st CE proc_param_prof s_parms ,
     store_params st CE proc_param_prof =: s_parms ->
     forall g m m' locenv locenv' t2 m1 the_proc stkptr_proc x0 v x2_b x2_ofs,
       chained_stack_structure m (Datatypes.length CE) stkptr_proc ->
       CompilEnv.exact_levelG CE ->
       stack_separate' st CE stkptr_proc locenv g m ->
-      (exists astnum id, is_transl_name st CE stkptr_proc locenv g m x2_b x2_ofs (Identifier astnum id) x0) -> 
-      subset_CE_stbl st CE ->(* well typedness *) 
-      exec_stmt g the_proc stkptr_proc locenv m s_parms t2 locenv' m' Out_normal -> 
+      (exists astnum id, is_transl_name st CE stkptr_proc locenv g m x2_b x2_ofs
+                                        (Identifier astnum id) x0) ->
+      subset_CE_stbl st CE ->(* well typedness *)
+      exec_stmt g the_proc stkptr_proc locenv m s_parms t2 locenv' m' Out_normal ->
       Mem.store x0 m x2_b (Ptrofs.unsigned x2_ofs) v = Some m1 ->
       (Ptrofs.unsigned x2_ofs) >= 4 ->
       exists m1',
@@ -8619,7 +8618,7 @@ Proof.
           -- omega. (* NoDup in args names. *)
         * (* TODO: lemma *)
           !!!inversion h_CM_eval_expr_v0.
-          econstructor;eauto. 
+          econstructor;eauto.
       + (* In_Out *)
         !!!!inversion h_exec_stmt.
         clear h_exec_stmt.
@@ -8636,6 +8635,10 @@ Proof.
           exists x0;eauto. }
         decomp h_ex.
 
+        !specialize wf_chain_load' as ?.
+        (* bug of "specialize with" in presence of letins: *)
+        lazy zeta in h_forall_lvl.
+        (* xxx check if lvl is really necessary here. *)
         !assert (stack_localstack_aligned (m'0 - m0) e1 g m1 stkptr_proc). {
           eapply chain_aligned.
           ++ eapply assignment_preserve_chained_stack_structure_aux
@@ -8648,14 +8651,14 @@ Proof.
                     (2:=heq_lvloftop_CE_m'0) as ?.
              rewrite <- heq_S.
              omega. }
-        !assert (4 <= Ptrofs.unsigned x2_ofs). {
-          omega. }
-        !assert (m'0 - m0 ≤ m'0 - m0). {
-          omega. }
-        
-        (* bug of "specialize with" in presence of letins: *)
-        !specialize wf_chain_load' as ?.
-        lazy zeta in h_forall_lvl.
+        specialize h_forall_lvl with
+            (1:=heq_store_v_m1)
+            (2:=h_aligned_g_m1).
+        !assert (4 <= Ptrofs.unsigned x2_ofs).
+        { omega. }
+        !assert (m'0 - m0 ≤ m'0 - m0).
+        { omega. }
+
         specialize h_forall_lvl with
             (1:=heq_store_v_m1)
             (2:=h_aligned_g_m1)

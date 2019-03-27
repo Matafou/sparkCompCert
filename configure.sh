@@ -96,6 +96,7 @@ echo "### SECOND PART: Files added automatically by configure.sh." >> _CoqProjec
 
 ls -1 *.v >> _CoqProject 
 
+
 # find $resourcedir/sparktests -name "*svn*" -prune -o -name "language_template\.v" -prune -o \( -name "*\.v" -print \) >>  ./_CoqProject
 
 # Generate the Makefile from _CoqProject + add a coqtags target

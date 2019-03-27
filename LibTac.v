@@ -55,9 +55,9 @@ Ltac rename_hyp_2 h th :=
 Ltac rename_hyp ::= rename_hyp_2.
 
 Lemma foo: forall x y,
-    x <= y -> 
-    x = y -> 
-    ~x = y -> 
+    x <= y ->
+    x = y ->
+    ~x = y ->
     ~1 < 0 ->
     forall z t:nat,
     (0 < 1 -> ~(true=false)) ->
@@ -76,20 +76,20 @@ Admitted.
 (*
 Lemma foo : forall x, { aa:nat | (aa = x /\ x=aa) & (aa = aa /\ aa= x) } -> False.
 Proof.
-  intros x H. 
+  intros x H.
   decomp H.
 Abort.
 
 Lemma foo : { aa:False & True  } -> False.
 Proof.
-  intros H. 
+  intros H.
   decomp H.
 Abort.
 
 
 Lemma foo : { aa:False & True & False  } -> False.
 Proof.
-  intros H. 
+  intros H.
   decomp H.
 Abort.
 *)
