@@ -3,7 +3,9 @@
 - coq v8.x (9?)
 - Compcert (32 bit)
     - menhir
+  If from source "make depend backend/Cminor.vo cfrontend/Ctypes.vo" is sufficient.
 - sparkformal
+  If from source make eval.vo is sufficient.
 
 # to compile
 ```
