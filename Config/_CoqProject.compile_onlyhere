@@ -1,0 +1,53 @@
+# This makes library accessible but not recompilable from here. But
+# coqdep complains about unfound depedencies (but not coqc).
+
+-arg -R
+-arg @SPARK
+-arg spark
+
+# Same here for compcert part. -R @COMPCERT compcert would not work
+# because of flock and menhir that do not share the prefix compcert.
+
+-arg -R
+-arg @COMPCERT/lib
+-arg compcert.lib
+-arg -R
+-arg @COMPCERT/common
+-arg compcert.common
+-arg -R
+-arg @COMPCERT/x86_64
+-arg compcert.x86_64
+-arg -R
+-arg @COMPCERT/x86
+-arg compcert.x86
+-arg -R
+-arg @COMPCERT/backend
+-arg compcert.backend
+-arg -R
+-arg @COMPCERT/cfrontend
+-arg compcert.cfrontend
+-arg -R
+-arg @COMPCERT/driver
+-arg compcert.driver
+-arg -R
+-arg @COMPCERT/exportclight
+-arg compcert.exportclight
+-arg -R
+-arg @COMPCERT/cparser
+-arg compcert.cparser 
+-arg -R
+-arg @COMPCERT/x86_32
+-arg compcert.x86_32 
+
+-arg -R
+-arg @COMPCERT/flocq
+-arg Flocq
+-arg -R
+-arg @COMPCERT/MenhirLib
+-arg MenhirLib
+# -R sparktests sparktests
+
+# This is for our files: we will compile them
+-R . sparkfrontend
+
+

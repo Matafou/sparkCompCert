@@ -1,7 +1,9 @@
 From sparkfrontend Require Import LibHypsNaming LibTac more_stdlib.
-From compcert Require Import Memory Ctypes.
+From compcert Require Import Memory .
+From compcert Require Import Ctypes.
 Require Import ZArith Memory Cminor Integers Errors.
 Open Scope Z_scope.
+Require Import Lia.
 
 Axiom det_eval_expr: forall g stkptr locenv m e v v',
     Cminor.eval_expr g stkptr locenv m e v
@@ -332,7 +334,7 @@ Proof.
   - cbn in *.
     destruct i₂;auto.
     apply occur_build_loads in heq_build_loads_x_O.
-    exfalso;omega.
+    exfalso;lia.
   - destruct i₂.
     + unfold build_loads_ in heq_build_loads at 2.
       eapply occur_build_loads;eauto.

@@ -8,3 +8,9 @@ _CoqProject
 # this repository
 spark
 *.glob
+*.vo
+*.vos
+*.vok
+*.d
+.*.d
+.lia.cache

@@ -377,12 +377,12 @@ Proof.
   - subst n0.
     inversion h_transl_value_v1_x;subst;simpl.
     inversion h_transl_value_v2_x0;subst;simpl.
-    rewrite Fcore_Zaux.Zeq_bool_true;auto.
+    rewrite Zaux.Zeq_bool_true;auto.
     unfold Values.Val.cmp.
     simpl.
     rewrite Integers.Int.eq_true.
     constructor.
-  - rewrite Fcore_Zaux.Zeq_bool_false;auto.
+  - rewrite Zaux.Zeq_bool_false;auto.
     unfold Values.Val.cmp.
     inversion h_transl_value_v2_x0;subst;simpl.
     inversion h_transl_value_v1_x;subst;simpl.
@@ -443,7 +443,7 @@ Proof.
   inversion h_transl_value_v1_x;subst;simpl.
   inversion h_transl_value_v2_x0;subst;simpl.
   !destruct (Z.le_decidable n n0).
-  - rewrite Fcore_Zaux.Zle_bool_true;auto.
+  - rewrite Zaux.Zle_bool_true;auto.
     unfold Values.Val.cmp.
     simpl.
     unfold Integers.Int.lt.
@@ -452,7 +452,7 @@ Proof.
     + rewrite Integers.Int.signed_repr;inv_rtc.
       rewrite Integers.Int.signed_repr;inv_rtc.
       auto with zarith.
-  - { rewrite Fcore_Zaux.Zle_bool_false.
+  - { rewrite Zaux.Zle_bool_false.
       - unfold Values.Val.cmp.
         simpl.
         unfold Integers.Int.lt.
@@ -481,7 +481,7 @@ Proof.
   inversion h_transl_value_v2_x0;subst;simpl.
   rewrite Z.geb_leb.
   !destruct (Z.le_decidable n0 n).
-  - rewrite Fcore_Zaux.Zle_bool_true;auto.
+  - rewrite Zaux.Zle_bool_true;auto.
     unfold Values.Val.cmp.
     simpl.
     unfold Integers.Int.lt.
@@ -490,7 +490,7 @@ Proof.
     + rewrite Integers.Int.signed_repr;inv_rtc.
       rewrite Integers.Int.signed_repr;inv_rtc.
       auto with zarith.
-  - { rewrite Fcore_Zaux.Zle_bool_false.
+  - { rewrite Zaux.Zle_bool_false.
       - unfold Values.Val.cmp.
         simpl.
         unfold Integers.Int.lt.
@@ -518,7 +518,7 @@ Proof.
   inversion h_transl_value_v2_x0;subst;simpl.
   simpl.
   !destruct (Z.lt_decidable n n0).
-  - rewrite Fcore_Zaux.Zlt_bool_true;auto.
+  - rewrite Zaux.Zlt_bool_true;auto.
     unfold Values.Val.cmp.
     subst.
     simpl.
@@ -527,7 +527,7 @@ Proof.
     + constructor.
     + rewrite Integers.Int.signed_repr;inv_rtc.
       rewrite Integers.Int.signed_repr;inv_rtc.
-  - { rewrite Fcore_Zaux.Zlt_bool_false.
+  - { rewrite Zaux.Zlt_bool_false.
       - unfold Values.Val.cmp.
         subst.
         simpl.
@@ -554,7 +554,7 @@ Proof.
   inversion h_transl_value_v2_x0;subst;simpl.
   rewrite Z.gtb_ltb.
   !destruct (Z.lt_decidable n0 n).
-  - rewrite Fcore_Zaux.Zlt_bool_true;auto.
+  - rewrite Zaux.Zlt_bool_true;auto.
     unfold Values.Val.cmp.
     subst.
     simpl.
@@ -563,7 +563,7 @@ Proof.
     + constructor.
     + rewrite Integers.Int.signed_repr;inv_rtc.
       rewrite Integers.Int.signed_repr;inv_rtc.
-  - { rewrite Fcore_Zaux.Zlt_bool_false.
+  - { rewrite Zaux.Zlt_bool_false.
       - unfold Values.Val.cmp.
         subst.
         simpl.
@@ -721,13 +721,13 @@ Proof.
       assert (v1_is_min_int: v1 = Integers.Int.min_signed).
       { rewrite Integers.Int.eq_signed in h_divoverf1.
         unfold Coqlib.zeq in h_divoverf1;auto.
-        rewrite !Integers.Int.signed_repr in h_divoverf1;try (split;omega).
+        rewrite !Integers.Int.signed_repr in h_divoverf1;try (split;lia).
         destruct (Z.eq_dec v1 Integers.Int.min_signed);try discriminate.
         assumption. }
       assert (v2_is_min_int: v2 = -1).
       { rewrite Integers.Int.eq_signed in h_divoverf2.
         unfold Coqlib.zeq in h_divoverf2;auto.
-        rewrite !Integers.Int.signed_repr in h_divoverf2;try (split;omega).
+        rewrite !Integers.Int.signed_repr in h_divoverf2;try (split;lia).
         destruct (Z.eq_dec v2 (Integers.Int.signed Integers.Int.mone));try discriminate.
         assumption. }
       subst.
@@ -889,20 +889,20 @@ Proof.
         - specialize Z.mod_neg_bound with (a:=v1)(1:=h_lt_v2_Z0);intro h_lt.
           decomp h_lt.
           split.
-          + omega.
+          + lia.
           + assert (max_signed>=0).
             { rewrite max_signed_ok.  apply Int.max_signed_pos. }
-            omega.
+            lia.
         - !assert (0<v2).
           { apply  Zeq_bool_neq in heq_Z_false.
-            omega. }
+            lia. }
           specialize Z.mod_pos_bound with (a:=v1)(1:=h_lt_Z0_v2);intro h_lt.
           decomp h_lt.
           split.
           + assert (min_signed<0).
             { rewrite min_signed_ok. apply Int.min_signed_neg. }
-            omega.
-          + omega. }
+            lia.
+          + lia. }
     + rewrite binopexp_ok in *.
       functional inversion heq_binary_operation;subst
       ;try match goal with H: ?A <> ?A |- _ => elim H;auto end.
@@ -1052,7 +1052,7 @@ Proof.
               specialize STACK.exact_levelG_frameG_lt_lgth
                 with (1:=h_exct_lvl_s) (2:=heq_frameG).
               intros.
-              omega.
+              lia.
            ++ eauto.
         -- specialize (h2 CE_sto).
            !assert (CompilEnv.frameG nme ((Datatypes.length CE, s3) :: CE)
@@ -1074,7 +1074,7 @@ Proof.
               specialize CompilEnv.exact_levelG_frameG_lt_lgth
                 with (1:=h_exct_lvlG_CE) (2:=heq_CEframeG_nme_CE).
               intros.
-              omega.
+              lia.
            ++ eauto.
     + rewrite heq_length in h_stk_mtch_CE.
       assumption.
@@ -1148,7 +1148,7 @@ Proof.
           assert (Datatypes.length CE >= m0)%nat.
           { eapply CompilEnv.exact_levelG_frameG_le_top;eauto. }
           replace (S (Datatypes.length CE) - m0)%nat
-            with (S ((Datatypes.length CE) - m0))%nat by omega.
+            with (S ((Datatypes.length CE) - m0))%nat by lia.
           unfold build_loads at 1 2.
           reflexivity.
         }
@@ -1171,7 +1171,7 @@ Proof.
           specialize CompilEnv.exact_lvl_lvl_of_top with (1:=h_exct_lvlG);intro h.
           specialize (h _ heq_lvloftop_CE_m').
           rewrite <- h.
-          omega. }
+          lia. }
         specialize chained_stack_structure_decomp_S_2 with (1:=h_chain_m2);intro h.
         specialize h with (1:=h_CM_eval_expr_v1).
         decomp h.
@@ -1325,18 +1325,18 @@ Proof.
     unfold Int.repr.
     !assert (s <= top)%nat.
     { specialize CompilEnv.exact_levelG_frameG_lt_lgth with (1:=h_exct_lvlG_CE)(2:=heq_CEframeG_id_CE);!intro.
-      omega. }
-    omega.
+      lia. }
+    lia.
   - rewrite Int.eqm_small_eq with v n;eauto.
     Transparent Int.repr Int.intval.
     simpl in H1. 
     Opaque Int.repr Int.intval.
     red.
-    apply Int.eqmod_trans with (v mod Int.modulus); try now apply Int.eqmod_mod;auto.
-    apply Int.eqmod_trans with (n mod Int.modulus); try (apply Int.eqmod_sym;now apply Int.eqmod_mod;auto).
+    apply Zbits.eqmod_trans with (v mod Int.modulus); try now apply Zbits.eqmod_mod;auto.
+    apply Zbits.eqmod_trans with (n mod Int.modulus); try (apply Zbits.eqmod_sym;now apply Zbits.eqmod_mod;auto).
     setoid_rewrite Int.Z_mod_modulus_eq in H1.
     rewrite H1.
-    apply Int.eqmod_refl.
+    apply Zbits.eqmod_refl.
 Qed.
 
 (* Constant are independent of memory, except Oaddrstack *)
@@ -1410,7 +1410,7 @@ Proof.
       { eapply chained_stack_structure_le;eauto.
         specialize CompilEnv.exact_lvl_lvl_of_top with (2:=heq_lvloftop_CE_m');intro h.
         rewrite <- h.
-        ** omega.
+        ** lia.
         ** inversion h_exct_lvlG_CE;auto. }
       !functional inversion heq_make_load.
       subst.
@@ -1470,7 +1470,7 @@ Proof.
   !specialize build_loads__inj with (1:=heq_build_loads) as ?.
   subst.
   erewrite <- CompilEnv.exact_lvl_lvl_of_top with (2:=heq_lvloftop_CE_m');eauto.
-  omega.
+  lia.
 Qed.
 
 Lemma exact_level_transl_name: forall st CE nme δ n,
@@ -1972,7 +1972,7 @@ Proof.
   - constructor.
     inversion h_exct_lvlG.
     simpl.
-    omega.
+    lia.
 Qed.
 
 Lemma transl_variable_exact_lvl_le_toplvl:
@@ -1991,7 +1991,7 @@ Proof.
   rewrite <- heq_lvloftop_CE_m' in *.
   !specialize build_loads__inj with (1:=heq_build_loads) as ?.
   subst.
-  omega.
+  lia.
 Qed.
 
 
@@ -2111,7 +2111,7 @@ Proof.
   !intros. 
   !pose proof (me_stack_localstack_aligned (me_safe_cm_env h_match_env)).
   red in h_aligned_g_m.
-  !assert (O ≤ Datatypes.length x) by omega.
+  !assert (O ≤ Datatypes.length x) by lia.
   specialize h_aligned_g_m with (1:=h_le_O).
   decomp h_aligned_g_m.
   cbn in*.
@@ -2160,7 +2160,7 @@ Proof.
   + red.
     !intros.
     simpl in *.
-    assert(δ_lvl = 0)%nat by omega.
+    assert(δ_lvl = 0)%nat by lia.
     subst;cbn.
     eexists.
     econstructor.
@@ -2451,7 +2451,7 @@ Proof.
     constructor 2.
     simpl.
     inversion h_exct_lvlG0;subst.
-    omega.
+    lia.
 Qed.
 
 
@@ -2499,8 +2499,8 @@ Proof.
     subst.
     red in h_stk_mtch_lgth_s_CE.
     setoid_rewrite app_length in h_stk_mtch_lgth_s_CE.
-    omega.
-  - !assert ((lvl > Datatypes.length s)%nat) by omega.
+    lia.
+  - !assert ((lvl > Datatypes.length s)%nat) by lia.
     
     specialize STACK.cut_until_exact_levelG_2 with (1:=h_exct_lvl_s) (2:=h_gt_lvl)(3:=h_stkcut_s_lvl);!intro.
     !assert (lvl > Datatypes.length CE)%nat.
@@ -2514,7 +2514,7 @@ Proof.
     setoid_rewrite app_length in h_stk_mtch_lgth_s_CE.
     setoid_rewrite app_length in heq_length.
     setoid_rewrite app_length in heq_length0.
-    omega.
+    lia.
 Qed.
 
 Lemma match_env_lgth: forall CE s,
@@ -2568,9 +2568,9 @@ Proof.
     !inversion h_CEcut;up_type. (* cut reached or not *)
     * (* Reached *)
       cbn in *.
-      destruct lvl0;try (exfalso;omega).
+      destruct lvl0;try (exfalso;lia).
       subst.
-      !assert (Datatypes.length CE - lvl0 = 0)%nat by omega.
+      !assert (Datatypes.length CE - lvl0 = 0)%nat by lia.
       rewrite heq_sub.
       exists sp.
       constructor 1;auto.
@@ -2581,7 +2581,7 @@ Proof.
       exists sp''.
       cbn in *|-.
       cbn [Datatypes.length].
-      !!assert ((S (Datatypes.length CE) - lvl0 = S (Datatypes.length CE - lvl0))%nat) by omega.
+      !!assert ((S (Datatypes.length CE) - lvl0 = S (Datatypes.length CE - lvl0))%nat) by lia.
       rewrite heq_sub.
       econstructor;eauto.
 Qed.
@@ -2644,7 +2644,7 @@ Proof.
     subst.
     repeat rewrite app_length in heq_length.
     rewrite heq_length0 in heq_length.
-    omega. }
+    lia. }
   decomp h_and.
   subst n.
 
@@ -2676,7 +2676,7 @@ Proof.
     rewrite heq_level_of in h_lt.
     simpl Datatypes.length in h_repeat_loadv.
     !assert (S (Datatypes.length CE0) - n = 0)%nat.
-    { omega. }
+    { lia. }
     !assert (s'=[]). {
       eapply length_invnil.
       assumption. }
@@ -2707,7 +2707,7 @@ Proof.
       simpl in H.
       !specialize ci_exact_lvls with (1:=h_inv_comp_st) as ?.
       !inversion h_exct_lvlG.
-      omega. }
+      lia. }
     rewrite Nat.sub_succ_l in h_repeat_loadv;eauto.
     !inversion h_repeat_loadv.
     rewrite h_loadv_sp_v in h_loadv_sp_sp'.
@@ -2818,7 +2818,7 @@ Proof.
       assumption. }
     eapply (eval_build_loads_offset (Datatypes.length CE) g stkptr locenv m (m' - lvl_nme) _ b ofs  heq_modulo h_aligned_g_m);auto with arith.
     - erewrite <- CompilEnv.exact_lvl_lvl_of_top with (n:=m').
-      + omega.
+      + lia.
       + assumption.
       + assumption. }
   subst.
@@ -2828,9 +2828,9 @@ Proof.
   red in h_no_overf_CE.
   specialize h_no_overf_CE with (1:=heq_CEfetchG_nme_CE).
   rewrite Ptrofs.unsigned_repr;auto.
-  split;try omega.
+  split;try lia.
   unfold Ptrofs.max_unsigned.
-  omega.
+  lia.
 Qed.
 
 Lemma transl_expr_ok : forall stbl CE e e',
@@ -3198,7 +3198,7 @@ Proof.
         red.
         apply Nat.le_trans with s1.
         -- apply h_forall_id;auto.
-        -- omega.
+        -- lia.
       * destruct stk.
         -- cbn in heq_Some.
            discriminate.
@@ -3299,7 +3299,7 @@ Proof.
     + !invclear heq_Some.
       auto.
     + specialize (IH heq_Some).
-      omega.
+      lia.
 Qed.
 
 Lemma CEfetchG_inj : forall CE id₁ id₂,
@@ -3427,7 +3427,7 @@ Proof.
       eapply increase_order_level_of_top_ge;eauto.
       eapply increase_order_level_of_top_ge;eauto.
     + repeat rewrite Integers.Int.Z_mod_modulus_eq in *.
-      rewrite Coqlib.Zmod_small in *;eauto.
+      rewrite Zmod_small in *;eauto.
       subst.
       right.
       intro abs.
@@ -3557,7 +3557,7 @@ Proof.
     assert (h_CM_eval_expr_on_m:
               Cminor.eval_expr g stkptr locenv m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl') vaddr).
     { eapply IHlvl'; eauto.
-      omega. }
+      lia. }
     econstructor.
     + eassumption.
     + destruct vaddr;simpl in *;try discriminate.
@@ -3569,7 +3569,7 @@ Proof.
       simpl.
       transitivity 4.
       * !assert (lvl' <= lvl)%nat.
-        { omega. }
+        { lia. }
         specialize (h_aligned_g_m _ h_le_lvl'_lvl0).
         !destruct h_aligned_g_m.
         !assert ((Values.Vptr b0 i) = (Values.Vptr x Ptrofs.zero)).
@@ -3604,7 +3604,7 @@ Proof.
   - !invclear h_CM_eval_expr_load_id_v.
     assert (h_CM_eval_expr_on_m':
               Cminor.eval_expr g stkptr locenv m' (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl') vaddr).
-    { eapply IHlvl'; eauto. omega. }
+    { eapply IHlvl'; eauto. lia. }
     econstructor.
     + eassumption.
     + destruct vaddr;simpl in *;try discriminate.
@@ -3614,7 +3614,7 @@ Proof.
       right. left.
       transitivity 4.
       * !assert (lvl' <= lvl)%nat.
-        { omega. }
+        { lia. }
         !destruct (h_aligned_g_m' _ h_le_lvl'_lvl0).
         !assert ((Values.Vptr b0 i) = (Values.Vptr x Ptrofs.zero)).
         { eapply det_eval_expr;eauto. }
@@ -3650,13 +3650,13 @@ Proof.
     assert (h_CM_eval_expr_on_m:
               Cminor.eval_expr g stkptr locenv m' (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) lvl') vaddr).
     { eapply IHlvl'; eauto.
-      omega. }
+      lia. }
     econstructor.
     + eassumption.
     + destruct vaddr;simpl in *;try discriminate.
       rewrite <- h_loadv_vaddr_load_id_v.
       eapply Mem.load_store_other;eauto.
-      !assert ((lvl' <= lvl)%nat) by omega.
+      !assert ((lvl' <= lvl)%nat) by lia.
       !pose proof h_aligned_g_m lvl' h_le_lvl'_lvl0.
       decomp h_ex.
       !assert ((Values.Vptr b0 i) = (Values.Vptr b_δ Ptrofs.zero)).
@@ -3666,7 +3666,7 @@ Proof.
       left.
       rewrite Ptrofs.unsigned_zero.
       cbn.
-      omega.
+      lia.
 Qed.
 
 Lemma wf_chain_load'':forall lvl g locenv stkptr chk m m' b ofs e_t_v vaddr,
@@ -3762,7 +3762,7 @@ Proof.
   !specialize CompilEnv.exact_lvl_lvl_of_top with (1:=h_exct_lvlG_CE)(2:=heq_lvloftop_CE_m'0) as ?.
   rewrite <- heq_S in *.
   subst δ_lvl.
-  omega.
+  lia.
 Qed.
 
 (* Well-formedness of the chained stack: store never modify the
@@ -3790,7 +3790,7 @@ Proof.
   !specialize CompilEnv.exact_lvl_lvl_of_top with (1:=h_exct_lvlG_CE)(2:=heq_lvloftop_CE_m'0) as ?.
   rewrite <- heq_S in *.
   subst δ_lvl.
-  omega.
+  lia.
 Qed.
 
 
@@ -3816,13 +3816,13 @@ Proof.
   - cbn.
     !inversion h_CM_eval_expr.
     eapply eval_Eload with (vaddr:=vaddr).
-    eapply wf_chain_load'4 with (lvl:=lvl);eauto; try omega.
+    eapply wf_chain_load'4 with (lvl:=lvl);eauto; try lia.
     rewrite <- h_loadv.
     destruct vaddr;cbn;try discriminate.
     eapply Mem.load_store_other;eauto.
     cbn.
     red in h_aligned_g_m0.
-    !assert ((δ_lvl <= lvl)%nat) by omega.
+    !assert ((δ_lvl <= lvl)%nat) by lia.
     specialize (h_aligned_g_m0 δ_lvl h_le_δ_lvl_lvl0).
     decomp h_aligned_g_m0.
     !assert ((Values.Vptr b0 i) = (Values.Vptr b_δ0 Ptrofs.zero)).
@@ -3832,7 +3832,7 @@ Proof.
     left.
     rewrite Ptrofs.unsigned_zero.
     cbn.
-    omega.
+    lia.
 Qed.
 
 Lemma wf_chain_load_aligned':forall sp lvl g locenv m,
@@ -3844,7 +3844,7 @@ Proof.
   !destruct CE.
   - left;reflexivity.
   - right.
-    !edestruct h_aligned_g_m with (δ_lvl:=0%nat);cbn;try omega.
+    !edestruct h_aligned_g_m with (δ_lvl:=0%nat);cbn;try lia.
     cbn in *.
     !inversion h_CM_eval_expr;subst.
     cbn in *.
@@ -4911,9 +4911,9 @@ Proof.
       rewrite h.
       -- rewrite Ptrofs.unsigned_repr;auto.
          unfold Ptrofs.max_unsigned.
-         omega.
-      -- apply Zmod_small ;omega.
-      -- erewrite <- CompilEnv.exact_lvl_lvl_of_top  with (l:=CE)(n:=m'0);auto;omega.
+         lia.
+      -- apply Zmod_small ;lia.
+      -- erewrite <- CompilEnv.exact_lvl_lvl_of_top  with (l:=CE)(n:=m'0);auto;lia.
     * unfold is_free_block in *.
       intro abs.
       apply h_neg_free_blck_m_sp_id_ofs_id.
@@ -4940,9 +4940,9 @@ Proof.
         rewrite h.
         -- rewrite Ptrofs.unsigned_repr;auto.
            unfold Ptrofs.max_unsigned.
-           omega.
-        -- apply Zmod_small ;omega.
-      -- erewrite <- CompilEnv.exact_lvl_lvl_of_top  with (l:=CE)(n:=m'0);auto;omega. }
+           lia.
+        -- apply Zmod_small ;lia.
+      -- erewrite <- CompilEnv.exact_lvl_lvl_of_top  with (l:=CE)(n:=m'0);auto;lia. }
       eapply wf_chain_load_var;eauto.
       eapply wf_chain_load_aligned;eauto.
     * unfold is_free_block in *.
@@ -5015,7 +5015,7 @@ Proof.
     specialize (fun h_chain => h_forall_initparams h_chain h_aligned_g_m_mid).
     !assert (chained_stack_structure m_mid lvl sp).
     { eapply assignment_preserve_chained_stack_structure;eauto.
-      omega. }
+      lia. }
     specialize (h_forall_initparams h_chain_m_mid_lvl_sp).
     split.
     { apply h_forall_initparams. }
@@ -5195,8 +5195,7 @@ Proof.
         cbn in heq_transl_name.
         setoid_rewrite <- transl_variable_astnum with (a:=astnum) in heq_transl_name;eauto.
         specialize (abs1 (parameter_name prm) prm_name_t x b i heq_transl_name heq_compute_chnk h_CM_eval_expr_prm_name_t_prm_name_t_v).
-        !destruct abs1; try omega.
-        apply hneq_b;auto.
+        !destruct abs1; try lia.
       + eapply unchanged_on_iff  ;eauto.
         red; red ; !intros;subst.
         eapply h_unch_forbid_m_m_mid. }
@@ -5213,8 +5212,7 @@ Proof.
         cbn in heq_transl_name.
         setoid_rewrite <- transl_variable_astnum with (a:=astnum) in heq_transl_name;eauto.
         specialize (abs1 (parameter_name prm) prm_name_t x b i heq_transl_name heq_compute_chnk h_CM_eval_expr_prm_name_t_prm_name_t_v).
-        !destruct abs1; try omega.
-        apply hneq_b;auto.
+        !destruct abs1; try lia.
       + eapply unchanged_on_iff  ;eauto.
         red; red ; !intros;subst.
         eapply h_unch_forbid_m_m_mid. }
@@ -5273,7 +5271,7 @@ Proof.
             eapply chained_stack_structure_le;eauto.
             !assert (Datatypes.length CE = (S m'0)) by (eapply exact_level_top_lvl;eauto).
             rewrite heq_length.
-            omega. }
+            lia. }
           red in h_no_overf_CE.
           specialize h_no_overf_CE with (1:= heq_CEfetchG).
           
@@ -5288,7 +5286,7 @@ Proof.
           subst.
           rewrite Ptrofs.unsigned_repr;auto.
           unfold Ptrofs.max_unsigned.
-          omega. }
+          lia. }
         specialize (h_invis_sp__m_sp_id_ofs_id h_CM_eval_expr_id_t0).
         assumption.
 
@@ -5323,7 +5321,7 @@ Proof.
             { eapply chained_stack_structure_le;eauto.
               !assert (Datatypes.length CE = (S m'0)) by (eapply exact_level_top_lvl;eauto).
               rewrite heq_length.
-              omega. }
+              lia. }
           red in h_no_overf_CE.
           specialize h_no_overf_CE with (1:= heq_CEfetchG).
           !assert (n mod Int.modulus = n).
@@ -5335,7 +5333,7 @@ Proof.
             subst.
             rewrite Ptrofs.unsigned_repr;auto.
             unfold Ptrofs.max_unsigned.
-            omega. }
+            lia. }
           eapply wf_chain_load_var;auto;eauto.
           -- eapply wf_chain_load_aligned;eauto. }
         specialize (h_invis_sp__m'_sp_id_ofs_id h_CM_eval_expr_id_t0).
@@ -5413,8 +5411,7 @@ Proof.
     cbn in heq_transl_name.
     setoid_rewrite <- transl_variable_astnum with (a:=astnum) in heq_transl_name;eauto.
     specialize (abs1 (object_name objdecl) objname_t chk_objdecl b i heq_transl_name heq_compute_chnk h_CM_eval_expr_objname_t_objname_t_v).
-    !destruct abs1;try omega.
-    apply hneq_b;auto.
+    !destruct abs1;try lia.
   - !invclear heq_OK; inversion h_exec_stmt_locvarinit_Out_normal;subst; apply Mem.unchanged_on_refl.
   - !invclear h_exec_stmt_locvarinit_Out_normal; eq_same_clear;up_type.
     apply Mem.unchanged_on_refl.    
@@ -5430,14 +5427,14 @@ Proof.
     !assert (chained_stack_structure m' lvl sp ∧ unchange_forbidden st CE g astnum e_mid e_postchain sp m_mid m').
     { eapply exec_init_locals_preserve_forbidden_subproof with (locvarinit:=stmt2);eauto.
       eapply chain_aligned;eauto.
-      omega. }
+      lia. }
     decomp h_and.
     apply trans_unchanged with m_mid;auto.
     + eapply h_forall_locvarinit;eauto.
     + assert (Mem.unchanged_on (forbidden st CE g astnum e_mid sp m_mid m_mid) m_mid m').
       { eapply h_forall_locvarinit0 with (locvarinit:= stmt2);eauto.
         eapply chain_aligned;eauto.
-        omega. }
+        lia. }
       red in h_unch_forbid_m_m_mid.
       eapply unchanged_on_iff;eauto.
        (red;!intros);(red;!intros).
@@ -5552,7 +5549,7 @@ Proof.
     subst new_cenv.
     split.
     + !assert (x0>0) by (eapply compute_size_pos;eauto).
-      omega.
+      lia.
     + !intros.
       inversion heq_pair;subst.
       specialize (IHr3 ((nme, sz0) :: stoszchainparam) (sz0 + x0) eq_refl k).
@@ -5563,7 +5560,7 @@ Proof.
         -- !invclear heq_CEfetches_nme1;auto.
         -- inversion heq_pair;subst;eauto.
       * !assert (x0>0) by (eapply compute_size_pos;eauto).
-        split; try omega.
+        split; try lia.
         rewrite Z.geb_leb in heq_geb.
         apply Z.leb_gt.
         assumption.
@@ -5592,7 +5589,7 @@ Proof.
     apply h_forall_sto'.
     rewrite Z.geb_leb in heq_geb.
     apply Z.leb_gt in heq_geb.
-    omega.
+    lia.
   - rewrite heq_add_to_fr_ERR_nme in heq_bind.
     cbn in heq_bind.
     discriminate.
@@ -5632,13 +5629,13 @@ Proof.
     !assert (new_size <= Ptrofs.modulus).
     { rewrite Z.geb_leb in heq_geb.
       apply Z.leb_gt in heq_geb.
-      omega. }
+      lia. }
     specialize (h_forall_sto' h_le_new_size_modulus).
     destruct h_forall_sto' as [[IHr1IHr2] IHr3].
     subst new_size.
     subst new_cenv.
     split;[split|!intros].
-    + omega.
+    + lia.
     + assumption.
     + inversion heq_pair;subst.
       specialize (IHr3 ((nme, sz0) :: stoszchainparam) (sz0 + x0) eq_refl k).
@@ -5647,12 +5644,12 @@ Proof.
         cbn in heq_CEfetches_nme1.
         destruct (nme1 =? nme)%nat.
         -- !invclear heq_CEfetches_nme1;split;auto.
-           omega.
+           lia.
         -- specialize (h_forall_nme nme1 x heq_CEfetches_nme1).
            !destruct h_forall_nme;auto.
            split;auto.
-           omega.
-      * omega.
+           lia.
+      * lia.
   - rewrite heq_add_to_fr_ERR_nme in heq_bind.
     cbn in heq_bind.
     discriminate.
@@ -5669,7 +5666,7 @@ Proof.
   - !invclear heq_OK.
     cbn.
     !pose proof compute_size_pos _ _ _ heq_cmpt_size.
-    omega.
+    lia.
   - specialize (h_forall_stosz'0 _ heq_build_frame_decl0).
     specialize (h_forall_stosz' _ heq_build_frame_decl).
     etransitivity;eauto.
@@ -5695,7 +5692,7 @@ Proof.
   with !!functional induction (function_utils.build_frame_decl st stosz lparams);!!intros ;try discriminate.
   - split;[split|].
     + inversion heq_OK;reflexivity.
-    + inversion heq_OK;cbn in *;omega.
+    + inversion heq_OK;cbn in *;lia.
     + !invclear heq_OK;subst;cbn in *.
       !intros.
       !invclear heq_pair.
@@ -5704,17 +5701,17 @@ Proof.
     split;[split|].
     + !invclear heq_OK.
       cbn.
-      omega.
+      lia.
     + !invclear heq_OK;cbn in *.
-      destruct (Z.geb_spec (sz + x) Ptrofs.modulus);try discriminate;omega.
+      destruct (Z.geb_spec (sz + x) Ptrofs.modulus);try discriminate;lia.
     + !invclear heq_OK;subst;cbn in *.
       !intros.
       !invclear heq_pair.
       !destruct (Nat.eqb_spec nme (object_name objdecl));subst.
       * !invclear heq_Some.
-        omega.
+        lia.
       * specialize (h_forall_nme _ _ heq_Some).
-        omega.
+        lia.
   - destruct x.
     specialize (h_forall_sto' _ _ heq_build_frame_decl h_le).
     decomp h_forall_sto'.
@@ -5723,7 +5720,7 @@ Proof.
     decomp h_forall_sto'0.
     rename h_forall_stoszchainparam into IHr0_3.
     split;[split|].
-    + cbn in *;omega.
+    + cbn in *;lia.
     + assumption.
     + !intros.
       rename h_forall_nme into h_lelt.
@@ -5731,7 +5728,7 @@ Proof.
       cbn in*.
       specialize (IHr_3 _ _ eq_refl _ h_lelt h_le_k_sz0).
       rename z into sz.
-      !assert (k<=sz) by omega.
+      !assert (k<=sz) by lia.
       specialize (IHr0_3 _ _ eq_refl k IHr_3 h_le_k_sz _ _ heq_CEfetches_nme_sto').
       assumption.
 Qed.
@@ -5807,7 +5804,7 @@ Proof.
          all: swap 2 1.
          ++ cbn.
             reflexivity.
-         ++ !assert (s - lvl_nme = S s - lvl_nme - 1)%nat by omega.
+         ++ !assert (s - lvl_nme = S s - lvl_nme - 1)%nat by lia.
             rewrite heq_sub;reflexivity.
 Qed.
 
@@ -5889,7 +5886,7 @@ Proof.
          all: swap 2 1.
          ++ cbn.
             reflexivity.
-         ++ !assert (s - lvl_nme = S s - lvl_nme - 1)%nat by omega.
+         ++ !assert (s - lvl_nme = S s - lvl_nme - 1)%nat by lia.
             exists (δ_id mod Int.modulus);split.
             ** symmetry.
                apply Zmod_eqm.
@@ -5926,13 +5923,13 @@ Proof.
     eapply h_forall_sto;clear h_forall_sto.
     assert (x0>0).
     { eapply compute_size_pos;eauto. }
-    omega.
+    lia.
     !intros.
     cbn in heq_CEfetches_nme1.
     up_type.
     !destruct ((nme1 =? nme)%nat).
     + !invclear heq_CEfetches_nme1.
-      omega.
+      lia.
     + eauto.
 Qed.
 
@@ -5962,7 +5959,7 @@ Proof.
   - !invclear heq_OK.
     !invclear heq_pair.
     !functional inversion heq_CEfetches_nme_sto';subst.
-    + omega.
+    + lia.
     + eapply h_forall_nme;eauto.
   - !invclear heq_pair.
     destruct x.
@@ -5972,7 +5969,7 @@ Proof.
     apply Zge_trans with sz0;auto.          
     specialize build_frame_decl_mon_sz with (1:=heq_build_frame_decl).
     cbn.
-    omega.
+    lia.
 Qed.
 
 Lemma build_compilenv_no_null_offset:
@@ -5994,10 +5991,10 @@ Proof.
     !intro.
     decomp h_and.
     cbn in h_le.
-    omega.
+    lia.
   - !intros.
     eapply build_frame_lparams_no_null_offset;eauto.
-    + omega.
+    + lia.
     + !intros.
       functional inversion heq_CEfetches_nme1.
 Qed.
@@ -6075,7 +6072,7 @@ Proof.
          all: swap 2 1.
          ++ cbn.
             reflexivity.
-         ++ !assert (s - lvl_nme = S s - lvl_nme - 1)%nat by omega.
+         ++ !assert (s - lvl_nme = S s - lvl_nme - 1)%nat by lia.
             exists (δ_id mod Int.modulus);split.
             ** symmetry.
                apply Zmod_eqm.
@@ -6145,7 +6142,7 @@ Proof.
   cbn in h_eval_binop_Oadd_v1_v2.
   !invclear h_eval_binop_Oadd_v1_v2.
   red in h_aligned_g_m.
-  !destruct (h_aligned_g_m lvl_nme);try omega.
+  !destruct (h_aligned_g_m lvl_nme);try lia.
   subst_det_addrstack_zero.
   !invclear h_CM_eval_expr_v2.
   cbn in *.
@@ -6167,7 +6164,7 @@ Proof.
   !functional inversion heq_transl_variable.
   eapply build_loads_Vptr;eauto.
   erewrite <- CompilEnv.exact_lvl_lvl_of_top with (n:=m').
-  + omega.
+  + lia.
   + apply h_inv_comp_CE_stbl.
   + assumption.
 Qed.
@@ -6223,7 +6220,7 @@ Proof.
       inversion heq_cmpt_size_subtyp_mrk.
       apply size_chunk_pos;assumption. }
     unfold new_size, new_cenv in *.
-    eapply h_forall_l;eauto;try omega.
+    eapply h_forall_l;eauto;try lia.
     red.
     !intros.
     cbn in heq_CEfetch_id.
@@ -6233,8 +6230,8 @@ Proof.
       intro h_ge.
       rewrite heq_geb in h_ge.
       split.
-      * omega.
-      * omega.
+      * lia.
+      * lia.
     + unfold all_addr_no_overflow_localframe in h_no_overf_localf.
       eapply h_no_overf_localf.
       eassumption.
@@ -6300,12 +6297,12 @@ Proof.
         intro h_ge.
         rewrite heq_geb in h_ge.
         split.
-        -- omega.
-        -- omega.
+        -- lia.
+        -- lia.
       * unfold all_addr_no_overflow_localframe in h_no_overf_localf.
         eapply h_no_overf_localf.
         eassumption.
-    + omega.
+    + lia.
   - rename x into size.
     up_type.
     !invclear heq_pair.
@@ -6381,13 +6378,13 @@ Proof.
   eapply build_frame_decl_preserve_no_overflow;eauto.
   + eapply build_frame_decl_preserve_pos_addr with (lvl:=4%nat);eauto.
     * eapply build_frame_lparams_preserve_pos_addr with (lvl:=4%nat);eauto.
-      -- omega.
+      -- lia.
       -- apply all_addr_nooverflow_localeframe_nil.
     * eapply build_frame_lparams_preserve_no_overflow with (lvl:=4%nat);eauto.
-      -- omega.
+      -- lia.
       -- apply all_addr_nooverflow_localeframe_nil.
   + eapply build_frame_lparams_preserve_no_overflow with (lvl:=4%nat);eauto.
-    -- omega.
+    -- lia.
     -- apply all_addr_nooverflow_localeframe_nil.
 Qed.
 
@@ -6413,13 +6410,13 @@ Proof.
     apply h_forall_init.
     + assumption.
     + !assert (x0>0).
-      { destruct subtyp_mrk;cbn in heq_cmpt_size_subtyp_mrk;inversion heq_cmpt_size_subtyp_mrk;omega.  }
+      { destruct subtyp_mrk;cbn in heq_cmpt_size_subtyp_mrk;inversion heq_cmpt_size_subtyp_mrk;lia.  }
       constructor;auto.
-      * unfold gt_x_snd_y;cbn;omega.
+      * unfold gt_x_snd_y;cbn;lia.
       * eapply Forall_impl with (P:= gt_x_snd_y z);auto.
         !intros.
         unfold gt_x_snd_y in *;cbn in *.
-        omega.
+        lia.
     + constructor;auto.
 Qed.
 
@@ -6452,14 +6449,14 @@ Proof.
       * unfold gt_snd;cbn.
         assert (h:=compute_size_pos _ _ _ heq_cmpt_size).
         red. simpl.
-        omega.
+        lia.
       * apply Forall_forall.
         !intros.
         eapply Forall_forall in h_lst_forall_init;eauto.
         red;simpl.
         red in h_lst_forall_init;simpl in *.
         assert (h:=compute_size_pos _ _ _ heq_cmpt_size).
-        omega.        
+        lia.        
   - destruct x.
     !destruct (h_forall_init init z heq_pair _ _ heq_build_frame_decl h_lst_forall_init h_incr_order_init); clear h_forall_init.
     !destruct (h_forall_init0 s z0 eq_refl _ _ heq_build_frame_decl0 h_lst_forall_s h_incr_order_s).
@@ -6480,7 +6477,7 @@ Proof.
     rew add_to_frame_ok with !functional inversion heq_add_to_fr_nme;subst;cbn in *.
     pose proof compute_size_pos _ _ _ heq_cmpt_size_subtyp_mrk.
     unfold new_size in *.
-    omega.
+    lia.
   - discriminate.
 Qed.
 
@@ -6512,11 +6509,11 @@ Proof.
   + apply all_addr_no_overflow_fetch_OK;eauto.
     destruct x;unfold stoszchainparam in *.
     eapply (build_frame_decl_preserve_no_overflow st pdeclpart s z (Datatypes.length CE) x0 stcksize).
-    -- eapply (build_frame_lparams_preserve_pos_addr st prmprof) with (lvl:=0%nat);eauto; try omega.
+    -- eapply (build_frame_lparams_preserve_pos_addr st prmprof) with (lvl:=0%nat);eauto; try lia.
        red. cbn in *. !intros.
        discriminate.
     -- assumption.
-    -- eapply (build_frame_lparams_preserve_no_overflow st prmprof);eauto; try omega.
+    -- eapply (build_frame_lparams_preserve_no_overflow st prmprof);eauto; try lia.
        red. cbn. !intros.
        discriminate.
   + unfold CompilEnv.NoDup in *.
@@ -6713,9 +6710,9 @@ Proof.
     !assert (x>0) by (unshelve eapply compute_size_pos;eauto).
     !destruct (nme =? parname)%nat.
     * inversion heq_CEfetches_nme;subst.
-      omega.
+      lia.
     * specialize (h_upb _ _ heq_CEfetches_nme).
-      omega.
+      lia.
   - now rewrite <- beq_nat_refl.
 Qed.
 
@@ -6895,7 +6892,7 @@ Proof.
       red.
       simpl.
       unfold transl_paramid, transl_num in heq_transl_paramid.
-      apply SuccNat2Pos.inj in heq_transl_paramid;try omega.
+      apply SuccNat2Pos.inj in heq_transl_paramid;try lia.
     + constructor 2.
       apply h_forall_x.
       assumption.
@@ -6931,7 +6928,7 @@ Proof.
     decomp abs.
     + unfold transl_paramid, transl_num,chaining_param in heq_transl_paramid.
       !specialize (SuccNat2Pos.inj (parameter_name a + 80)%nat 0%nat heq_transl_paramid) as ?.
-      omega.
+      lia.
     + apply h_neg_lst_in_chaining_param;auto.
 Qed.
 
@@ -7587,7 +7584,7 @@ Proof.
     specialize (abs1 id addr chunk b i heq_transl_variable heq_compute_chnk_nme h_CM_eval_expr_addr_addr_v). 
     destruct abs1.
     + apply H. reflexivity.
-    + omega.
+    + lia.
   (* Scall => chained_struct *)
   - !specialize chained_stack_struct_inv_sp_zero with (1:=h_chain_m_lvl_sp) as ?.
     decomp h_ex;subst.
@@ -7706,12 +7703,12 @@ Proof.
           - eauto.
           - unfold current_lvl.
             eapply chained_stack_structure_le;eauto.
-            omega. }
+            lia. }
         decomp h_ex.
         !assert (chained_stack_structure m (Datatypes.length CE_sufx) sp'').
         { eapply repeat_Mem_loadv_cut_mem_loadv  with (1:=h_chain_m_lvl_sp)
                  (n':=(Datatypes.length CE - Datatypes.length CE_sufx)%nat).
-          - omega.
+          - lia.
           - assumption. }
         assert (Datatypes.length CE_proc = S (Datatypes.length CE_sufx)) as heq_lgth_CE_proc.
         { rew build_compilenv_ok with functional inversion heq_build_compilenv.
@@ -7757,11 +7754,11 @@ Proof.
           repeat subst_det_addrstack_zero.
           eapply storev_outside_struct_chain_preserves_chained_structure with (m:=m_pre_chain) (g:=g)(e:=e) (sp0:=sp0).
           + !intros.
-            !assert (n < Datatypes.length CE_sufx)%nat by omega.
+            !assert (n < Datatypes.length CE_sufx)%nat by lia.
             !pose proof malloc_distinct_from_chaining_loads _ _ _ h_chain_m n _ _ _ h_malloc_m_m1 e g h_lt_n b'0.
             apply h_impl_neq_b'0.
             eapply malloc_preserves_chaining_loads_2;eauto.
-            eapply chained_stack_structure_le;eauto;omega.
+            eapply chained_stack_structure_le;eauto;lia.
           + assumption.
           + eassumption. }
           
@@ -7775,7 +7772,7 @@ Proof.
           cbn [set_params] in heq_mget_chaining_param_v.          
           rewrite map_get_set_same_nodup in heq_mget_chaining_param_v;auto.
           !assert (chained_stack_structure m (Datatypes.length CE - Datatypes.length CE_sufx) sp).
-          { eapply chained_stack_structure_le;eauto;omega. }
+          { eapply chained_stack_structure_le;eauto;lia. }
           pose proof chain_repeat_loadv_1 _ _ _ h_chain_m0 _ g e h_repeat_loadv.
           rewrite heq_length.
           apply chained_S with (b':=b').
@@ -7785,11 +7782,11 @@ Proof.
             repeat subst_det_addrstack_zero.
             eapply storev_outside_struct_chain_preserves_chained_structure with (m:=m_pre_chain) (g:=g)(e:=e) (sp0:=sp0).
             + !intros.
-              !assert (n < Datatypes.length CE_sufx)%nat by omega.
+              !assert (n < Datatypes.length CE_sufx)%nat by lia.
               !pose proof malloc_distinct_from_chaining_loads _ _ _ h_chain_m n _ _ _ h_malloc_m_m1 e g h_lt_n b'1 as h_alloc_diff.
               apply h_impl_neq_b'1.
               eapply malloc_preserves_chaining_loads_2;eauto.
-              eapply chained_stack_structure_le;eauto;omega.
+              eapply chained_stack_structure_le;eauto;lia.
             + assumption.
             + eassumption.
 
@@ -7842,7 +7839,7 @@ Proof.
               { rew build_compilenv_ok with
                   functional inversion heq_build_compilenv.
                 cbn in h_le_δ_lvl.
-                omega. }
+                lia. }
               specialize (h_aligned_g_m _ h_le_δ_lvl0).
               decomp h_aligned_g_m.
 (*               unfold chaining_arg in *. *)
@@ -7852,7 +7849,7 @@ Proof.
               unfold initlocenv,chain_param in h_CM_eval_expr_addr_enclosing_frame_addr_enclosing_frame_v.
               !inversion h_exec_stmt_chain_param_Out_normal.
               unfold current_lvl in *.
-              (* needed by the next omega. *)
+              (* needed by the next lia. *)
               unfold sp_proc in h_CM_eval_expr_vaddr.
               subst_det_addrstack_zero.
               (* cleaning + recollecting all the occurrencies. *)
@@ -7874,7 +7871,7 @@ Proof.
                   - assumption.
                   - rewrite <- (CompilEnv.cut_until_spec1 _ _ _ _ h_CEcut_CE_proc_lvl).
                     rewrite app_length.
-                    omega. }
+                    lia. }
                 apply chained_stack_structure_le with (n:=Datatypes.length CE_sufx);eauto. }
               !assert (chained_stack_structure m_chain (S δ_lvl) sp_proc).
               { !pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_δ_lvl_sp''.
@@ -7896,7 +7893,7 @@ Proof.
                 rewrite heq_mget_chaining_param_initlocenv_v in heq_mget_chaining_param_addr_enclosing_frame_v.
                 !invclear heq_mget_chaining_param_addr_enclosing_frame_v.
                 !assert (chained_stack_structure m (Datatypes.length CE - Datatypes.length CE_sufx) sp).
-                { eapply chained_stack_structure_le;eauto;omega. }
+                { eapply chained_stack_structure_le;eauto;lia. }
                 specialize chain_repeat_loadv_1 with (1:=h_chain_m0) (2:=h_repeat_loadv) as h.
                 apply chained_S with (b':=b').
                 - !assert (chained_stack_structure m_pre_chain  δ_lvl (Values.Vptr b' Ptrofs.zero)).
@@ -7905,13 +7902,13 @@ Proof.
                   decomp h_ex.
                   eapply storev_outside_struct_chain_preserves_chained_structure with (m:=m_pre_chain) (g:=g)(e:=e) (sp0:=sp0).
                   + !intros.
-                    !assert (n < Datatypes.length CE_sufx)%nat by omega.
+                    !assert (n < Datatypes.length CE_sufx)%nat by lia.
                     specialize malloc_distinct_from_chaining_loads
                       with (1:=h_chain_m_δ_lvl_sp'') (2:=h_malloc_m_m1) (3:=h_lt_n_δ_lvl) (b':=b'2)
                       as h_b'2_sp0. 
                     eapply h_b'2_sp0.
                     eapply malloc_preserves_chaining_loads_2;eauto.
-                    eapply chained_stack_structure_le;eauto;omega.
+                    eapply chained_stack_structure_le;eauto;lia.
                   + assumption.
                   + eassumption.
 
@@ -7945,7 +7942,7 @@ Proof.
                      - apply chain_repeat_loadv with (g:=g)(e:=e) in h_repeat_loadv.
                        + subst_det_addrstack_zero.
                          reflexivity.
-                       + eapply chained_stack_structure_le;eauto;omega. }
+                       + eapply chained_stack_structure_le;eauto;lia. }
                    subst.
                    apply Mem.load_store_same in heq_storev_v_m_chain.
                    unfold Values.Val.load_result in heq_storev_v_m_chain.
@@ -7972,8 +7969,8 @@ Proof.
                       - assumption.
                       - rewrite <- (CompilEnv.cut_until_spec1 _ _ _ _ h_CEcut_CE_proc_lvl).
                         rewrite app_length.
-                        omega. }
-                    omega.
+                        lia. }
+                    lia.
                   - assumption.
                   - assumption. }
 
@@ -7989,7 +7986,7 @@ Proof.
                   !assert (Cminor.eval_expr g sp'' e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) (Values.Vptr b'0 Ptrofs.zero)).
                   { eapply malloc_preserves_chaining_loads_2 with (1:=h_malloc_m_m1);eauto.
                     eapply chained_stack_structure_le;eauto.
-                    omega. }
+                    lia. }
                   eapply h_b'_sp0;eauto.
                 -- assumption.
                 -- unfold sp_proc in heq_storev_v_m_chain. eassumption.
@@ -8041,7 +8038,7 @@ Proof.
           - rewrite <- heq_lgth_CE_proc. assumption.
           - eapply chain_aligned.
             + eassumption.
-            + omega.
+            + lia.
           - eassumption. }
 
         assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_locvarinit sp_proc m_locvarinit m_locvarinit)
@@ -8146,7 +8143,7 @@ Proof.
   exists δ_nme.
   split.
   - f_equal.
-    omega.
+    lia.
   - unfold transl_variable.
     rewrite heq_CEfetchG_nme,heq_CEframeG_nme.
     !assert (CompilEnv.level_of_top CE_sufx = Some (Datatypes.length CE_sufx - 1))%nat. {
@@ -8162,7 +8159,7 @@ Proof.
     subst.
     f_equal.
     f_equal.
-    omega.
+    lia.
 Qed.
 
 Lemma exact_lvl_transl_name_empty_top: forall st pb_lvl CE_sufx nme nme_t,
@@ -8308,7 +8305,7 @@ Proof.
       setoid_rewrite app_length in heq_length.
       simpl in heq_length.
       !assert (Datatypes.length l0 = Datatypes.length l). {
-        omega. }
+        lia. }
       !specialize app_same_length_eq with (1:=heq_length0)(2:=heq_app) as ?.
       decomp h_and.
       inversion heq_cons.
@@ -8359,7 +8356,7 @@ Proof.
     + reflexivity.
     + rewrite app_length .
       simpl.
-      omega.
+      lia.
     + constructor.
       * !intros.
         rewrite heq_parameter_mode.
@@ -8378,7 +8375,7 @@ Proof.
     + reflexivity.
     + rewrite app_length .
       simpl.
-      omega.
+      lia.
     + constructor.
       * !intros.
         rewrite heq_parameter_mode.
@@ -8397,7 +8394,7 @@ Proof.
     + reflexivity.
     + rewrite app_length .
       simpl.
-      omega.
+      lia.
     + constructor.
       * !intros.
         rewrite heq_parameter_mode.
@@ -8417,7 +8414,7 @@ Proof.
     + reflexivity.
     + rewrite app_length .
       simpl.
-      omega.
+      lia.
     + constructor.
       * !intros.
         rewrite heq_parameter_mode.
@@ -8437,7 +8434,7 @@ Proof.
     + reflexivity.
     + rewrite app_length .
       simpl.
-      omega.
+      lia.
     + constructor.
       * !intros.
         rewrite heq_parameter_mode.
@@ -8602,15 +8599,15 @@ Proof.
           -- eapply chain_aligned.
              ++ eapply assignment_preserve_chained_stack_structure_aux
                   with (1:=h_chain_m) (addr_ofs:= x2_ofs).
-                ** omega.
+                ** lia.
                 ** simpl.
                    eassumption.
              ++ !specialize CompilEnv.exact_lvl_lvl_of_top
                   with (1:=h_exct_lvlG_CE)
                        (2:=heq_lvloftop_CE_m'0) as ?.
                 rewrite <- heq_S.
-                omega.
-          -- omega. (* NoDup in args names. *)
+                lia.
+          -- lia. (* NoDup in args names. *)
         * (* TODO: lemma *)
           !!!inversion h_CM_eval_expr_v0.
           econstructor;eauto. 
@@ -8634,18 +8631,18 @@ Proof.
           eapply chain_aligned.
           ++ eapply assignment_preserve_chained_stack_structure_aux
                with (1:=h_chain_m) (addr_ofs:= x2_ofs).
-             ** omega.
+             ** lia.
              ** simpl.
                 eassumption.
           ++ !specialize CompilEnv.exact_lvl_lvl_of_top
                with (1:=h_exct_lvlG_CE)
                     (2:=heq_lvloftop_CE_m'0) as ?.
              rewrite <- heq_S.
-             omega. }
+             lia. }
         !assert (4 <= Ptrofs.unsigned x2_ofs). {
-          omega. }
+          lia. }
         !assert (m'0 - m0 ≤ m'0 - m0). {
-          omega. }
+          lia. }
         
         (* bug of "specialize with" in presence of letins: *)
         !specialize wf_chain_load' as ?.
@@ -8829,7 +8826,7 @@ Proof.
       -- eapply (h_match_env.(me_safe_cm_env).(me_stack_no_null_offset)).
          eassumption.
       -- split.
-         ++ transitivity 4;try omega.
+         ++ transitivity 4;try lia.
             eapply (h_match_env.(me_safe_cm_env).(me_stack_no_null_offset)).
             eassumption.
          ++ specialize (ci_no_overflow h_inv_comp_CE_stbl).
@@ -8838,11 +8835,11 @@ Proof.
             specialize h_no_overf_CE with (1:=heq_CEfetchG_id_CE).
             decomp h_no_overf_CE.
             unfold Ptrofs.max_unsigned.
-            omega.
+            lia.
       -- eapply chained_stack_structure_le;eauto.
          specialize CompilEnv.exact_lvl_lvl_of_top with (2:=heq_lvloftop_CE_m'0);!intros;eauto.
          rewrite <- h_impl_eq_S.
-         ++ omega.
+         ++ lia.
          ++ apply h_inv_comp_CE_stbl.
       -- specialize (ci_no_overflow h_inv_comp_CE_stbl).
          !intro.
@@ -8863,7 +8860,7 @@ Proof.
       rewrite <- transl_variable_astnum with (a:=astnum0) (1:=heq_transl_variable) in heq_transl_variable.
       specialize (abs1 id _ nme_chk b i heq_transl_variable heq_compute_chnk_nme h_CM_eval_expr_nme_t_nme_t_v). 
       inversion heq_nme_t_v;subst.
-      decomp abs1;auto;try omega.
+      decomp abs1;auto;try lia.
   (* Assignment with satisifed range constraint (Range l u) *)
   - rename x into nme.
     rename st into stbl.
@@ -8940,7 +8937,7 @@ Proof.
                              (3:=h_CM_eval_expr_nme_t_nme_t_v).
         !destruct abs1.
         -- apply hneq_nme_block. reflexivity.
-        -- omega.
+        -- lia.
   (* If statement --> true *)
   - rename x0 into b_then.
     rename x1 into b_else.
@@ -9179,7 +9176,7 @@ Proof.
     !inversion h_pair.
 
     !assert (chained_stack_structure m (Datatypes.length CE - 1) stkptr).
-    { eapply chained_stack_structure_le;eauto;omega. }
+    { eapply chained_stack_structure_le;eauto;lia. }
     specialize copy_in_spec with (1:=h_chain_m) (2:=h_inv_comp_CE_st)(3:=h_match_env)(4:=heq_transl_params_p_x) (5:=h_copy_in) as h.
     !destruct h as [args_t_v ?].
     assert (h_ex:exists chaining_expr_from_caller_v,Cminor.eval_expr g stkptr locenv m addr_enclosing_frame chaining_expr_from_caller_v).
@@ -9355,7 +9352,7 @@ Proof.
         { unfold addr_enclosing_frame in h_chaining_expr_from_caller_v.
           eapply det_eval_expr;eauto.
           !assert (Datatypes.length CE_prefx = Datatypes.length CE - Datatypes.length CE_sufx)%nat.
-          { omega. }
+          { lia. }
           rewrite heq_length1;auto. }
         subst sp'.  
         !assert (exists cm_addr_enclosing_frame,
@@ -9394,15 +9391,15 @@ Proof.
             all:swap 1 2.
             all:swap 2 3.
             + eassumption.
-            + omega.
+            + lia.
             + !intros.
               eapply malloc_distinct_from_chaining_loads_2 with (1:=h_chain_m_lvl_stkptr) (2:=h_alloc) (n:=n).
-              * omega.
+              * lia.
               * eassumption.
             +
               eapply malloc_preserves_chaining_loads;eauto.
               * eapply chained_stack_structure_le with (1:=h_chain_m_lvl_stkptr);eauto.
-                omega. }
+                lia. }
     }
     decomp h_ex.
 
@@ -9426,7 +9423,7 @@ Proof.
         end.
         { eapply malloc_preserves_chaining_loads_2;eauto.
           eapply chained_stack_structure_le with (n:=(Datatypes.length CE));eauto.
-          omega. }
+          lia. }
         eapply malloc_distinct_from_chaining_loads with (1:=h_chain_m_lvl_stkptr)(2:=h_alloc);eauto. }
 
     (* variables of CE_sufx are accessible both from stkptr_proc and stkptr. *)
@@ -9447,12 +9444,12 @@ Proof.
           apply h_inv_CE''_bld. }
         specialize transl_variable_exact_lvl_le_toplvl with (1:=h_exct_lvlG)(2:=heq_transl_variable) as h.
         simpl in h.
-        omega. }
+        lia. }
       !assert (chained_stack_structure m_postchainarg (Datatypes.length CE_prefx + δlvl)%nat stkptr).
       { eapply chained_stack_structure_le;eauto.
-        omega. }
+        lia. }
       rewrite heq_length0 in h_chain_m_lvl_stkptr.
-      !assert ((δlvl < S (Datatypes.length CE_sufx))%nat) by omega.
+      !assert ((δlvl < S (Datatypes.length CE_sufx))%nat) by lia.
       unfold build_loads in h_CM_eval_expr_id_v.
       Opaque build_loads_.
       !inversion h_CM_eval_expr_id_v.
@@ -9478,7 +9475,7 @@ Proof.
           subst_det_addrstack_zero.
           assumption.
         + eapply chained_stack_structure_le;eauto.
-          omega. }
+          lia. }
 
     !assert (
       forall astnum id v1 lvl_v1 δ_v1,
@@ -9552,7 +9549,7 @@ Proof.
           all:swap 3 1.
           -- eapply heq_lvloftop_CE_m'.
           -- eapply h_inv_comp_CE_st.
-          -- omega. }
+          -- lia. }
         !specialize chain_structure_spec with (1:=h_chain_m0) (g:=g)(e:=locenv) as ?.
         decomp h_ex.
         eapply h_invis_stkptr__m_addr_ofs.
@@ -9585,7 +9582,7 @@ Proof.
                  all:swap 3 1.
                  - eapply heq_lvloftop_CE_m'.
                  - eapply h_inv_comp_CE_st.
-                 - omega. }
+                 - lia. }
             -- move h_CM_eval_expr_id_t after heq_ptr64.
                unfold build_loads in h_CM_eval_expr_id_t.
                !inversion h_CM_eval_expr_id_t.
@@ -9613,7 +9610,7 @@ Proof.
                red in h_no_overf_CE.
                specialize h_no_overf_CE with (1:=heq_CEfetchG_id_CE).
                rewrite Ptrofs.modulus_eq32 in h_no_overf_CE;eauto.
-               omega.
+               lia.
     }
           
     (* Maybe we will need to prove the other direction too:
@@ -9681,7 +9678,7 @@ Proof.
           { admit. }
           !assert (exists δ', Datatypes.length CE_sufx - lvl_id = S δ')%nat.
           { exists ((Datatypes.length CE_sufx - lvl_id) - 1)%nat.
-            omega. }
+            lia. }
           decomp h_ex.
           rewrite heq_sub in heq_transl_variable , h_CM_eval_expr_id_t.
           specialize h_reachable_enclosing_variables with (1:=heq_transl_variable).
@@ -9705,20 +9702,20 @@ Proof.
                 apply app_length. }
               rewrite <- heq_length0.
               assumption.
-            - omega.
+            - lia.
             - eapply eval_expr_build_load_inv_locenv;eauto.
             - !intros.
               eapply malloc_distinct_from_chaining_loads with (m:=m)(n:=n)(lvl:=Datatypes.length CE);eauto.
               + !assert (Datatypes.length CE = (Datatypes.length CE_prefx + Datatypes.length CE_sufx)%nat).
                 { erewrite <- CompilEnv.cut_until_spec1 with (s:=CE);eauto.
                   apply app_length. }
-                omega.
+                lia.
               + eapply malloc_preserves_chaining_loads_2;eauto.
                 eapply chained_stack_structure_le;eauto.
                 !assert (Datatypes.length CE = (Datatypes.length CE_prefx + Datatypes.length CE_sufx)%nat).
                 { erewrite <- CompilEnv.cut_until_spec1 with (s:=CE);eauto.
                   apply app_length. }
-                omega. }
+                lia. }
               
           assert (eval_expr g stkptr locenv m
                             (build_loads (Datatypes.length CE_prefx + δ') δ_id)
@@ -9732,7 +9729,7 @@ Proof.
                     !assert (Datatypes.length CE = (Datatypes.length CE_prefx + Datatypes.length CE_sufx)%nat).
                     { erewrite <- CompilEnv.cut_until_spec1 with (s:=CE);eauto.
                       apply app_length. }
-                    omega.
+                    lia.
                 - eapply eval_expr_Econst_inv_locenv;eauto.
                 - assumption.
               }
@@ -9750,7 +9747,7 @@ Proof.
                 * f_equal.
                   f_equal.
                   rewrite app_length.
-                  omega.
+                  lia.
                 * intro abs.
                   apply app_eq_nil in abs.
                   decomp abs.
@@ -9850,14 +9847,14 @@ Proof.
         !assert (Datatypes.length CE = (Datatypes.length CE_prefx + Datatypes.length CE_sufx)%nat).
         { erewrite <- CompilEnv.cut_until_spec1 with (s:=CE);eauto.
           apply app_length. }
-        omega. }
+        lia. }
       rewrite heq_sub in h_impl_forall_g.
       !assert (chained_stack_structure m_postchainarg (Datatypes.length CE_prefx) stkptr). {
         eapply chained_stack_structure_le;eauto.
         !assert (Datatypes.length CE = (Datatypes.length CE_prefx + Datatypes.length CE_sufx)%nat).
         { erewrite <- CompilEnv.cut_until_spec1 with (s:=CE);eauto.
           apply app_length. }
-        omega. }
+        lia. }
       specialize h_impl_forall_g with (1:=h_chain_m_postchainarg1) (g:=g)(e:=locenv).
       specialize det_eval_expr with (1:=h_impl_forall_g)(2:=h_CM_eval_expr_chaining_expr_from_caller_v0) as ?;subst.
       eapply h_forall_locenv. }
@@ -9907,7 +9904,7 @@ Proof.
             * eassumption. }
           !assert (exists lvl, (m' - lvl_id)%nat = S lvl). {
             exists (m' - lvl_id - 1)%nat.
-            omega. }
+            lia. }
           decomp h_ex.
           rewrite heq_sub in *.
           !specialize (h_match_env0.(me_stack_match)) as ?.
@@ -9929,10 +9926,10 @@ Proof.
               - intro abs.
                 subst .
                 simpl in h_gt_m'_lvl_id.
-                omega. }
+                lia. }
             rewrite heq_lvloftop_CE_sufx.
             do 2 f_equal.
-            omega.
+            lia.
           * unfold build_loads in h_CM_eval_expr_nme_t_nme_t_v.
             Opaque build_loads_.
             !inversion h_CM_eval_expr_nme_t_nme_t_v;subst.
@@ -9941,7 +9938,7 @@ Proof.
             !invclear heq_lvloftop_m'.
             !assert (chained_stack_structure m_postchainarg (Datatypes.length CE_sufx - lvl_id) stkptr_proc). {
               apply chained_stack_structure_le  with (1:=h_chain_m_postchainarg).
-              omega. }
+              lia. }
             subst m'.
             rewrite heq_sub in h_chain_m_postchainarg1.
             !specialize chained_stack_structure_decomp_S_2
@@ -9974,7 +9971,7 @@ Proof.
                rewrite <- heq_sub.
                assert (S m'=S (Datatypes.length CE_sufx))%nat.
                { erewrite CompilEnv.exact_lvl_lvl_of_top with (2:=heq_lvloftop_m');eauto. }
-               omega.
+               lia.
             -- eassumption.
             -- assumption.
       - constructor.
@@ -10043,7 +10040,7 @@ Proof.
           !assert((Datatypes.length CE_sufx - lvl_id) = S (Datatypes.length CE_sufx - 1 - lvl_id))%nat. {
             assert (lvl_id < Datatypes.length CE_sufx)%nat. {
               eapply CompilEnv.exact_levelG_frameG_lt_lgth;eauto. }
-            omega. }
+            lia. }
           rewrite heq_sub.
           unfold build_loads in h_CM_eval_expr_addr |- *.
           !inversion h_CM_eval_expr_addr.
@@ -10051,7 +10048,7 @@ Proof.
           * eapply chained_stack_structure_decomp_S_2'.
             -- subst.
                apply chained_stack_structure_le with (1:=h_chain_m_postchainarg).
-               omega.
+               lia.
             -- eassumption.
             -- eassumption.
           * eapply eval_expr_Econst_inv_locenv_noaddr;eauto.
@@ -10131,7 +10128,7 @@ Proof.
             eapply chained_stack_structure_decomp_S_2'.
             -- subst.
                apply chained_stack_structure_le with (1:=h_chain_m_postchainarg).
-               omega.
+               lia.
             -- eassumption.
             -- eassumption.
         + red. red. cbn.
@@ -10153,7 +10150,7 @@ Proof.
           
           !assert (δ < S (Datatypes.length CE_sufx))%nat. {
             !specialize transl_variable_exact_lvl_le_toplvl with (1:=h_exct_lvlG_CE_sufx)(2:=heq_transl_variable0) as ?.
-            omega. }
+            lia. }
           !specialize chained_stack_structure_decomp_S
             with (1:=h_chain_m_postchainarg)(2:=h_lt_δ) (3:=h_CM_eval_expr_v1) as ?.
           decomp h_ex.
@@ -10208,7 +10205,7 @@ Proof.
               simpl in heq_length.
               rewrite app_length in heq_length.
               simpl in heq_length.
-              omega.
+              lia.
           + !!!inversion h_copy_in0.
             !assert ((l ++ (i, v) :: initf) = ((l ++ [(i, v)]) ++ initf)). {
               simpl.
@@ -10234,7 +10231,7 @@ Proof.
               simpl in heq_length.
               rewrite app_length in heq_length.
               simpl in heq_length.
-              omega.
+              lia.
           + !!!inversion h_copy_in0.
             !assert ((l ++ (i, v) :: initf) = ((l ++ [(i, v)]) ++ initf)). {
               simpl.
@@ -10282,7 +10279,7 @@ Proof.
               simpl in heq_length.
               rewrite app_length in heq_length.
               simpl in heq_length.
-              omega.
+              lia.
           + !!!inversion h_copy_in0.
             !assert ((l ++ (i, v) :: initf) = ((l ++ [(i, v)]) ++ initf)). {
               simpl.
@@ -10308,7 +10305,7 @@ Proof.
               simpl in heq_length.
               rewrite app_length in heq_length.
               simpl in heq_length.
-              omega.
+              lia.
         - !!!inversion h_copy_in.
           unfold ST.push in h_copy_in0.
           simpl in h_copy_in0.
@@ -10367,7 +10364,7 @@ Proof.
               !assert (Datatypes.length l = Datatypes.length l'). {
                 rewrite app_length in heq.
                 simpl in heq.
-                omega. }
+                lia. }
               clear heq.
               destruct x;!intros.
               specialize h_forall_k' with (1:=heq_transl_paramid).
@@ -12340,7 +12337,7 @@ Admitted.
                 m_postchainarg stkptr_proc). {
         eapply chain_aligned.
         eapply h_chain_m_postchainarg.
-        (* omega fails because implicits do not match exactly (but are convertible) *)
+        (* lia fails because implicits do not match exactly (but are convertible) *)
         apply le_n. }
       !intros.
       !specialize init_params_preserves_structure
@@ -13213,7 +13210,7 @@ xxxx
               split;[|split];auto.
               apply CompilEnv.Cut_Until_Tail.
               -- simpl.
-                 omega.
+                 lia.
               -- assumption.
             
 

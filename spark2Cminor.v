@@ -15,7 +15,6 @@ Require Import spark.store_util.
 Notation " [ ] " := nil : list_scope.
 Notation " [ x ] " := (cons x nil) : list_scope.
 Notation " [ x ; .. ; y ] " := (cons x .. (cons y nil) ..) : list_scope.
-Notation "X ++ Y" := (String.append X Y) : spark_scope.
 
 (** * A symbol table with concrete types only *)
 
@@ -528,7 +527,7 @@ Definition transl_lparameter_specification_to_procsig
                           | O => tparams
                           | _ => AST.Tint :: tparams
                         end ;
-         AST.sig_res := None ; (* procedure: no return type *)
+         AST.sig_res := AST.Tvoid ; (* procedure: no return type *)
          AST.sig_cc := default_calling_convention
        |}.
 
@@ -973,6 +972,8 @@ Definition from_sireum x y :=
 
 
 (* These notation are complex BUT re-parsable. *)
+Declare Scope spark_scope
+Notation "X ++ Y" := (String.append X Y) : spark_scope.
 Notation "$ n" := (Evar n) (at level 80) : spark_scope.
 Notation "& n" := (Econst (Oaddrstack n))(at level 80) : spark_scope.
 Notation "'&_' n" := (Oaddrstack (Integers.Int.repr n))(at level 80) : spark_scope.

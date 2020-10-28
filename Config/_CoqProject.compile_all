@@ -2,9 +2,8 @@
 ### you can pass options to configure.sh (see configure.sh -h)
 ### FIRST PART: copied from Config/_CoqProject.in, altered by
 ### options given to configure.sh
-
-# This makes library accessible and compilable from here But make
-# install is unusable (coq_makefile produces a warning about that)
+# This makes library accessible and compilable from here
+# But make install is unusable
 -R ../sparkformal/spark2014_semantics/src spark
 
 # Same here for compcert part. ../CompCert compcert would not work
@@ -27,3 +26,17 @@
 -R . sparkfrontend
 
 
+
+### SECOND PART: Files added automatically by configure.sh.
+chained_structure.v
+compcert_utils.v
+function_utils.v
+LibDecomp.v
+LibHypsNaming.v
+LibTac.v
+more_stdlib.v
+semantics_properties.v
+spark2Cminor.v
+spark2cmproofs.v
+spark_utils.v
+TacNewHyps.v
