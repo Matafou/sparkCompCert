@@ -398,7 +398,6 @@ Fixpoint transl_exprlist (stbl: symboltable) (CE: compilenv) (el: list exp)
       OK (te1 :: te2)
   end.
 
-
 (* ********************************************** *)
 
 Definition concrete_type_of_value (v:value): res base_type :=
@@ -513,7 +512,7 @@ Function transl_decl_to_lident (stbl:symboltable) (decl:decl): list AST.ident :=
   end.
 
 
-Definition default_calling_convention := {| AST.cc_vararg := true;
+Definition default_calling_convention := {| AST.cc_vararg := None;
                                             AST.cc_unproto := true;
                                             AST.cc_structret := true |}.
 

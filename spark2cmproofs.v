@@ -10,7 +10,8 @@ Import Symbol_Table_Module.
 Open Scope error_monad_scope.
 Open Scope Z_scope.
 
-Hint Resolve Z.divide_refl Z.divide_0_r Z.divide_factor_l Z.divide_factor_r.
+Local Hint Resolve Z.divide_refl Z.divide_0_r Z.divide_factor_l Z.divide_factor_r: spark.
+
 
 (* stdlib unicode binders are not boxed correctly imho. *)
 Notation "∀ x .. y , P" := (forall x, .. (forall y, P) ..)
@@ -924,7 +925,7 @@ Proof.
 Qed.
 
 
-Hint Resolve evalExp_overf2.
+Local Hint Resolve evalExp_overf2 : spark.
 
 (* [make_load] does not fail on transl_type a translated variable coming
    from stbl *)
@@ -1541,7 +1542,7 @@ Definition gt_fst (x y:(CompilEnv.scope_level * localframe)) := (fst y < fst x)%
 Definition eq_fst_idnum (x y : idnum * CompilEnv.V) := fst x = fst y.
 
 Arguments eq_fst_idnum !x !y.
-Hint Unfold eq_fst_idnum.
+Local Hint Unfold eq_fst_idnum : spark.
 
 Definition gt_x_fst_y x (y:(CompilEnv.scope_level * localframe)) := (fst y < x)%nat.
 Definition gt_fst_x_y (x:(CompilEnv.scope_level * localframe)) y := (y < fst x)%nat.
@@ -1574,7 +1575,7 @@ Proof.
   reflexivity.
 Qed.
 
-Hint Resolve gt_snd_1 gt_snd_2 gt_fst_1 gt_fst_2.
+Local Hint Resolve gt_snd_1 gt_snd_2 gt_fst_1 gt_fst_2 : spark.
 
 (* Local frames are ordered in the sense that they are stored by increasing offests. *)
 Definition increasing_order: localframe -> Prop :=
@@ -1696,10 +1697,10 @@ Arguments ci_stbl_var_types_ok : default implicits.
 Arguments ce_nodup_CE: default implicits.
 Arguments ce_nodup_G_CE: default implicits.
 
-Hint Resolve ci_exact_lvls ci_increasing_ids ci_no_overflow ci_stbl_var_types_ok ce_nodup_G_CE ce_nodup_G_CE.
-Hint Resolve me_stack_match_addresses me_stack_match_functions me_stack_separate me_stack_localstack_aligned
-     me_stack_no_null_offset me_stack_freeable me_chain_struct.
-Hint Resolve me_stack_match me_stack_match_CE me_stack_match_lgth (* me_stack_complete *) me_overflow me_safe_cm_env.
+Local Hint Resolve ci_exact_lvls ci_increasing_ids ci_no_overflow ci_stbl_var_types_ok ce_nodup_G_CE ce_nodup_G_CE : spark.
+Local Hint Resolve me_stack_match_addresses me_stack_match_functions me_stack_separate me_stack_localstack_aligned
+     me_stack_no_null_offset me_stack_freeable me_chain_struct : spark.
+Local Hint Resolve me_stack_match me_stack_match_CE me_stack_match_lgth (* me_stack_complete *) me_overflow me_safe_cm_env : spark.
 
 
 Inductive strong_match_env stbl: STACK.state → compilenv → Values.val → env → genv → mem → Prop :=
@@ -2338,9 +2339,9 @@ Lemma match_env_inv_locenv : forall st s CE sp locenv g m,
 Proof.
   !intros.
   split;[ | | | | | | split | ];try now apply h_match_env.  
-  - eapply stack_match_inv_locenv;eauto.
-  - eapply stack_match_addr_inv_locenv; eauto.
-  - eapply stack_match_functions_inv_locenv;eauto.
+  - eapply stack_match_inv_locenv;eauto with spark.
+  - eapply stack_match_addr_inv_locenv; eauto with spark.
+  - eapply stack_match_functions_inv_locenv;eauto with spark.
   - pose proof me_stack_separate (me_safe_cm_env h_match_env) as h_separate.
     red in h_separate.
     red;!intros.
@@ -2427,12 +2428,12 @@ Lemma safe_cm_env_inv_locenv: forall stbl CE stkptr locenv g m,
     forall locenv', safe_cm_env stbl CE stkptr locenv' g m.
 Proof.
   !intros.
-  constructor;eauto.
-  - eapply stack_match_addr_inv_locenv;eauto.
-  - eapply stack_match_functions_inv_locenv;eauto.
-  - eapply stack_separate_inv_locenv;eauto.
-  - eapply stack_localstack_aligned_inv_locenv;eauto.
-  - eapply stack_freeable_inv_locenv;eauto.
+  constructor;eauto with spark.
+  - eapply stack_match_addr_inv_locenv;eauto with spark.
+  - eapply stack_match_functions_inv_locenv;eauto with spark.
+  - eapply stack_separate_inv_locenv;eauto with spark.
+  - eapply stack_localstack_aligned_inv_locenv;eauto with spark.
+  - eapply stack_freeable_inv_locenv;eauto with spark.
 Qed.
 
 
@@ -2613,7 +2614,7 @@ Proof.
   !assert (exists s' s'', STACK.cut_until s lvl s' s'').
   { !specialize strong_match_env_top with (1:=h_strg_mtch_s_CE_m) as ?.
     !specialize exact_lvl_cut_until_lgth_left with (CE:=CE)(s:=s)(CE1:=CE')(CE2:=CE'') as ?.
-    !edestruct h_impl_impl_impl_forall_lvl;eauto.
+    !edestruct h_impl_impl_impl_forall_lvl;eauto with spark.
     - apply h_match_env.
     - decomp h_ex.
       eauto. }
@@ -2879,14 +2880,14 @@ Proof.
     decomp hex;subst.
     + destruct b; eexists;(split;[econstructor;eauto|]).
       * eapply eval_Ebinop;try econstructor;eauto.
-        eapply binary_operator_ok with (v1:=e_v) (v2:=e0_v);eauto.
+        eapply binary_operator_ok with (v1:=e_v) (v2:=e0_v);eauto with spark.
         econstructor;eauto.
       * eapply eval_Ebinop;try econstructor;eauto.
-        eapply binary_operator_ok with (v1:=e_v) (v2:=e0_v);eauto.
+        eapply binary_operator_ok with (v1:=e_v) (v2:=e0_v);eauto with spark.
         econstructor;eauto.
     + eexists;(split;[econstructor;eauto|]).
       eapply eval_Ebinop;try econstructor;eauto.
-        eapply binary_operator_ok with (v1:=e_v) (v2:=e0_v);eauto.
+        eapply binary_operator_ok with (v1:=e_v) (v2:=e0_v);eauto with spark.
         econstructor;eauto.
   - (* Unary minus *)
     simpl in heq_transl_unop.
@@ -2921,6 +2922,7 @@ Proof.
       reflexivity.
 Qed.
 
+Declare Scope res_scope.
 Notation " x =: y" := (x = Errors.OK y) (at level 90): res_scope.
 Notation " x =! y" := (x = Error y) (at level 120): res_scope.
 Open Scope res_scope.
@@ -3109,7 +3111,7 @@ Proof.
       absurd (InA eq_fst_idnum (id, t) l);auto.
       apply InA_alt.
       exists (id, st).
-      split;auto. }
+      split;auto with spark. }
     apply not_eq_sym in hneq.
     rewrite <- beq_nat_false_iff in hneq.
     rewrite hneq.
@@ -3868,8 +3870,8 @@ Proof.
   !intros.
   decomp (storev_inv _ _ _ _ _ heq_storev_e_t_v_m') ;subst.
   functional inversion heq_transl_name.
-  eapply wf_chain_load_aligned;eauto.
-  eapply eval_build_loads_offset_non_null_var;eauto.
+  eapply wf_chain_load_aligned;eauto with spark.
+  eapply eval_build_loads_offset_non_null_var;eauto with spark.
 Qed.
 
 Lemma assignment_preserve_stack_match_addresses :
@@ -3899,9 +3901,9 @@ Proof.
   - subst.
     exists (Values.Vptr id_t_v_pt id_t_v_ofs).
     destruct (match_env_sp_zero _ _ _ _ _ _ _ h_match_env);subst.
-    eapply wf_chain_load_var;eauto.
+    eapply wf_chain_load_var;eauto with spark.
     + eapply assignment_preserve_loads_offset_non_null;eauto.
-    + eapply eval_build_loads_offset_non_null_var;eauto.
+    + eapply eval_build_loads_offset_non_null_var;eauto with spark.
     + destruct (transl_variable_astnum _ _ _ _ _ heq_transl_variable astnum).
       rewrite heq_transl_variable in heq_transl_variable0.
       inversion heq_transl_variable0;subst.
@@ -3911,9 +3913,9 @@ Proof.
     decomp h_ex.
     exists nme_t_v.
     destruct (match_env_sp_zero _ _ _ _ _ _ _ h_match_env);subst.
-    eapply wf_chain_load_var;eauto.
+    eapply wf_chain_load_var;eauto with spark.
     + eapply assignment_preserve_loads_offset_non_null;eauto.
-    + eapply eval_build_loads_offset_non_null_var;eauto.
+    + eapply eval_build_loads_offset_non_null_var;eauto with spark.
 Qed.
 
 Lemma assignment_preserve_stack_match :
@@ -4333,13 +4335,14 @@ Proof.
     + eassumption.
     + assumption.
     + eapply eval_build_loads_offset_non_null_var with (6:=h_CM_eval_expr_id_t_id_t_v)
-      ;eauto.
+      ;eauto with spark.
     + simpl in heq_transl_name0.
       eauto.
   - apply h_inv_comp_CE_stbl.
   - eassumption.
   - assumption.
-  - eapply  eval_build_loads_offset_non_null_var with (6:=h_CM_eval_expr_id_t_id_t_v);eauto.
+  - eapply  eval_build_loads_offset_non_null_var with (6:=h_CM_eval_expr_id_t_id_t_v)
+    ;eauto with spark.
   - eauto.
 Qed.
 
@@ -4421,9 +4424,9 @@ Proof.
   eapply Mem.store_valid_access_1.
   - eassumption.
   - eapply (me_stack_freeable (me_safe_cm_env h_match_env));eauto.
-    eapply wf_chain_load_var';eauto.
+    eapply wf_chain_load_var';eauto with spark.
     eapply eval_build_loads_offset_non_null_var
-      with (6:=h_CM_eval_expr_nme_t_nme_t_v);eauto.
+      with (6:=h_CM_eval_expr_nme_t_nme_t_v);eauto with spark.
 Qed.
 
 
@@ -4431,13 +4434,13 @@ Qed.
 
     
 
-Hint Resolve
+Local Hint Resolve
      assignment_preserve_stack_match assignment_preserve_stack_match_CE
      assignment_preserve_stack_match_function
      assignment_preserve_stack_complete
      assignment_preserve_stack_separate assignment_preserve_loads_offset_non_null
      assignment_preserve_stack_no_null_offset assignment_preserve_stack_safe
-     assignment_preserve_stack_freeable assignment_preserve_stack_match_addresses.
+     assignment_preserve_stack_freeable assignment_preserve_stack_match_addresses : spark.
 
 
   
@@ -4503,8 +4506,8 @@ Lemma assignment_preserve_safe_cm_env:
 Proof.
   !intros.
   !assert (safe_cm_env stbl CE (Values.Vptr spb ofs) locenv g m').
-  { split;eauto.
-    eapply assignment_preserve_chained_stack_structure;eauto. }
+  { split;eauto with spark.
+    eapply assignment_preserve_chained_stack_structure;eauto with spark. }
   eapply safe_cm_env_inv_locenv;eauto.
 Qed.
   
@@ -4618,7 +4621,7 @@ Lemma assignment_preserve_match_env:
 Proof.
   !intros.
   generalize heq_transl_name; unfold transl_name;!intro.
-  split;eauto.
+  split;eauto with spark.
   - red.
     transitivity (Datatypes.length s).
     + apply STACK.equiv_stack_lgth.
@@ -6493,9 +6496,9 @@ Proof.
   !(intros until 1).
   rew build_compilenv_ok with
     !(functional inversion heq_build_compilenv;subst;intro;clear heq_build_compilenv).
-  split;eauto.
+  split;eauto with spark.
   + constructor.
-    eauto.
+    eauto with spark.
   + constructor.
     * red.
       cbn.
@@ -6506,14 +6509,14 @@ Proof.
       -- destruct (build_frame_lparams_preserve_increasing_order _ _ _ _ _ _ heq_bld_frm_prmprof);auto.
          constructor;cbn in *;auto.
     * eapply (ci_increasing_ids h_inv_comp_CE_st).
-  + apply all_addr_no_overflow_fetch_OK;eauto.
+  + apply all_addr_no_overflow_fetch_OK;eauto with spark.
     destruct x;unfold stoszchainparam in *.
     eapply (build_frame_decl_preserve_no_overflow st pdeclpart s z (Datatypes.length CE) x0 stcksize).
     -- eapply (build_frame_lparams_preserve_pos_addr st prmprof) with (lvl:=0%nat);eauto; try lia.
        red. cbn in *. !intros.
        discriminate.
     -- assumption.
-    -- eapply (build_frame_lparams_preserve_no_overflow st prmprof);eauto; try lia.
+    -- eapply (build_frame_lparams_preserve_no_overflow st prmprof);eauto with spark; try lia.
        red. cbn. !intros.
        discriminate.
   + unfold CompilEnv.NoDup in *.
@@ -7515,7 +7518,7 @@ Lemma transl_procsig_match_env_succeeds:
 Proof.
   !intros.
   unfold transl_procsig in heq_transl_procsig_pnum.
-  !assert (stack_match_functions st sp CE e g m) by eauto.
+  !assert (stack_match_functions st sp CE e g m) by eauto with spark.
   red in h_stk_mtch_fun.
   unfold symboltable.fetch_proc in h_stk_mtch_fun.
   specialize (h_stk_mtch_fun pnum).
@@ -7690,8 +7693,9 @@ Proof.
             is |CE|-1, hence: *)
         !assert (proc_lvl<=Datatypes.length CE)%nat.
         { admit. }
+
         assert (proc_lvl = Datatypes.length CE_sufx)%nat.
-        { !assert (CompilEnv.exact_levelG CE) by eauto.
+        { !assert (CompilEnv.exact_levelG CE) by eauto with spark.
           eapply CompilEnv.cut_until_exact_levelG;eauto. }
         subst proc_lvl.
 
@@ -7805,11 +7809,11 @@ Proof.
         !assert (Mem.unchanged_on (forbidden st CE_proc g astnum e_chain sp_proc m_chain m_chain) m_chain m_init_params
                  ∧ chained_stack_structure m_init_params (Datatypes.length CE_proc) sp_proc
                  ∧ unchange_forbidden st CE_proc g astnum e_chain e_initparams sp_proc m_chain m_init_params).
-        { eapply init_params_preserves_structure;eauto.
+        { eapply init_params_preserves_structure;eauto with spark.
           - eapply build_compilenv_stack_no_null_offset with (CE:=CE_sufx).
-            + eapply exact_lvlG_cut_until with (CE:=CE) ;eauto.
-            + eapply no_overflow_NoDup_G_cut with (CE:=CE);eauto.
-            + eapply no_null_offset_NoDup_G_cut with (CE:=CE); eauto.
+            + eapply exact_lvlG_cut_until with (CE:=CE) ;eauto with spark.
+            + eapply no_overflow_NoDup_G_cut with (CE:=CE);eauto with spark.
+            + eapply no_null_offset_NoDup_G_cut with (CE:=CE); eauto with spark.
             + eassumption.
           - admit. (* TODO *)
 
@@ -8027,11 +8031,11 @@ Proof.
           !inversion h_exec_stmt_Sskip_Out_normal.
           eapply init_locals_preserves_structure.
           - eapply build_compilenv_exact_lvl with (2:=heq_build_compilenv) ;eauto.
-            eapply exact_lvlG_cut_until with (CE:=CE);eauto.
+            eapply exact_lvlG_cut_until with (CE:=CE);eauto with spark.
           - eapply build_compilenv_stack_no_null_offset with (4:=heq_build_compilenv);eauto.
-            + eapply exact_lvlG_cut_until with (CE:=CE);eauto.
-            + eapply no_overflow_NoDup_G_cut with (CE:=CE);eauto.
-            + eapply no_null_offset_NoDup_G_cut with (CE:=CE);eauto.
+            + eapply exact_lvlG_cut_until with (CE:=CE);eauto with spark.
+            + eapply no_overflow_NoDup_G_cut with (CE:=CE);eauto with spark.
+            + eapply no_null_offset_NoDup_G_cut with (CE:=CE);eauto with spark.
           - apply h_inv_comp_CE_proc_st.
           - eassumption.
           - assumption.
