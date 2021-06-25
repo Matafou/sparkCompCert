@@ -2,7 +2,7 @@
 # Example:
 #./configure.sh -compcert ~/work/CompCert-official -spark ~/work/sparkformal/spark2014_semantics/src
 #
-
+# TODO: add LibHyps argument?
 function usage {
     echo
     echo usage:  configure.sh [-reuseconf] [-coqtags bin] [-compcert path] [-spark path] [-sireum path]

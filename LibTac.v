@@ -1,6 +1,6 @@
-Require Import TacNewHyps.
-Require Import LibHypsNaming.
-Require Import LibDecomp.
+Require Import LibHyps.TacNewHyps.
+Require Import LibHyps.LibHyps.
+Require Import LibHyps.LibDecomp.
 (* Some tactics used in sparkCompcert. Mostly about autorenaming. *)
 
 (* Same tactic as LibDecomp.decomp_logical but make sure the name of
@@ -12,12 +12,17 @@ Ltac decompose_clear c :=
   decomp_logicals c; try clear h.
 
 (* decompose + rename new hyps. *)
-Tactic Notation "decomp" constr(c) := (!!decompose_clear c).
+Tactic Notation "decomp" constr(c) := decompose_clear c /sng.
 
-(* Iterating the tactic on all hypothesis. Moves up all Set/Type
+Tactic Notation "decom" constr(c) := decompose_clear c.
+
+Tactic Notation (at level 4) tactic4(Tac) "/" "d":= Tac ; { fun h => try decompose_clear h }.
+Tactic Notation (at level 4) "/" "d" := (onAllHyps (fun h => try decompose_clear h)).
+
+(*(* Iterating the tactic on all hypothesis. Moves up all Set/Type
    variables to the top. Really useful with [Set Compact Context]
    which is no yet commited in coq-trunk. *)
-Ltac up_type := map_all_hyps_rev move_up_types.
+Ltac up_type := map_all_hyps_rev move_up_types. *)
 
 (* rew foo with tac first rewrite everywhere with t' (right to left),
 then applies tac and then rewrite eveywhere in the other direction.
@@ -25,7 +30,7 @@ this is useful when some tactic needs the goal (or a hypothesis to be
 in a certain form but you don't want to keep this form in your goal. *)
 Tactic Notation "rew" constr(t') "with"  tactic(tac) :=
   try (rewrite <- t' in * ); tac; (try rewrite t' in * ).
-
+(*
 (* subst with all new hyps if ossible after applying tactic tac *)
 (* Ltac subst_new_hyps tac := onNewHypsOf ltac:tac do substHyp. *)
 
@@ -40,10 +45,10 @@ Tactic Notation (at level 4) "!!!!" tactic4(tac1) :=
 (* subst or revert, revert is done from older to newer *)
 Tactic Notation (at level 4) "??" tactic4(tac1) :=
   (tac1 ;; substHyp ;!; revertHyp).
-
+*)
 (* in sparkCompcert !inversion always tries to subst. *)
-Tactic Notation "!inversion" hyp(h) := !!! (inversion h).
-Tactic Notation "!invclear" hyp(h) := !!! (inversion h;clear h).
+(* Tactic Notation "!inversion" hyp(h) := (inversion h)/s. *)
+Tactic Notation "invclear" hyp(h) := (inversion h;clear h).
 
 (* Example of !!! and ?? *)
 (*
@@ -61,10 +66,16 @@ Lemma foo: forall x y,
     ~1 < 0 ->
     forall z t:nat,
     (0 < 1 -> ~(true=false)) ->
+    (True /\ False \/ True) -> 
     (forall w w',w < w' -> ~(true=false)) ->
     (0 < 1 -> ~(1<0)) ->
     (0 < 1 -> 1<0) -> 0 < z.
-  (* auto naming + subst when possible at intro: *)
+Proof.
+  intros /d.
+  Undo.
+  !!intros. (* Same but with stronger priority ythan ";" *)
+  Undo.
+  (* subst when possible, revert otherwise. *)
   ??intros.
   Undo.
   !!!intros.

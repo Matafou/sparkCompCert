@@ -1,11 +1,13 @@
 Require Import SetoidList ZArith Lia.
 Require Import Flocq.Core.Zaux.
+Require Import  LibHyps.LibHyps.
 From compcert Require Import common.Errors backend.Cminor lib.Integers.
-From sparkfrontend Require Import LibTac LibHypsNaming compcert_utils more_stdlib.
+
+From sparkfrontend Require Import compcert_utils more_stdlib LibTac.
 Import compcert.common.Memory.
 Require compcert.cfrontend.Ctypes.
 
-(*Require Import sparkfrontend.LibTac sparkfrontend.LibHypsNaming  compcert.common.Errors
+(*Require Import (*sparkfrontend.LibTac*) sparkfrontend.LibHypsNaming  compcert.common.Errors
         compcert.common.Cminor compcert.lib.Integers sparkfrontend.compcert_utils sparkfrontend.more_stdlib.*)
 
 Open Scope nat_scope.
@@ -40,61 +42,56 @@ Definition stack_localstack_aligned lvl locenv g m sp :=
     exists b_δ,
       Cminor.eval_expr g sp locenv m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) δ_lvl) (Values.Vptr b_δ Ptrofs.zero).
 
-Ltac rename_chained t th :=
+Local Open Scope autonaming_scope.
+Ltac rename_chained n th :=
   match th with
-| chained_stack_structure ?m ?lvl ?sp => fresh "chain_" m "_" lvl "_" sp
-| chained_stack_structure ?m ?lvl _ => fresh "chain_" m "_" lvl
-| chained_stack_structure ?m _ _ => fresh "chain_" m
-| chained_stack_structure _ ?lvl _ => fresh "chain_" lvl
-| chained_stack_structure _ _ _ => fresh "chain"
-| repeat_Mem_loadv _ ?m ?lvl ?v ?sp => fresh "repeat_loadv_" lvl "_" v
-| repeat_Mem_loadv _ ?m ?lvl ?v ?sp => fresh "repeat_loadv_" lvl
-| repeat_Mem_loadv _ ?m ?lvl ?v ?sp => fresh "repeat_loadv"
-| stack_localstack_aligned _ _ ?g ?m ?sp => fresh "aligned_" g "_" m
-| stack_localstack_aligned _ _ _ ?m ?sp => fresh "aligned_" m
-| stack_localstack_aligned _ _ ?g _ ?sp => fresh "aligned_" g
+| chained_stack_structure ?m ?lvl ?sp => name(`_chain` ++ m#n ++ lvl#n ++ sp#n)
+| repeat_Mem_loadv _ ?m ?lvl ?v ?sp => name( `_repeat_loadv` ++ lvl#n ++ v#n)
+| stack_localstack_aligned _ _ ?g ?m ?sp => name(`_aligned` ++ g#n ++ m#n)
 end.
 
+Local Close Scope autonaming_scope.
+(*
 Ltac prefixable h th ::=
   match th with
   | _ => prefixable_compcert h th
   | _ => prefixable_eq_neq h th
   end.
+*)
 
-
-Ltac rename_hyp h th ::=
+Ltac rename_hyp n th ::=
   match th with
-  | _ => (compcert_utils.rename_hyp1 h th)
-  | _ => (LibHypsNaming.rename_hyp_neg h th)
-  | _ => (rename_chained h th)
+  | _ => (compcert_utils.rename_hyp1 n th)
+  | _ => (rename_chained n th)
   end.
+Ltac rename_depth ::= constr:(2%nat).
 
 Lemma chained_stack_structure_le m sp : forall n,
     chained_stack_structure m n sp ->
     forall n', (n' <= n)%nat -> 
                chained_stack_structure m n' sp.
 Proof.
-  !!intros ? ?.
-  !induction h_chain_m_n_sp;!intros.
+  intros ? ? /sng.
+  induction h_chain_m_n_sp_;intros /sng.
   - assert (n'=0)%nat by lia;subst.
     constructor.
   - destruct n'.
     * constructor.
     * econstructor;eauto.
-      apply h_forall_n';eauto;lia.
+      apply h_all_chain_;eauto;lia.
 Qed.
 
 Lemma chained_stack_struct_inv_sp_zero: forall m n sp,
     chained_stack_structure m n sp -> exists b',  sp = (Values.Vptr b' Ptrofs.zero).
 Proof.
-  !intros.
-  inversion h_chain_m_n_sp;subst;eauto.
+  intros /sng.
+  inversion h_chain_m_n_sp_;subst;eauto.
 Qed.
 
 Lemma chained_stack_struct_sp_add: forall m n sp,
     chained_stack_structure m n sp -> (Values.Val.add sp (Values.Vint Int.zero)) = sp.
 Proof.
-  !intros.
+  intros /sng.
   destruct (chained_stack_struct_inv_sp_zero m n sp);subst;auto.
 Qed.
 
@@ -102,7 +99,7 @@ Lemma cm_eval_addrstack_zero:
   forall b ofs m g e,
       Cminor.eval_expr g (Values.Vptr b ofs) e m (Econst (Oaddrstack Ptrofs.zero)) (Values.Vptr b ofs).
 Proof.
-  !intros.
+  intros /sng.
   constructor;cbn.
   rewrite Ptrofs.add_zero.
   reflexivity.
@@ -114,8 +111,8 @@ Lemma cm_eval_addrstack_zero_chain:
     forall g e,
       Cminor.eval_expr g sp e m (Econst (Oaddrstack Ptrofs.zero)) sp.
 Proof.
-  !intros.
-  destruct (chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_n_sp).
+  intros /sng.
+  destruct (chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_n_sp_).
   subst.
   apply cm_eval_addrstack_zero.
 Qed.
@@ -126,8 +123,8 @@ Lemma det_cm_eval_addrstack_zero_chain : forall m lvl sp e g vaddr,
     Cminor.eval_expr g sp e m (Econst (Oaddrstack Ptrofs.zero)) vaddr ->
     vaddr = sp.
 Proof.
-  !intros.
-  pose proof cm_eval_addrstack_zero_chain lvl sp m h_chain_m_lvl_sp g e.
+  intros /sng.
+  pose proof cm_eval_addrstack_zero_chain lvl sp m h_chain_m_lvl_sp_ g e.
   eapply det_eval_expr;eauto.
 Qed.
 
@@ -135,7 +132,7 @@ Lemma det_cm_eval_addrstack_zero : forall b i m e g vaddr,
     Cminor.eval_expr g (Values.Vptr b i) e m (Econst (Oaddrstack Ptrofs.zero)) vaddr ->
     vaddr = (Values.Vptr b i).
 Proof.
-  !intros.
+  intros /sng.
   pose proof cm_eval_addrstack_zero b i m g e.
   eapply det_eval_expr;eauto.
 Qed.
@@ -168,14 +165,16 @@ Lemma chained_stack_structure_aux m sp : forall n,
       /\ Mem.loadv AST.Mint32 m sp = Some (Values.Vptr b' Ptrofs.zero)
       /\ Cminor.eval_expr g sp e m (Eload AST.Mint32 (Econst (Oaddrstack Ptrofs.zero))) (Values.Vptr b' Ptrofs.zero).
 Proof.
-  !!intros until 1.
-  inversion h_chain_m;subst;!intros.
+  intros until 1 /sng.
+  inversion h_chain_m_S_sp_;subst;intros /sng.
   exists b';split;[|split];eauto.
   econstructor;eauto.
   constructor.
   cbn.
   reflexivity.
 Qed.
+
+Ltac rename_depth ::= constr:(2%nat).
 
 Lemma build_loads__decomp_S: forall m b0 g e b, 
     Cminor.eval_expr g (Values.Vptr b0 Ptrofs.zero) e m 
@@ -189,10 +188,10 @@ Lemma build_loads__decomp_S: forall m b0 g e b,
                          (Eload AST.Mint32 (Econst (Oaddrstack Ptrofs.zero))) sp'
         /\ Cminor.eval_expr g sp' e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) v.
 Proof.
-  !intros.
-  revert v b h_CM_eval_expr h_CM_eval_expr_v.
-  !induction n.
-  - !intros.
+  intros /sng.
+  revert v b h_CM_eval_expr_Eload_vptr_ h_CM_eval_expr_bldlds_v_.
+  induction n /sng.
+  - intros /sng.
     cbn in *.
     exists v;split;auto.
     constructor;cbn.
@@ -200,12 +199,12 @@ Proof.
     cbn.
     rewrite Ptrofs.add_zero.
     reflexivity.
-  - !intros.
-    cbn in h_CM_eval_expr_v.
-    !invclear h_CM_eval_expr_v;subst.
-    change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) with (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (S n)) in h_CM_eval_expr_vaddr.
-    specialize (h_forall_v _ _ h_CM_eval_expr h_CM_eval_expr_vaddr).
-    decomp h_forall_v.
+  - intros /sng.
+    cbn in h_CM_eval_expr_bldlds_v_.
+    invclear h_CM_eval_expr_bldlds_v_;subst /sng.
+    change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) with (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (S n)) in h_CM_eval_expr_Eload_vaddr_.
+    specialize (h_all_and_ _ _ h_CM_eval_expr_Eload_vptr_ h_CM_eval_expr_Eload_vaddr_).
+    decomp h_all_and_.
     exists sp';split;auto.
     cbn.
     econstructor;eauto.
@@ -221,26 +220,26 @@ Lemma chained_stack_structure_decomp_S: forall m max sp g e,
            Cminor.eval_expr g sp e m (Eload AST.Mint32 (Econst (Oaddrstack Ptrofs.zero))) sp' /\
            Cminor.eval_expr g sp' e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) v.
 Proof.
-  !!intros until n.
-  !induction n.
-  - !intros.
+  intros until n /sng.
+  induction n /sng.
+  - intros /sng.
     cbn in *.
     exists v;split;auto.
     eapply cm_eval_addrstack_zero_chain with (n:=Nat.pred max);eauto.
-    rewrite <- (PeanoNat.Nat.succ_pred_pos _ h_lt_O_max) in h_chain_m_max_sp.
-    !inversion h_chain_m_max_sp.
-    !inversion h_CM_eval_expr_v.
+    rewrite <- (PeanoNat.Nat.succ_pred_pos _ h_lt_0_max_) in h_chain_m_max_sp_.
+    inversion h_chain_m_max_sp_ /sng.
+    inversion h_CM_eval_expr_bldlds_v_ /sng.
     subst_det_addrstack_zero.
-    rewrite h_loadv in h_loadv_vaddr_v.
-    inversion h_loadv_vaddr_v.
+    rewrite h_eq_loadv_vptr_ in h_eq_loadv_v_.
+    inversion h_eq_loadv_v_.
     assumption.
-  - !intros.
-    cbn in h_CM_eval_expr_v.
-    !invclear h_CM_eval_expr_v;subst.
-    change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) with (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (S n)) in h_CM_eval_expr_vaddr.
-    !!assert (n<max) by lia.
-    specialize h_forall_v with (1:=h_chain_m_max_sp)(2:=h_lt_n_max)(3:=h_CM_eval_expr_vaddr).
-    decomp h_forall_v.
+  - intros /sng.
+    cbn in h_CM_eval_expr_bldlds_v_.
+    invclear h_CM_eval_expr_bldlds_v_;subst /sng.
+    change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) with (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (S n)) in h_CM_eval_expr_Eload_vaddr_.
+    assert (n<max) by lia /sng.
+    specialize h_all_and_ with (1:=h_chain_m_max_sp_)(2:=h_lt_n_max_)(3:=h_CM_eval_expr_Eload_vaddr_).
+    decomp h_all_and_.
     exists sp';split;auto.
     cbn.
     econstructor;eauto.
@@ -258,34 +257,31 @@ Lemma chained_stack_structure_spec :
                            (Values.Vptr b' Ptrofs.zero))
     -> chained_stack_structure m n (Values.Vptr b Ptrofs.zero).
 Proof.
-  !!induction n;!intros.
+  induction n;intros /sng.
   - constructor.
-  - !!assert (1 <= S n) by lia.
-    !!pose proof  (h_forall_lvl 1%nat h_le).
-    decomp h_ex.
-    !!assert (S n <= S n) by lia.
-    !!pose proof  (h_forall_lvl _ h_le0).
-    decomp h_ex.
+  - assert (1 <= S n) by lia /sng.
+    (pose proof  (h_all_CM_eval_expr_ 1%nat h_le_1_S_)) /sng.
+    decomp h_ex_CM_eval_expr_ .
+    assert (S n <= S n) by lia /sng.
+    (pose proof  (h_all_CM_eval_expr_ _ h_le_S_S_)) /sng.
+    decomp h_ex_CM_eval_expr_.
     cbn in *.
-    !!specialize build_loads__decomp_S with (1:=h_CM_eval_expr)(2:=h_CM_eval_expr0) as ?.
-    decomp h_ex.
+    specialize build_loads__decomp_S with (1:=h_CM_eval_expr_bldlds_vptr_)(2:=h_CM_eval_expr_bldlds_vptr_0) as ? /d/sng.
     subst_det_addrstack_zero.
     eapply chained_S with (b':=b');eauto.
-    + eapply h_forall_b.
-      !intros.
-      !!assert (S lvl <= S n) by lia.
-      !!pose proof  (h_forall_lvl _ h_le1).
-      decomp h_ex.
+    + eapply h_all_chain_.
+      intros /sng.
+      assert (S lvl <= S n) by lia /sng.
+      (pose proof  (h_all_CM_eval_expr_ _ h_le_S_S_0)) /sng.
+      decomp h_ex_CM_eval_expr_ .
       cbn in *.
-      !!specialize build_loads__decomp_S with (1:=h_CM_eval_expr_sp') (2:=h_CM_eval_expr) as ?.
-      decomp h_ex.
+      specialize build_loads__decomp_S with (1:=h_CM_eval_expr_Eload_sp'_) (2:=h_CM_eval_expr_bldlds_vptr_) as ? /d/sng.
       subst_det_addrstack_zero.
       eauto.
-    + !inversion h_CM_eval_expr_sp'.
+    + inversion h_CM_eval_expr_Eload_sp'_ /sng.
       subst_det_addrstack_zero.
       assumption.
 Qed.
-
 
 Lemma assignment_preserve_chained_stack_structure_aux:
   forall stkptr m chk e_t_v addr_blck addr_ofs m' n,
@@ -294,13 +290,13 @@ Lemma assignment_preserve_chained_stack_structure_aux:
     Mem.storev chk m (Values.Vptr addr_blck addr_ofs) e_t_v = Some m' ->
     chained_stack_structure m' n stkptr.
 Proof.
-  !intros.
-  induction h_chain_m_n_stkptr.
+  intros /sng.
+  induction h_chain_m_n_stkptr_ /sng.
   - constructor.
   - econstructor.
     all:swap 1 2.
     + unfold Mem.loadv.
-      unfold Mem.storev in heq_storev_e_t_v_m'.
+      unfold Mem.storev in h_eq_storev_m'_.
       erewrite Mem.load_store_other with (m1:=m);eauto.
     + assumption.
 Qed.
@@ -311,7 +307,7 @@ Lemma add_Vint_zero: forall m vaddr x,
     Mem.loadv AST.Mint32 m vaddr = Some x ->
     Values.Val.add x (Values.Vint Int.zero) = x.
 Proof.
-  !intros. 
+  intros /sng. 
   destruct vaddr;cbn in *; try discriminate.
   cbn.
 Qed.
@@ -325,30 +321,28 @@ Lemma chained_stack_structure_decomp_S_2': forall n m sp,
       Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (S n)) v.
 Proof.
   intro n.
-  !induction n.
-  - !intros.
+  induction n;intros /sng.
+  - cbn in *.
+    inversion h_CM_eval_expr_Eload_sp'_ /sng.
+    inversion h_CM_eval_expr_Econst_vaddr_ /sng.
+    inversion h_CM_eval_expr_bldlds_v_ /sng.
     cbn in *.
-    !inversion h_CM_eval_expr_sp'.
-    !inversion h_CM_eval_expr_vaddr.
-    !inversion h_CM_eval_expr_v.
-    cbn in *.
-    !invclear h_eval_constant.
-    !invclear h_eval_constant0;subst.
+    invclear h_eq_evalcst_v_ /sng.
+    invclear h_eq_evalcst_vaddr_;subst /sng.
     assert (exists b, sp' = Values.Vptr b Ptrofs.zero).
-    { !inversion h_chain_m.
+    { inversion h_chain_m_1_sp_ /sng.
       cbn in *.
-      rewrite Ptrofs.add_zero in h_loadv_vaddr_sp'.
-      rewrite h_loadv_vaddr_sp' in h_loadv.
-      inversion h_loadv.
+      rewrite Ptrofs.add_zero in h_eq_loadv_sp'_.
+      rewrite h_eq_loadv_sp'_ in h_eq_loadv_vptr_.
+      inversion h_eq_loadv_vptr_.
       eauto. }
     decomp H;subst.
     econstructor;cbn;eauto.
-  - !intros.
-    cbn in h_CM_eval_expr_v.
+  - cbn in h_CM_eval_expr_bldlds_v_.
     cbn.
-    inversion h_CM_eval_expr_v;subst.
+    inversion h_CM_eval_expr_bldlds_v_;subst.
     econstructor;eauto.
-    eapply h_forall_m;eauto.
+    eapply h_all_CM_eval_expr_;eauto.
     eapply chained_stack_structure_le;eauto.
 Qed.
 
@@ -361,12 +355,12 @@ Lemma chain_structure_spec:
     forall g e,
       exists b, Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) (Values.Vptr b Ptrofs.zero).
 Proof.
-  !!intros until 1.
-  !induction h_chain_m_n_sp;!intros.
+  intros until 1 /sng.
+  induction h_chain_m_n_sp_;intros /sng.
   - exists b.
     eapply cm_eval_addrstack_zero;eauto.
-  - specialize (h_forall_g g e).
-    decomp h_forall_g.
+  - specialize (h_all_CM_eval_expr_ g e).
+    decomp h_all_CM_eval_expr_.
     exists b0.
     eapply chained_stack_structure_decomp_S_2';eauto.
     + econstructor;eauto.
@@ -380,18 +374,18 @@ Lemma chain_repeat_loadv_1 : forall m n sp,
     forall v g e, repeat_Mem_loadv AST.Mint32 m n sp v ->
                   Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) v.
 Proof.
-  !!intros until 1.
-  !induction h_chain_m_n_sp;cbn;!intros.
-  - !inversion h_repeat_loadv_O.
+  intros until 1 /sng.
+  induction h_chain_m_n_sp_;cbn;intros /sng.
+  - inversion h_repeat_loadv_0_vptr_ /sng.
     apply cm_eval_addrstack_zero.
   - eapply chained_stack_structure_decomp_S_2'.
     + econstructor;eauto.
     + econstructor;eauto.
       econstructor;eauto.
-    + eapply h_forall_v;eauto.
-      !inversion h_repeat_loadv.
-      rewrite h_loadv in h_loadv_sp'.
-      !invclear h_loadv_sp'.
+    + eapply h_all_CM_eval_expr_;eauto.
+      inversion h_repeat_loadv_S_vptr_ /sng.
+      rewrite h_eq_loadv_vptr_ in h_eq_loadv_sp'_.
+      invclear h_eq_loadv_sp'_ /sng.
       assumption.
 Qed.
 
@@ -404,25 +398,25 @@ Lemma chained_stack_structure_decomp_S_2: forall n m sp,
         Cminor.eval_expr g sp' e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) v.
 Proof.
   intro n.
-  !induction n.
-  - !intros.
+  induction n /sng.
+  - intros /sng.
     cbn in *.
     exists v;split;auto.
     constructor;cbn.
-    !!pose proof chained_stack_structure_aux _ _ _ h_chain_m g e.
-    decomp h_ex.
+    (pose proof chained_stack_structure_aux _ _ _ h_chain_m_1_sp_ g e) /sng.
+    decomp h_ex_and_.
     subst_det_addrstack_zero.
     cbn.
     rewrite Ptrofs.add_zero.  
     reflexivity.
-  - !intros.
-    cbn in h_CM_eval_expr_v.
-    !inversion h_CM_eval_expr_v;subst.
-    change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) with (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (S n)) in h_CM_eval_expr_vaddr.
-    !assert (chained_stack_structure m (S n) sp).
+  - intros /sng.
+    cbn in h_CM_eval_expr_bldlds_v_.
+    inversion h_CM_eval_expr_bldlds_v_;subst /sng.
+    change (Eload AST.Mint32 (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) with (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (S n)) in h_CM_eval_expr_Eload_vaddr_.
+    assert (chained_stack_structure m (S n) sp) /sng.
     { eapply chained_stack_structure_le;eauto. }
-    specialize h_forall_m with (1:=h_chain_m0) (2:=h_CM_eval_expr_vaddr).
-    decomp h_forall_m.
+    specialize h_all_and_ with (1:=h_chain_m_S_sp_0) (2:=h_CM_eval_expr_Eload_vaddr_).
+    decomp h_all_and_.
     exists sp';split;auto.
     cbn.
     econstructor;eauto.
@@ -441,45 +435,44 @@ Lemma chain_structure_cut:
         /\ Cminor.eval_expr g sp' e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n') v
         /\ chained_stack_structure m n' sp'.
 Proof.
-  !!intros * ? *.
-  !!pose proof chain_structure_spec _ _ _ h_chain_m g e.
-  decomp h_ex.
+  intros * ? * /sng.
+  (pose proof chain_structure_spec _ _ _ h_chain_m_add_sp_ g e) /sng.
+  decomp h_ex_CM_eval_expr_ .
   exists (Values.Vptr b Ptrofs.zero).
-  revert dependent h_CM_eval_expr.
-  revert dependent h_chain_m.
+  revert dependent h_CM_eval_expr_bldlds_vptr_.
+  revert dependent h_chain_m_add_sp_.
   revert n' m sp g e b.
-  !induction n'';!intros;up_type.
+  induction n''; intros /sng.
   - replace (n'+0)%nat with n' in * by lia.
     exists sp;split;[eauto| split;eauto].
     cbn.
     eapply cm_eval_addrstack_zero_chain;eauto.
-  - specialize (h_forall_n' (S n') m sp g e b).
-    !assert (chained_stack_structure m (S n' + n'') sp).
-    { replace (n' + S n'')%nat with (S n' + n'')%nat in h_chain_m; try lia.
+  - specialize (h_all_and_ (S n') m sp g e b).
+    assert (chained_stack_structure m (S n' + n'') sp) /sng.
+    { replace (n' + S n'')%nat with (S n' + n'')%nat in h_chain_m_add_sp_; try lia.
       assumption. }
-    specialize (h_forall_n' h_chain_m0).
-    replace (n' + S n'')%nat with (S n' + n'')%nat in h_CM_eval_expr; try lia.
-    specialize (h_forall_n' h_CM_eval_expr).
-    decomp h_forall_n'.
-    !specialize chained_stack_structure_decomp_S_2 with (1:=h_chain_m1)(2:=h_CM_eval_expr1) as ?. 
-    decomp h_ex.
+    specialize (h_all_and_ h_chain_m_add_sp_0).
+    replace (n' + S n'')%nat with (S n' + n'')%nat in h_CM_eval_expr_bldlds_vptr_; try lia.
+    specialize (h_all_and_ h_CM_eval_expr_bldlds_vptr_).
+    decomp h_all_and_ .
+    specialize chained_stack_structure_decomp_S_2 with (1:=h_chain_m_S_sp'_)(2:=h_CM_eval_expr_bldlds_vptr_1) as ? /d/sng.
     exists sp'0;split;[|split;[|split]];eauto.
     + replace (n' + S n'')%nat with (S n' + n'')%nat; try lia.
       assumption.
     + cbn.
       econstructor.
       * eassumption.
-      * !inversion h_CM_eval_expr_sp'0.
+      * inversion h_CM_eval_expr_Eload_sp'0_ /sng.
         repeat subst_det_addrstack_zero.
         assumption.
-    + !inversion h_CM_eval_expr_sp'0;subst.
-      repeat subst_det_addrstack_zero.
-      clear h_chain_m h_chain_m0.
-      !inversion h_chain_m1;subst;up_type.
+    + inversion h_CM_eval_expr_Eload_sp'0_ /sng.
+      repeat subst_det_addrstack_zero/sng.
+      (* clear h_chain_m_ h_chain_m0_. *)
+      inversion h_chain_m_S_sp'_ /sng.
+      inversion h_chain_m_add_sp_0 /sng.
       cbn in *.
-      rewrite h_loadv in h_loadv_vaddr_sp'0.
-      inversion h_loadv_vaddr_sp'0.
-      subst.
+      rewrite h_eq_loadv_sp'0_ in h_eq_loadv_vptr_.
+      inversion h_eq_loadv_vptr_ /sng.
       assumption.
 Qed.
 
@@ -495,12 +488,11 @@ Lemma chained_stack_structure_decomp_S_3: forall n m sp n_base,
         Cminor.eval_expr g sp e m (Eload AST.Mint32 (Econst (Oaddrstack Ptrofs.zero))) sp' /\
         Cminor.eval_expr g sp' e m (build_loads_ base n) v.
 Proof.
-  !intros.
-  unfold base in h_CM_eval_expr_v.
-  rewrite <- build_loads_compos in h_CM_eval_expr_v.
-  cbn [plus] in h_CM_eval_expr_v.
-  !!pose proof chained_stack_structure_decomp_S_2 _ _ _ h_chain_m g e v h_CM_eval_expr_v.
-  decomp h_ex.
+  intros /sng.
+  unfold base in h_CM_eval_expr_bldlds_v_.
+  rewrite <- build_loads_compos in h_CM_eval_expr_bldlds_v_.
+  cbn [plus] in h_CM_eval_expr_bldlds_v_.
+  specialize chained_stack_structure_decomp_S_2 with (1:=h_chain_m_add_sp_) (2:=h_CM_eval_expr_bldlds_v_) as ? /d/sng.
   exists sp';split;eauto.
   unfold base.
   rewrite <- build_loads_compos_comm.
@@ -516,10 +508,9 @@ Lemma chained_stack_structure_decomp_add: forall n1 n2 m sp,
         Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n2) sp' /\
         Cminor.eval_expr g sp' e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n1) v.
 Proof.
-  !!intros until e.
-  specialize chain_structure_cut with (1:=h_chain_m)(g:=g)(e:=e) as h.
-  decomp h.
-  !intros.
+  intros until e /sng.
+  specialize chain_structure_cut with (1:=h_chain_m_add_sp_)(g:=g)(e:=e) as h /d.
+  intros.
   subst_det_addrstack_zero.
   exists sp'.
   split;auto.
@@ -531,10 +522,9 @@ Lemma chained_stack_structure_decomp_add': forall n1 n2 m sp sp' g e v,
     Cminor.eval_expr g sp' e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n1) v -> 
     Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (n1 + n2)) v.
 Proof.
-  !!intros until 1.
-  specialize chain_structure_cut with (1:=h_chain_m)(g:=g)(e:=e) as h.
-  decomp h.
-  !intros.
+  intros until 1 /sng.
+  specialize chain_structure_cut with (1:=h_chain_m_add_sp_)(g:=g)(e:=e) as h /d.
+  intros.
   repeat subst_det_addrstack_zero.
   assumption.
 Qed.
@@ -548,32 +538,31 @@ Lemma chain_repeat_loadv_2: forall (m : mem) (n : nat) (sp : Values.val),
       eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) v
       -> repeat_Mem_loadv AST.Mint32 m n sp v.
 Proof.
-  !!intros until 1.
-  !induction h_chain_m_n_sp;!intros.
-  - !inversion h_CM_eval_expr_v.
-    inversion h_eval_constant.
+  intros until 1 /sng.
+  induction h_chain_m_n_sp_;intros /sng.
+  - inversion h_CM_eval_expr_bldlds_v_ /sng.
+    inversion h_eq_evalcst_v_.
     rewrite Ptrofs.add_zero_l.
     constructor.
   - assert (chained_stack_structure m (S n) (Values.Vptr b Ptrofs.zero)) by (econstructor;eauto).    
     econstructor 2.
     all:swap 1 2.
     + eassumption.
-    + eapply h_forall_v with (g:=g)(e:=e).
-      cbn in h_CM_eval_expr_v.
-      specialize chained_stack_structure_decomp_S_2 with (1:=H)(2:=h_CM_eval_expr_v) as h.
-      decomp h.
-      !assert ((Values.Vptr b' Ptrofs.zero) = sp').
-      { clear h_CM_eval_expr_v0.
-        !inversion h_CM_eval_expr_sp';subst.
-        !inversion h_CM_eval_expr_vaddr.
-        cbn in h_eval_constant.
-        rewrite Ptrofs.add_zero_l in h_eval_constant.
-        inversion h_eval_constant.
+    + eapply h_all_repeat_loadv_ with (g:=g)(e:=e).
+      cbn in h_CM_eval_expr_bldlds_v_.
+      specialize chained_stack_structure_decomp_S_2 with (1:=H)(2:=h_CM_eval_expr_bldlds_v_) as ? /d/sng.
+      assert ((Values.Vptr b' Ptrofs.zero) = sp') /ng.
+      { clear h_CM_eval_expr_bldlds_v_0.
+        inversion h_CM_eval_expr_Eload_sp'_;subst /sng.
+        inversion h_CM_eval_expr_Econst_vaddr_ /sng.
+        cbn in h_eq_evalcst_vaddr_.
+        rewrite Ptrofs.add_zero_l in h_eq_evalcst_vaddr_.
+        inversion h_eq_evalcst_vaddr_.
         subst.
-        rewrite h_loadv in h_loadv_vaddr_sp'.
-        inversion h_loadv_vaddr_sp'.
+        rewrite h_eq_loadv_vptr_ in h_eq_loadv_sp'_.
+        inversion h_eq_loadv_sp'_.
         auto. }
-      rewrite heq_vptr_b'_zero.
+      rewrite h_eq_vptr_sp'_.
       assumption.
 Qed.
 
@@ -588,6 +577,7 @@ Proof.
   - apply chain_repeat_loadv_2;auto.
 Qed.
 
+
 Lemma chain_struct_build_loads_ofs : forall  m n sp_init,
     chained_stack_structure m n sp_init ->
     forall δ_var g e b ofs,
@@ -595,30 +585,34 @@ Lemma chain_struct_build_loads_ofs : forall  m n sp_init,
       Cminor.eval_expr g sp_init e m (build_loads n δ_var) (Values.Vptr b ofs) ->
       ofs = Ptrofs.repr δ_var.
 Proof.
-  !intros.
-  !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_n_sp_init.
-  decomp h_ex;subst.
-  unfold build_loads in h_CM_eval_expr;cbn.
-  !invclear h_CM_eval_expr.
-  !inversion h_CM_eval_expr_v2;subst;cbn in *.
-  !invclear h_eval_binop_Oadd_v1_v2.
-  !invclear h_eval_constant.  
-  replace n with (0+n)%nat in h_CM_eval_expr_v1,h_chain_m_n_sp_init by auto with arith.
-  !!pose proof chain_structure_cut _ _ _ _ h_chain_m_n_sp_init g e.
-  decomp h_ex.
-  replace (0+n)%nat with n in h_CM_eval_expr_v1,h_chain_m_n_sp_init by auto with arith.  
+  intros /sng.
+  specialize chained_stack_struct_inv_sp_zero with (1:=h_chain_m_n_sp_init_) as ? /d/sng.
+    unfold build_loads in h_CM_eval_expr_bldlds_vptr_;cbn.
+  invclear h_CM_eval_expr_bldlds_vptr_ /sng.
+  inversion h_CM_eval_expr_Econst_v2_  /sng; cbn in *.
+  invclear h_eq_evop_Oadd_vptr_ /sng.
+  invclear h_eq_evalcst_v2_ /sng.  
+  replace n with (0+n)%nat in h_CM_eval_expr_bldlds_v1_,h_chain_m_n_sp_init_ by auto with arith.
+  specialize chain_structure_cut with (1:=h_chain_m_n_sp_init_) (g:=g)(e:=e) as ? /d/sng.
+  replace (0+n)%nat with n in h_CM_eval_expr_bldlds_v1_,h_chain_m_n_sp_init_ by auto with arith.  
   subst_det_addrstack_zero.
-  !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_O_sp'.
-  decomp h_ex.
-  subst.
-  cbn in h_val_add_v1_v2.
-  rewrite Ptrofs.add_zero_l in h_val_add_v1_v2.
-  destruct Archi.ptr64.
-  - inversion h_val_add_v1_v2.
-  - !inversion h_val_add_v1_v2.
+  specialize chained_stack_struct_inv_sp_zero with (1:=h_chain_m_0_sp'_) as ? /d/sng.
+  cbn in h_eq_val_add_vptr_.
+  rewrite Ptrofs.add_zero_l in h_eq_val_add_vptr_.
+  destruct Archi.ptr64 eqn:heq.
+  - inversion h_eq_val_add_vptr_.
+  - inversion h_eq_val_add_vptr_ /sng.
     unfold Ptrofs.of_int.
     rewrite Int.unsigned_repr_eq.
-    apply f_equal;auto.
+    apply f_equal.
+    auto.
+    unfold Ptrofs.modulus, Int.modulus.
+    unfold Ptrofs.wordsize, Int.wordsize.
+    unfold Wordsize_Ptrofs.wordsize, Wordsize_32.wordsize.
+    rewrite heq.
+    apply Z.mod_mod.
+    assert (h:=Coqlib.two_power_nat_pos 32).
+    lia.
 Qed.
 
 
@@ -629,13 +623,13 @@ Lemma malloc_preserves_chained_structure :
     chained_stack_structure m' lvl sp.
 Proof.
   intro lvl.
-  !induction lvl;!intros.
-  - !inversion h_chain_m_O_sp.
+  induction lvl;intros /sng.
+  - inversion h_chain_m_0_sp_ /sng.
     constructor.
-  - !inversion h_chain_m.
+  - inversion h_chain_m_S_sp_ /sng.
     cbn in *.
     econstructor.
-    + eapply h_forall_m;eauto.
+    + eapply h_all_chain_;eauto.
     + cbn.
       eapply Mem.load_alloc_other;eauto.
 Qed.
@@ -650,29 +644,28 @@ Lemma malloc_preserves_chaining_loads :
            Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) sp'
            -> Cminor.eval_expr g sp e m' (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) sp'.
 Proof.
-  !!intros until n.
-  induction n;!intros.
+  intros until n /sng.
+  induction n;intros /sng.
   - cbn in *.
-    !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_lvl_sp.
-    decomp h_ex.
+    specialize chained_stack_struct_inv_sp_zero with (1:=h_chain_m_lvl_sp_) as ? /d/sng.
     subst.
     subst_det_addrstack_zero.
     apply cm_eval_addrstack_zero.
-  - !!assert (n <= lvl)%nat by lia.
-    specialize (IHn h_le_n_lvl h_chain_m_lvl_sp).
+  - assert (n <= lvl)%nat by lia /sng.
+    specialize (h_impl_CM_eval_expr_ h_le_n_lvl_ h_chain_m_lvl_sp_).
     cbn -[Mem.storev] in *.
-    !inversion h_CM_eval_expr_sp'.
-    specialize (IHn _ _ _ h_CM_eval_expr_vaddr).
+    inversion h_CM_eval_expr_bldlds_sp'_ /sng.
+    specialize h_impl_CM_eval_expr_ with (1:=h_CM_eval_expr_bldlds_vaddr_).
     econstructor.
     + eassumption.
     + cbn in *.
-      rewrite <- h_loadv_vaddr_sp'.
+      rewrite <- h_eq_loadv_sp'_.
       destruct vaddr; try discriminate.
       cbn in *.
       eapply Mem.load_alloc_unchanged;eauto.
       eapply Mem.valid_access_valid_block.
-      apply Mem.load_valid_access in h_loadv_vaddr_sp'.
-      eapply Mem.valid_access_implies with (1:=h_loadv_vaddr_sp').
+      apply Mem.load_valid_access in h_eq_loadv_sp'_.
+       eapply Mem.valid_access_implies with (1:=h_eq_loadv_sp'_).
       constructor.
 Qed.
 
@@ -686,51 +679,49 @@ Lemma malloc_preserves_chaining_loads_2 :
            Cminor.eval_expr g sp e m' (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) sp'
            -> Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) sp'.
 Proof.
-  !!intros until n.
-  induction n;!intros.
+  intros until n /sng.
+  induction n;intros /sng.
   - cbn in *.
-    !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_lvl_sp.
-    decomp h_ex.
+    specialize chained_stack_struct_inv_sp_zero with (1:=h_chain_m_lvl_sp_) as ? /d/sng.
     subst.
     subst_det_addrstack_zero.
     apply cm_eval_addrstack_zero.
-  - !!assert (n <= lvl)%nat by lia.
-    specialize (IHn h_le_n_lvl h_chain_m_lvl_sp).
+  - assert (n <= lvl)%nat by lia /sng.
+    specialize (h_impl_CM_eval_expr_ h_le_n_lvl_ h_chain_m_lvl_sp_).
     cbn -[Mem.storev] in *.
-    !inversion h_CM_eval_expr_sp'.
-    specialize (IHn _ _ _ h_CM_eval_expr_vaddr).
+    inversion h_CM_eval_expr_bldlds_sp'_ /sng.
+    specialize (h_impl_CM_eval_expr_ _ _ _ h_CM_eval_expr_bldlds_vaddr_).
     econstructor.
     + eassumption.
     + cbn in *.
-      rewrite <- h_loadv_vaddr_sp'.
+      rewrite <- h_eq_loadv_sp'_.
       destruct vaddr; try discriminate.
       cbn in *.
       symmetry.
       eapply Mem.load_alloc_unchanged;eauto.
-      destruct (Mem.valid_block_alloc_inv _ _ _ _ _ h_malloc_m_m' b).
+      destruct (Mem.valid_block_alloc_inv _ _ _ _ _ h_malloc_m_m'_ b).
       * eapply Mem.valid_access_valid_block.
-        apply Mem.load_valid_access in h_loadv_vaddr_sp'.
-        eapply Mem.valid_access_implies with (1:=h_loadv_vaddr_sp').
+        apply Mem.load_valid_access in h_eq_loadv_sp'_.
+        eapply Mem.valid_access_implies with (1:=h_eq_loadv_sp'_).
         constructor.
       * exfalso.
         subst.
-        !!assert ((lvl-n) + n = lvl)%nat by lia.
-        rewrite <- heq_add in h_chain_m_lvl_sp.
-        !!pose proof (chain_structure_cut _ _ _ _ h_chain_m_lvl_sp) g e.
-        decomp h_ex.
-        rewrite heq_add in h_CM_eval_expr_v.
+        assert ((lvl-n) + n = lvl)%nat by lia /ng.
+        rewrite <- h_eq_add_lvl_ in h_chain_m_lvl_sp_.
+        specialize chain_structure_cut with (1:=h_chain_m_lvl_sp_) (g:=g) (e:=e) as ? /d/sng.
+        rewrite h_eq_add_lvl_ in h_CM_eval_expr_bldlds_v_.
         subst_det_addrstack_zero.
         destruct (lvl - n)%nat eqn:heq'.
         -- exfalso; lia.
-        -- cbn in h_CM_eval_expr_v0.
-           eapply chained_stack_structure_decomp_S_2 in h_CM_eval_expr_v0.
-           ++ decomp h_CM_eval_expr_v0.
-              !inversion h_CM_eval_expr_sp'0.
+        -- cbn in h_CM_eval_expr_bldlds_v_0.
+           eapply chained_stack_structure_decomp_S_2 in h_CM_eval_expr_bldlds_v_0.
+           ++ decomp h_CM_eval_expr_bldlds_v_0.
+              inversion h_CM_eval_expr_Eload_sp'0_ /sng.
               subst_det_addrstack_zero.
               absurd (Mem.valid_block m new_sp).
               ** eapply Mem.fresh_block_alloc;eauto.
-              ** unfold Mem.loadv in h_loadv_vaddr_sp'0.
-                 eapply  Mem.load_valid_access in h_loadv_vaddr_sp'0.
+              ** unfold Mem.loadv in h_CM_eval_expr_Eload_sp'0_.
+                 eapply  Mem.load_valid_access in h_eq_loadv_sp'0_.
                  eapply Mem.valid_access_valid_block.
                  eapply Mem.valid_access_implies;eauto.
                  constructor.
@@ -751,35 +742,34 @@ Lemma malloc_distinct_from_chaining_loads :
                            ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) (Values.Vptr b' Ptrofs.zero)
           -> b' <> new_sp.
 Proof.
-  !!intros * ?.
-  !induction h_chain_m_lvl_sp;cbn;!intros.
+  intros * ? /sng.
+  induction h_chain_m_lvl_sp_;cbn;intros /sng.
   - exfalso;lia.
   - destruct n0.
     + cbn in *.
-      !!subst_det_addrstack_zero.
-      !invclear H.
+      subst_det_addrstack_zero /sng.
+      invclear H /sng.
       intro abs;subst b.
-      !!pose proof Mem.load_valid_access _ _ _ _ _ h_loadv.
-      !!pose proof Mem.fresh_block_alloc _ _ _ _ _ h_malloc_m_m'.
-      apply h_neg_valid_blck_m_new_sp.
+      specialize Mem.load_valid_access with (1:=h_eq_loadv_vptr_) as ?/sng.
+      specialize Mem.fresh_block_alloc with (1:=h_malloc_m_m'_) as ? /sng.
+      apply h_not_valid_blck_.
       eapply Mem.valid_access_valid_block.
-      eapply Mem.valid_access_implies with (1:=h_valid_access_new_sp).
+      eapply Mem.valid_access_implies with (1:=h_valid_access_new_sp_).
       constructor.
-    + eapply h_forall_n with (n0:=n0);eauto.
+    + eapply h_all_neq_ with (n0:=n0);eauto.
       * lia.
-      * !assert(chained_stack_structure m (S n) (Values.Vptr b Ptrofs.zero)).
+      * assert(chained_stack_structure m (S n) (Values.Vptr b Ptrofs.zero)) /sng.
         { econstructor;eauto. }
-        !assert(chained_stack_structure m (S n0) (Values.Vptr b Ptrofs.zero)).
+        assert(chained_stack_structure m (S n0) (Values.Vptr b Ptrofs.zero)) /sng.
         { eapply chained_stack_structure_le with (n:=S n).
           - assumption.
           - lia. }
-        !!pose proof chained_stack_structure_decomp_S_2 _ _ _ h_chain_m0 g e _ h_CM_eval_expr.
-        decomp h_ex.
-        !inversion h_CM_eval_expr_sp'.
+        specialize chained_stack_structure_decomp_S_2 with (1:=h_chain_m_S_vptr_0) (2:=h_CM_eval_expr_bldlds_vptr_) as ? /d/sng.
+        inversion h_CM_eval_expr_Eload_sp'_ /sng.
         subst_det_addrstack_zero.
         subst.
-        rewrite h_loadv in h_loadv_vaddr_sp'.
-        inversion h_loadv_vaddr_sp'.
+        rewrite h_eq_loadv_vptr_ in h_eq_loadv_sp'_.
+        inversion h_eq_loadv_sp'_.
         subst.
         eassumption.
 Qed.
@@ -789,14 +779,14 @@ Qed.
    all chainging addresses reachable from sp from sp'' are unchanged. *)
 Lemma chain_aligned: forall m n stkptr,
   chained_stack_structure m n stkptr ->
-  forall lgth_CE,
-    (lgth_CE <= n)%nat ->
+  forall lgth_CE_,
+    (lgth_CE_ <= n)%nat ->
     forall locenv g,
-      stack_localstack_aligned lgth_CE locenv g m stkptr.
+      stack_localstack_aligned lgth_CE_ locenv g m stkptr.
 Proof.
-  !!intros until 1.
+  intros until 1 /sng.
   unfold stack_localstack_aligned.
-  !induction h_chain_m_n_stkptr;!intros.
+  induction h_chain_m_n_stkptr_; intros /sng.
   - exists b.
     assert (δ_lvl = 0%nat) by lia;subst.
     cbn.
@@ -806,14 +796,13 @@ Proof.
       exists b.
       apply cm_eval_addrstack_zero.
     + cbn.
-      !!destruct lgth_CE;[cbn in h_le_δ_lvl_lgth_CE;exfalso;lia|].
-      subst;up_type.
-      specialize (h_forall_lgth_CE lgth_CE).
-      !!assert (lgth_CE <= n) by lia.
-      !!assert (δ_lvl <= lgth_CE)%nat by lia.
-      specialize (fun locenv g => h_forall_lgth_CE h_le_lgth_CE_n locenv g δ_lvl h_le_δ_lvl_lgth_CE0).
-      specialize (h_forall_lgth_CE locenv g).
-      decomp h_forall_lgth_CE.
+      destruct lgth_CE_;[cbn in h_le_δ_lvl_lgth_CE__;exfalso;lia|] /sng.
+      specialize (h_all_CM_eval_expr_ lgth_CE_).
+      assert (lgth_CE_ <= n) by lia /sng.
+      assert (δ_lvl <= lgth_CE_)%nat by lia /sng.
+      specialize h_all_CM_eval_expr_ with (1:= h_le_lgth_CE__n_) (2:=h_le_δ_lvl_lgth_CE__0).
+      specialize (h_all_CM_eval_expr_ locenv g).
+      decomp h_all_CM_eval_expr_.
       exists b_δ.
       assert (chained_stack_structure m (S δ_lvl) (Values.Vptr b Ptrofs.zero)).
       { econstructor; eauto.
@@ -837,39 +826,40 @@ Lemma storev_outside_struct_chain_preserves_chaining:
                        Cminor.eval_expr g sp e m ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) v
                        -> Cminor.eval_expr g sp e m' ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) v.
 Proof.
-  !!intros until lvl.
-  intros h_eval_sp_lds n.
-  !induction n;!intros.
+  intros until lvl /sng.
+  intros h_eval_sp_lds_ n.
+  induction n; intros /sng.
   - cbn in *.
-    !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_lvl_sp.
-    decomp h_ex.
+    specialize chained_stack_struct_inv_sp_zero with (1:=h_chain_m_lvl_sp_) as ? /d/sng.
     subst.
     subst_det_addrstack_zero.
     apply cm_eval_addrstack_zero.
-  - !!assert (n <= lvl)%nat by lia.
-    specialize (h_impl_forall_x h_chain_m_lvl_sp _ _ _ _ heq_storev_x_m' h_le_n_lvl).
+  - assert (n <= lvl)%nat by lia /sng.
+    specialize h_impl_CM_eval_expr_ with (1 := h_chain_m_lvl_sp_) (2:=h_eq_storev_m'_) (3:=h_le_n_lvl_).
     cbn -[Mem.storev] in *.
-    !inversion h_CM_eval_expr_v.
-    specialize (h_impl_forall_x _ h_CM_eval_expr_vaddr).
+    inversion h_CM_eval_expr_bldlds_v0_ /sng.
+    specialize (h_impl_CM_eval_expr_ _ h_CM_eval_expr_bldlds_vaddr_).
     econstructor.
     + eassumption.
     + cbn in *.
       destruct vaddr; try discriminate.
       cbn in *.
-      pose proof Mem.load_store_other _ _ _ _ _ _ heq_storev_x_m' AST.Mint32 b (Ptrofs.unsigned i) as h.
+      specialize Mem.load_store_other with (1:=h_eq_storev_m'_) (chunk':=AST.Mint32) (b':=b) (ofs' := (Ptrofs.unsigned i)) as h.
       rewrite h.
       * assumption.
       * left.
-        eapply h_eval_sp_lds with (n:=n).
+        eapply h_eval_sp_lds_ with (n:=n).
         -- lia.
         -- assert (i = Ptrofs.zero). 
-           { !!pose proof chain_aligned _ _ _ h_chain_m_lvl_sp lvl (le_n _) e g.
-             red in h_aligned_g_m.
-             !!assert (n <= lvl) by lia.
-             specialize (h_aligned_g_m _ h_le_n_lvl0).
-             decomp h_aligned_g_m.
-             !! (subst_det_addrstack_zero;idtac).
-             inversion heq_vptr_b_i.
+           { specialize chain_aligned with (1 := h_chain_m_lvl_sp_) (locenv:=e) (g:=g) as ? /sng.
+             especialize h_all_aligned_ at 1.
+             { apply le_n. }
+             red in h_all_aligned_.
+             assert (n <= lvl) by lia /sng.
+             specialize (h_all_aligned_ _ h_le_n_lvl_0).
+             decomp h_all_aligned_.
+              (subst_det_addrstack_zero;idtac) /sng.
+             inversion h_eq_vptr_vptr_.
              reflexivity. }
            subst.
            eassumption.
@@ -892,36 +882,35 @@ Lemma gen_storev_outside_struct_chain_preserves_chaining:
                                     Cminor.eval_expr g sp e m ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) v
                                     -> Cminor.eval_expr g sp e m' ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) v.
 Proof.
-  !!intros until ofs0.
-  intros h_eval_sp_lds n.
-  !induction n;!intros.
+  intros until ofs0 /sng.
+  intros h_eval_sp_lds_ n.
+  induction n;intros /sng.
   - cbn in *.
-    !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_lvl_sp.
-    decomp h_ex.
+    specialize chained_stack_struct_inv_sp_zero with (1 := h_chain_m_lvl_sp_) as ? /d/sng.
     subst.
     subst_det_addrstack_zero.
     apply cm_eval_addrstack_zero.
-  - !!assert (n <= lvl)%nat by lia.
-    specialize h_impl_forall_x with (1:=h_chain_m_lvl_sp)(2:=heq_storev_x_m') (3:=h_le_n_lvl).
+  - assert (n <= lvl)%nat by lia /sng.
+    specialize h_impl_CM_eval_expr_ with (1:=h_chain_m_lvl_sp_)(2:=h_eq_storev_m'_) (3:=h_le_n_lvl_).
     cbn -[Mem.storev] in *.
-    !inversion h_CM_eval_expr_v.
-    specialize (h_impl_forall_x _ h_CM_eval_expr_vaddr).
+    inversion h_CM_eval_expr_bldlds_v_ /sng.
+    specialize (h_impl_CM_eval_expr_ _ h_CM_eval_expr_bldlds_vaddr_).
     econstructor.
     + eassumption.
     + cbn in *.
       destruct vaddr; try discriminate.
       cbn in *.
-      pose proof Mem.load_store_other _ _ _ _ _ _ heq_storev_x_m' AST.Mint32 b (Ptrofs.unsigned i) as h.
+      specialize Mem.load_store_other with (1 := h_eq_storev_m'_) (chunk':=AST.Mint32) (b':=b) (ofs':=Ptrofs.unsigned i) as h.
       rewrite h.
       * assumption.
-      * !destruct h_eval_sp_lds.
+      * destruct h_eval_sp_lds_ /sng.
         -- right.
            assert (i = Ptrofs.zero).
-           { !!specialize chained_stack_structure_le with (1:=h_chain_m_lvl_sp) (2:=h_le_n_lvl) as ?.
-             !!specialize chain_structure_spec with (1:=h_chain_m_n_sp) (g:=g)(e:=e) as ?.
-             decomp h_ex.
-             !!specialize det_eval_expr with (1:=h_CM_eval_expr) (2:=h_CM_eval_expr_vaddr) as ?.
-             !inversion heq_vptr_b0_zero.
+           { specialize chained_stack_structure_le with (1:=h_chain_m_lvl_sp_) (2:=h_le_n_lvl_) as ? /sng.
+             specialize chain_structure_spec with (1:=h_chain_m_n_sp_) (g:=g)(e:=e) as ? /sng.
+             decomp h_ex_CM_eval_expr_.
+             specialize det_eval_expr with (1:=h_CM_eval_expr_bldlds_vptr_) (2:=h_CM_eval_expr_bldlds_vaddr_) as ? /sng.
+             inversion h_eq_vptr_vptr_ /sng.
              reflexivity. }
            subst.
            left.
@@ -929,16 +918,18 @@ Proof.
            rewrite Ptrofs.unsigned_zero.
            lia.
         -- left.
-           eapply h_forall_n with (n:=n).
+           eapply h_all_neq_ with (n:=n).
            ++ lia.
            ++ assert (i = Ptrofs.zero). 
-              { !!pose proof chain_aligned _ _ _ h_chain_m_lvl_sp lvl (le_n _) e g.
-                red in h_aligned_g_m.
-                !!assert (n <= lvl) by lia.
-                specialize (h_aligned_g_m _ h_le_n_lvl0).
-                decomp h_aligned_g_m.
-                !! (subst_det_addrstack_zero;idtac).
-                inversion heq_vptr_b_i.
+              { specialize chain_aligned with (1 := h_chain_m_lvl_sp_) (locenv:=e) (g:=g) as hh.
+                especialize hh at 1 as hh' /sng. (* hh' to make /sng rename it *)
+                { apply le_n. }
+                red in h_aligned_g_m_.
+                assert (n <= lvl) by lia /sng.
+                specialize (h_aligned_g_m_ _ h_le_n_lvl_0).
+                decomp h_aligned_g_m_.
+                 (subst_det_addrstack_zero;idtac) /sng.
+                inversion h_eq_vptr_vptr_.
                 reflexivity. }
               subst.
               eassumption.
@@ -958,39 +949,40 @@ Lemma storev_outside_struct_chain_preserves_chaining2:
                        Cminor.eval_expr g sp e m' ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) v
                        -> Cminor.eval_expr g sp e m ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) v.
 Proof.
-  !!intros until lvl.
-  intros h_eval_sp_lds n.
-  !induction n;!intros.
+  intros until lvl /sng.
+  intros h_eval_sp_lds_ n.
+  induction n;intros /sng.
   - cbn in *.
-    !!pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_lvl_sp.
-    decomp h_ex.
+    specialize chained_stack_struct_inv_sp_zero with (1 := h_chain_m_lvl_sp_) as ? /d/sng.
     subst.
     subst_det_addrstack_zero.
     apply cm_eval_addrstack_zero.
-  - !!assert (n <= lvl)%nat by lia.
-    specialize (h_impl_forall_x h_chain_m_lvl_sp _ _ _ _ heq_storev_x_m' h_le_n_lvl).
+  - assert (n <= lvl)%nat by lia /sng.
+    specialize h_impl_CM_eval_expr_ with (1:=h_chain_m_lvl_sp_) (2:=h_eq_storev_m'_) (3:=h_le_n_lvl_).
     cbn -[Mem.storev] in *.
-    !inversion h_CM_eval_expr_v.
-    specialize (h_impl_forall_x _ h_CM_eval_expr_vaddr).
+    inversion h_CM_eval_expr_bldlds_v0_ /sng.
+    specialize (h_impl_CM_eval_expr_ _ h_CM_eval_expr_bldlds_vaddr_).
     econstructor.
     + eassumption.
     + cbn in *.
       destruct vaddr; try discriminate.
       cbn in *.
-      pose proof Mem.load_store_other _ _ _ _ _ _ heq_storev_x_m' AST.Mint32 b (Ptrofs.unsigned i) as h.
+      specialize Mem.load_store_other with (1 := h_eq_storev_m'_) (chunk':=AST.Mint32) (b':=b)(ofs':=Ptrofs.unsigned i) as h.
       rewrite <- h.
       * assumption.
       * left.
-        eapply h_eval_sp_lds with (n:=n).
+        eapply h_eval_sp_lds_ with (n:=n).
         -- lia.
         -- assert (i = Ptrofs.zero). 
-           { !!pose proof chain_aligned _ _ _ h_chain_m_lvl_sp lvl (le_n _) e g.
-             red in h_aligned_g_m.
-             !!assert (n <= lvl) by lia.
-             specialize (h_aligned_g_m _ h_le_n_lvl0).
-             decomp h_aligned_g_m.
-             !! (subst_det_addrstack_zero;idtac).
-             inversion heq_vptr_b_δ_zero.
+           { specialize chain_aligned with (1:=h_chain_m_lvl_sp_)(locenv:=e)(g:=g) as hh.
+             especialize hh at 1 as hh' /sng.
+             { apply le_n. }
+             red in h_aligned_g_m_.
+              assert (n <= lvl) by lia /sng.
+             specialize (h_aligned_g_m_ _ h_le_n_lvl_0).
+             decomp h_aligned_g_m_.
+              (subst_det_addrstack_zero;idtac) /sng.
+             inversion h_eq_vptr_vptr_.
              reflexivity. }
            subst.
            eassumption.
@@ -1011,36 +1003,35 @@ Lemma gen_storev_outside_struct_chain_preserves_chaining2:
                                        Cminor.eval_expr g sp e m' ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) v
                                        -> Cminor.eval_expr g sp e m ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) v.
 Proof.
-  !!intros until ofs0.
-  intros h_eval_sp_lds n.
-  !induction n;!intros.
+  intros until ofs0 /sng.
+  intros h_eval_sp_lds_ n/g.
+  induction n;intros /sng.
   - cbn in *.
-    !!specialize chained_stack_struct_inv_sp_zero with (1:=h_chain_m_lvl_sp) as ?.
-    decomp h_ex.
+    specialize chained_stack_struct_inv_sp_zero with (1:=h_chain_m_lvl_sp_) as ? /d/sng.
     subst.
     subst_det_addrstack_zero.
     apply cm_eval_addrstack_zero.
-  - !!assert (n <= lvl)%nat by lia.
-    specialize h_impl_forall_x with (1:=h_chain_m_lvl_sp) (2:=heq_storev_x_m') (3:=h_le_n_lvl).
+  - assert (n <= lvl)%nat by lia /sng.
+    specialize h_impl_CM_eval_expr_ with (1:=h_chain_m_lvl_sp_) (2:=h_eq_storev_m'_) (3:=h_le_n_lvl_).
     cbn -[Mem.storev] in *.
-    !inversion h_CM_eval_expr_v.
-    specialize (h_impl_forall_x _ h_CM_eval_expr_vaddr).
+    inversion h_CM_eval_expr_bldlds_v_ /sng.
+    specialize h_impl_CM_eval_expr_ with (1:=h_CM_eval_expr_bldlds_vaddr_).
     econstructor.
     + eassumption.
     + cbn in *.
       destruct vaddr; try discriminate.
       cbn in *.
-      pose proof Mem.load_store_other _ _ _ _ _ _ heq_storev_x_m' AST.Mint32 b (Ptrofs.unsigned i) as h.
+      specialize Mem.load_store_other with (1 := h_eq_storev_m'_) (chunk':=AST.Mint32) (b':=b) (ofs':=Ptrofs.unsigned i) as h.
       rewrite <- h.
       * assumption.
-      * !destruct h_eval_sp_lds.
+      * destruct h_eval_sp_lds_ /sng.
         -- right.
            assert (i = Ptrofs.zero).
-           { !!specialize chained_stack_structure_le with (1:=h_chain_m_lvl_sp) (2:=h_le_n_lvl) as ?.
-             !!specialize chain_structure_spec with (1:=h_chain_m_n_sp) (g:=g)(e:=e) as ?.
-             decomp h_ex.
-             !!specialize det_eval_expr with (1:=h_CM_eval_expr) (2:=h_impl_forall_x) as ?.
-             !inversion heq_vptr_b0_zero.
+           { specialize chained_stack_structure_le with (1:=h_chain_m_lvl_sp_) (2:=h_le_n_lvl_) as ? /sng.
+             specialize chain_structure_spec with (1:=h_chain_m_n_sp_) (g:=g)(e:=e) as ? /d/sng.
+             inversion h_CM_eval_expr_bldlds_v_ /sng.
+             specialize det_eval_expr with (1:=h_CM_eval_expr_bldlds_vptr_) (2:=h_impl_CM_eval_expr_) as ? /sng.
+             inversion h_eq_vptr_vptr_.
              reflexivity. }
            subst.
            left.
@@ -1048,16 +1039,19 @@ Proof.
            rewrite Ptrofs.unsigned_zero.
            lia.
         -- left.
-           eapply h_forall_n with (n:=n).
+           eapply h_all_neq_ with (n:=n).
            ++ lia.
            ++ assert (i = Ptrofs.zero). 
-              { !!pose proof chain_aligned _ _ _ h_chain_m_lvl_sp lvl (le_n _) e g.
-                red in h_aligned_g_m.
-                !!assert (n <= lvl) by lia.
-                specialize (h_aligned_g_m _ h_le_n_lvl0).
-                decomp h_aligned_g_m.
-                !! (subst_det_addrstack_zero;idtac).
-                inversion heq_vptr_b_δ_zero.
+              { specialize chain_aligned with (1 := h_chain_m_lvl_sp_) (locenv:=e)(g:=g) as hh.
+                especialize hh at 1.
+                { apply le_n. }
+                autorename hh.
+                red in h_aligned_g_m_.
+                assert (n <= lvl) by lia /sng.
+                specialize (h_aligned_g_m_ _ h_le_n_lvl_0).
+                decomp h_aligned_g_m_.
+                 (subst_det_addrstack_zero;idtac) /sng.
+                inversion h_eq_vptr_vptr_.
                 reflexivity. }
               subst.
               eassumption.
@@ -1071,19 +1065,19 @@ Lemma storev_outside_struct_chain_preserves_var_addresses:
                              ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) (Values.Vptr b' Ptrofs.zero)
             -> b' <> sp0) ->
       forall n, chained_stack_structure m lvl sp ->
-           forall x _v _chk m' δ, Mem.storev _chk m (Values.Vptr sp0 _v) x = Some m' ->
+           forall x va _chk m' δ, Mem.storev _chk m (Values.Vptr sp0 va) x = Some m' ->
                    (n <= lvl)%nat -> forall v,
                        Cminor.eval_expr g sp e m ((build_loads n δ)) v
                        -> Cminor.eval_expr g sp e m' ((build_loads n δ)) v.
 Proof.
-  !!intros until lvl.
-  intros h_eval_sp_lds n.
-  !intros.
+  intros until lvl /sng.
+  intros h_eval_sp_lds_ n.
+  intros /sng.
   unfold build_loads in *.
-  !invclear h_CM_eval_expr_v.
+  invclear h_CM_eval_expr_bldlds_v_ /sng.
   econstructor;[ | |eassumption].
   - eapply storev_outside_struct_chain_preserves_chaining;eauto.
-  - !inversion h_CM_eval_expr_v2.
+  - inversion h_CM_eval_expr_Econst_v2_ /sng.
     constructor.
     assumption.
 Qed.
@@ -1096,19 +1090,19 @@ Lemma storev_outside_struct_chain_preserves_var_addresses2:
                              ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) (Values.Vptr b' Ptrofs.zero)
             -> b' <> sp0) ->
       forall n, chained_stack_structure m lvl sp ->
-           forall x _v _chk m' δ, Mem.storev _chk m (Values.Vptr sp0 _v) x = Some m' ->
+           forall x va _chk m' δ, Mem.storev _chk m (Values.Vptr sp0 va) x = Some m' ->
                    (n <= lvl)%nat -> forall v,
                        Cminor.eval_expr g sp e m' ((build_loads n δ)) v
                        -> Cminor.eval_expr g sp e m ((build_loads n δ)) v.
 Proof.
-  !!intros until lvl.
-  intros h_eval_sp_lds n.
-  !intros.
+  intros until lvl /sng.
+  intros h_eval_sp_lds_ n.
+  intros /sng.
   unfold build_loads in *.
-  !invclear h_CM_eval_expr_v.
+  invclear h_CM_eval_expr_bldlds_v_ /sng.
   econstructor;[ | |eassumption].
   - eapply storev_outside_struct_chain_preserves_chaining2;eauto.
-  - !inversion h_CM_eval_expr_v2.
+  - inversion h_CM_eval_expr_Econst_v2_ /sng.
     constructor.
     assumption.
 Qed.
@@ -1122,48 +1116,52 @@ Lemma storev_outside_struct_chain_preserves_var_value:
                              ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) (Values.Vptr b' Ptrofs.zero)
             -> b' <> sp0) ->
       forall n, chained_stack_structure m lvl sp ->
-           forall x _v _chk _chk' m' δ, Mem.storev _chk m (Values.Vptr sp0 _v) x = Some m' ->
+           forall x va _chk _chk' m' δ, Mem.storev _chk m (Values.Vptr sp0 va) x = Some m' ->
                    (n <= lvl)%nat -> forall v,
                        Cminor.eval_expr g sp e m (Eload _chk' (build_loads n δ)) v
                        -> Cminor.eval_expr g sp e m' (Eload _chk' (build_loads n δ)) v.
 Proof.
-  !!intros.
-  rename h_forall_n into h_unch.
-  !inversion h_CM_eval_expr_v.
-  assert (h_unch':forall n : nat,
+  intros /sng.
+  rename h_all_neq_ into h_unch_.
+  inversion h_CM_eval_expr_Eload_v_ /sng.
+  assert (h_unch'_:forall n : nat,
              (n < lvl)%nat
              -> forall b' : Values.block,
                Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) (Values.Vptr b' Ptrofs.zero) -> b' <> sp0).
   { intros.
-    eapply h_unch with (n:=n0).
+    eapply h_unch_ with (n:=n0).
     - lia.
     - assumption. }
-  !!pose proof storev_outside_struct_chain_preserves_var_addresses _ _ _ _ _ _ h_unch' _ h_chain_m_lvl_sp _ _ _ _ _ heq_storev_x_m' h_le_n_lvl _ h_CM_eval_expr_vaddr.
+  specialize storev_outside_struct_chain_preserves_var_addresses
+    with (1 := h_unch'_)(2:=h_chain_m_lvl_sp_)(3:=h_eq_storev_m'_)(4:=h_le_n_lvl_)(5:=h_CM_eval_expr_bldlds_vaddr_) as ? /n. 
   econstructor;eauto.
-  unfold build_loads in h_CM_eval_expr_vaddr, h_CM_eval_expr_vaddr0.
-  !invclear h_CM_eval_expr_vaddr.
-  !invclear h_CM_eval_expr_vaddr0.
+  unfold build_loads in h_CM_eval_expr_bldlds_vaddr_, h_CM_eval_expr_bldlds_vaddr_0.
+  invclear h_CM_eval_expr_bldlds_vaddr_ /sng.
+  invclear h_CM_eval_expr_bldlds_vaddr_0 /sng.
   destruct vaddr;try discriminate.
-  pose proof Mem.load_store_other _ _ _ _ _ _ heq_storev_x_m' _chk' b (Ptrofs.unsigned i) as h.
+  specialize Mem.load_store_other  with (1:=h_eq_storev_m'_)(chunk':=_chk')(b':=b)(ofs':=Ptrofs.unsigned i) as h.
   unfold Mem.loadv in *.
   rewrite h.
   - assumption.
   - left.
-    !assert (v1=(Values.Vptr b Ptrofs.zero)).
+    assert (v1=(Values.Vptr b Ptrofs.zero)) /sng.
     { clear h. 
-      !!pose proof chain_aligned _ _ _ h_chain_m_lvl_sp lvl (le_n _) e g.
-      red in h_aligned_g_m.
-      !!assert (n <= lvl) by lia.
-      specialize (h_aligned_g_m _ h_le_n_lvl0).
-      decomp h_aligned_g_m.
+      specialize chain_aligned with (1:=h_chain_m_lvl_sp_)(locenv:=e)(g:=g) as hh.
+      especialize hh at 1.
+      { apply le_n. }
+      autorename hh.
+      red in h_aligned_g_m_.
+      assert (n <= lvl) by lia /sng.
+      specialize (h_aligned_g_m_ _ h_le_n_lvl_0).
+      decomp h_aligned_g_m_.
       subst_det_addrstack_zero.
       f_equal.
       cbn in *.
       destruct v2;try discriminate.
-      inversion h_eval_binop_Oadd_v1_v2.
+      inversion h_eq_evop_Oadd_vaddr_.
       destruct Archi.ptr64;auto. }
     subst.
-    eapply h_unch;eauto.
+    eapply h_unch_;eauto.
 Qed.
 
 
@@ -1178,21 +1176,21 @@ Proposition storev_outside_struct_chain_preserves_chained_structure:
         Mem.storev _chk m (Values.Vptr sp0 _v) x = Some m' ->
         chained_stack_structure m' lvl sp.
 Proof.
-  !intros.
+  intros /sng.
   assert
     ( forall n, (n <= lvl)%nat -> forall v : Values.val,
           Cminor.eval_expr g sp e m (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) v
           -> Cminor.eval_expr g sp e m' (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n) v).
-  { !intro.
+  { intro /sng.
     eapply storev_outside_struct_chain_preserves_chaining;eauto. }
-  destruct (chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_lvl_sp).
+  destruct (chained_stack_struct_inv_sp_zero _ _ _ h_chain_m_lvl_sp_).
   subst.
   eapply chained_stack_structure_spec.
-  !intros.
-  !!pose proof chain_structure_spec lvl0 m (Values.Vptr x0 Ptrofs.zero).
-  !!edestruct h_impl_forall_g with (g:=g) (e:=e).
-  eapply chained_stack_structure_le;eauto;try lia.
-  eauto.
+  intros /sng.
+  specialize (chain_structure_spec lvl0 m (Values.Vptr x0 Ptrofs.zero)) as ?/sng.
+  edestruct h_impl_CM_eval_expr_ with (g:=g) (e:=e) /sng.
+  - eapply chained_stack_structure_le;eauto;try lia.
+  - eauto.
 Qed.
 
 
@@ -1206,7 +1204,7 @@ Lemma malloc_distinct_from_chaining_loads_2 :
                            ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) (Values.Vptr b' Ptrofs.zero)
           -> b' <> new_sp.
 Proof.
-  !intros.
+  intros /sng.
   assert (Cminor.eval_expr g sp e m
                            ((build_loads_ (Econst (Oaddrstack Ptrofs.zero)) n)) (Values.Vptr b' Ptrofs.zero)).
   { eapply malloc_preserves_chaining_loads_2;eauto.

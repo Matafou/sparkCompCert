@@ -1,35 +1,43 @@
 Require Import SetoidList.
-Require Import sparkfrontend.LibHypsNaming Sorted ZArith List.
+Require Import LibHyps.LibHyps LibHyps.LibHypsNaming
+        Sorted ZArith List.
 
+Local Open Scope autonaming_scope.
+Import ListNotations.
 
-
-Ltac rename_hyp1 h th :=
+(* 
+Ltac rename_hyp_2 n th :=
   match th with
-  | List.In ?e ?l => fresh "lst_in_" e "_" l
-  | List.In ?e _ => fresh "lst_in_" e
-  | List.In _ _ => fresh "lst_in"
-  | InA _ ?e ?l => fresh "inA_" e "_" l
-  | InA _ ?e _ => fresh "inA_" e
-  | InA _ _ _ => fresh "inA"
-  | @Forall _ ?P ?x => fresh "lst_forall_" P "_" x
-  | @Forall _ _ ?x => fresh "lst_forall_" x
-  | @Forall _ ?P _ => fresh "lst_forall_" P
-  | @Forall _ _ _ => fresh "lst_forall"
-  | @Forall2 _ _ _ ?x ?y => fresh "lst_forall_" x "_" y
-  | @Forall2 _ _ _ ?x ?y => fresh "lst_forall_" x
-  | @Forall2 _ _ _ ?x ?y => fresh "lst_forall_" y
-  | @Forall2 _ _ _ _ _ => fresh "lst_forall"
-  | @StronglySorted _ ?ord ?l => fresh "strgSorted_" l
-  | @StronglySorted _ ?ord ?l => fresh "strgSorted"
-  | NoDupA _ ?l => fresh "NoDupA_" l
-  | NoDupA _ _ => fresh "NoDupA"
-  | NoDup ?l => fresh "nodup_" l
-  | NoDup _ => fresh "nodup"
+  | Nat.eqb ?x ?y = _ => name(`_Neqb` ++ x#n ++ x#n)
+  | _ = Nat.eqb ?x ?y => name(`_Neqb` ++ x#n ++ x#n)
+  end.
+ *)
+
+
+Ltac rename_hyp1 n th :=
+  match th with
+  | cons ?e ?l => name (e#(S n) ++ l#(S n))
+  | pair ?a ?b => name (a#(S n) ++ b#(S n))
+  | List.In ?e ?l => name (`_lst_in` ++ e#n ++ l#n)
+  | InA _ ?e ?l => name (`_inA` ++ e#n ++ l#n)
+  | @Forall _ ?P ?x => name (`_lst_forall` ++ P#n ++ x#n)
+  | @Forall2 _ _ _ ?x ?y => name (`_lst_forall` ++ x#n ++ y#n)
+  | @StronglySorted _ ?ord ?l => name (`_strgSorted` ++ l#n)
+  | NoDupA _ ?l => name (`_NoDupA` ++ l#n)
+  | NoDup ?l => name (`_nodup` ++ l#n)
+  | Zeq_bool ?x1 ?x2 => name(`_Zeqb` ++ x1#n ++ x2#n)
   end.
 
+Ltac rename_depth ::= constr:(1).
 
 
-Ltac rename_hyp ::= rename_hyp1.
+Ltac rename_hyp_local n th :=
+  match th with
+  | ?a = ?b => name (`eq` ++ a#n ++ b#n)
+  | _ => rename_hyp1 n th
+  end.
+
+Local Ltac rename_hyp ::= rename_hyp_local.
 
 (* All elements of a sorted list are smaller or equal to the first
    element. If the ordering is reflexive. *)
@@ -37,14 +45,14 @@ Lemma increasing_order_In A : forall ord (stk:list A) (hd:A),
     StronglySorted ord (hd::stk) ->
     List.Forall (fun elt => elt = hd \/ ord hd elt) (hd::stk).
 Proof.
-  !intros.
-  !inversion h_strgSorted.
+  intros /sng.
+  inversion h_strgSorted_ /sng.
   constructor 2.
   - left;reflexivity.
   - apply List.Forall_forall.
-    !intros.
+    intros /sng.
     right.
-    rewrite List.Forall_forall in h_lst_forall_stk.
+    rewrite List.Forall_forall in h_lst_forall_.
     auto.
 Qed.
 
@@ -64,7 +72,7 @@ as toto.
    (not) Z.eqb instead. *)
 Lemma Zneq_bool_false_iff: forall x y : Z, x = y <-> Zneq_bool x y = false.
 Proof.
-  !intros;split;!intros.
+  intros;split;intros /sng.
   -  subst.
      unfold Zneq_bool.
      rewrite Z.compare_refl;auto.
@@ -77,8 +85,8 @@ Qed.
 
 Lemma Zeq_is_neq_bool : forall x y : Z, x <> y <-> Zeq_bool x y = false.
 Proof.
-  !intros.
-  split;!intro.
+  intros /sng.
+  split;intro /sng.
   - destruct (Zeq_bool x y) eqn:h.
     + apply Zeq_bool_eq in h.
       contradiction.
@@ -94,12 +102,14 @@ Proof.
   apply Zneq_bool_false_iff;easy.
 Qed.
 
+Ltac rename_depth ::= constr:(2%nat).
+
   
 Lemma Zneq_bool_true_iff: forall x y : Z, x <> y <-> Zneq_bool x y = true.
 Proof.
-  !intros;split;!intros.
-  - red in hneq_x.
-    rewrite <- Z.compare_eq_iff in hneq_x.
+  intros;split;intros /sng.
+  - red in h_neq_x_y_.
+    rewrite <- Z.compare_eq_iff in h_neq_x_y_.
     unfold Zneq_bool.
     destruct (x ?= y); auto.
   - unfold Zneq_bool in *.
@@ -119,41 +129,43 @@ Qed.
 
 Lemma Zeq_bool_Zneq_bool : forall x y, Zeq_bool x y = negb (Zneq_bool x y).
 Proof.
-  !intros x y.
-  !destruct (Z.eq_decidable x y).
-  - generalize heq_x.
-    !intro .
-    apply Zneq_bool_false_iff in heq_x.
-    apply Zeq_is_eq_bool in heq_x0.
-    rewrite heq_x, heq_x0.
+  intros x y /sng.
+  destruct (Z.eq_decidable x y) /ng.
+  - generalize heq_x_y_.
+    intro  /ng.
+    apply Zneq_bool_false_iff in heq_x_y_.
+    apply Zeq_is_eq_bool in heq_x_y_0.
+    rewrite heq_x_y_, heq_x_y_0.
     reflexivity.
-  - generalize hneq_x.
-    !intro .
-    apply Zneq_bool_true in hneq_x.
-    apply Zeq_is_neq_bool in hneq_x0.
-    rewrite hneq_x, hneq_x0.
+  - generalize h_neq_x_y_.
+    intro  /sng.
+    apply Zneq_bool_true in h_neq_x_y_.
+    apply Zeq_is_neq_bool in h_neq_x_y_0.
+    rewrite h_neq_x_y_, h_neq_x_y_0.
     reflexivity.
 Qed.
 
 
 Lemma stack_NoDupA_prefix: forall A R, forall CE1 CE2 : list A, NoDupA R (CE1 ++ CE2) -> NoDupA R CE1.
 Proof.
-  !intros until CE2.
+  intros until CE2 /sng.
   revert CE1.
-  !induction CE2;!intros.
-  - rewrite app_nil_r in h_NoDupA.
+  induction CE2;intros /sng.
+  - rewrite app_nil_r in h_NoDupA_app_.
     assumption.
-  - apply h_forall_CE1.
+  - apply h_all_NoDupA_.
     apply NoDupA_split with (x:=a);auto.
 Qed.
   
 
+Ltac rename_depth ::= constr:(2%nat).
+
 Lemma stack_NoDupA_sublist: forall A R, forall CE1 CE2 : list A, NoDupA R (CE1 ++ CE2) -> NoDupA R CE2.
-  !induction CE1;!intros.
-  - cbn in h_NoDupA.
+  induction CE1;intros /sng.
+  - cbn in h_NoDupA_app_.
     assumption.
-  - inversion h_NoDupA.
-    apply h_forall_CE2;auto.
+  - inversion h_NoDupA_app_ /sng.
+    apply h_all_NoDupA_;auto.
 Qed.
 
 Lemma Forall_impl_strong : forall A (P Q : A -> Prop) (l: list A),
@@ -162,8 +174,8 @@ Lemma Forall_impl_strong : forall A (P Q : A -> Prop) (l: list A),
     Forall Q l.
 Proof.
   intros A P Q l H.
-  rewrite !Forall_forall.
-  intros H0 x H1. 
+  repeat rewrite Forall_forall.
+  repeat intro. 
   firstorder.
 Qed.
 Lemma Forall2_impl : forall A B (P Q : A -> B -> Prop) l l',
@@ -171,7 +183,7 @@ Lemma Forall2_impl : forall A B (P Q : A -> B -> Prop) l l',
     Forall2 P l l' ->
     Forall2 Q l l'.
 Proof.
-  intros A B P Q l l' h_impl H. 
+  intros A B P Q l l' h_impl_ H. 
   induction H.
   - constructor.
   - constructor;auto.
@@ -181,10 +193,10 @@ Lemma Forall2_impl_strong : forall A B (P Q : A -> B -> Prop) l l',
     Forall2 P l l' ->
     Forall2 Q l l'.
 Proof.
-  intros A B P Q l l' h_impl H.
-  revert h_impl.
+  intros A B P Q l l' h_impl_ H.
+  revert h_impl_.
   induction H;intros.
   - constructor.
-  - inversion h_impl;subst.
+  - inversion h_impl_;subst.
     constructor;auto.
 Qed.

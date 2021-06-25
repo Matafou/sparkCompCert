@@ -1,6 +1,7 @@
 
 Require Import spark.eval.
-Require Import sparkfrontend.LibHypsNaming.
+Require Import LibHyps.LibHyps.
+Require Import LibTac.
 Require Import Memory Errors FunInd.
 Require Import Cminor.
 Require  compcert.cfrontend.Ctypes.
@@ -827,15 +828,26 @@ Lemma store_params_ok : forall stbl CE lparams, store_params stbl CE lparams = s
 Proof.
   intros until lparams.
   unfold spark2Cminor.store_params.
-  !functional induction store_params stbl CE lparams;try fold spark2Cminor.store_params in *;auto.
-  all:rewrite heq_compute_chnk.
-  all:try rewrite <- heq_store_params0.
-  all:try rewrite heq_store_params.
-  all: try rewrite heq_transl_name.
-  all:simpl;auto.
-  unfold build_param_copyin_assign.
-  unfold indirection_according_to_mode.
-  destruct (parameter_mode prm);auto.
+  functional induction store_params stbl CE lparams;try fold spark2Cminor.store_params in *;auto /sng.
+  - rewrite h_eq_compute_chnk_x_.
+    rewrite <- h_eq_store_params_store_params_.
+    rewrite h_eq_store_params_x0_.
+    rewrite h_eq_transl_name_x1_.
+    cbn.
+    unfold build_param_copyin_assign.
+    unfold indirection_according_to_mode.
+    destruct (parameter_mode prm);auto.
+  - rewrite h_eq_compute_chnk_x_.
+    rewrite <- h_eq_store_params_store_params_.
+    rewrite h_eq_store_params_x0_.
+    rewrite h_eq_transl_name_Err_.
+    cbn;auto.
+  - rewrite h_eq_compute_chnk_x_.
+    rewrite <-h_eq_store_params_store_params_.
+    rewrite h_eq_store_params_Err_.
+    cbn;auto.
+  - rewrite h_eq_compute_chnk_Err_.
+    cbn;auto.
 Qed.
 
 (* Definition init_locals:= Eval lazy beta iota delta [init_locals bind] in init_locals. *)

@@ -8,7 +8,7 @@ Require Import Maps.
 Require Import spark.symboltable.
 Require Import sparkfrontend.compcert_utils.
 Require Import spark.eval.
-Require Import sparkfrontend.LibHypsNaming.
+Require Import LibHyps.LibHyps.
 Require Import Errors. (* Errors.OK may be written OK *)
 Require Import spark.store_util.
 
@@ -1062,147 +1062,68 @@ Definition stbl_of_proc (pbdy:procedure_body) :=
 Definition empty_CE: compilenv := nil.
 *)
 
+Local Open Scope autonaming_scope.
 
-
-Ltac rename_hyp1 h th :=
+Ltac rename_hyp1 n th :=
   match th with
-    | transl_stmt _ _ _ = Error _ => fresh "eq_transl_stmt_ERR"
-    | transl_stmt _ _ ?s = (OK ?r) => fresh "eq_transl_stmt_" s "_" r
-    | transl_stmt _ _ ?s = (OK ?r) => fresh "eq_transl_stmt_" r
-    | transl_stmt _ _ ?s = (Error _) => fresh "eq_transl_stmt_" s "_err"
-    | transl_stmt _ _ ?s = (Error _) => fresh "eq_transl_stmt_err"
-    | transl_stmt _ _ ?s = ?r => fresh "eq_transl_stmt_" s "_" r
-    | transl_stmt _ _ ?s = ?r => fresh "eq_transl_stmt_" r
-    | transl_stmt _ _ ?s = ?r => fresh "eq_transl_stmt_" s
-    | transl_stmt _ _ ?s = ?r => fresh "eq_transl_stmt"
-    | transl_name _ _ _ = Error _ => fresh "eq_transl_name_ERR"
-    | transl_name _ _ _ = _ => fresh "eq_transl_name"
-    | transl_value ?v ?vt => fresh "transl_value_" v "_" vt
-    | transl_value ?v ?vt => fresh "transl_value_" v
-    | transl_value ?v ?vt => fresh "transl_value_" vt
-    | transl_value _ _ => fresh "transl_value"
-    | transl_variable _ _ _ _ = Error _ => fresh "eq_transl_variable_RE"
-    | transl_variable _ _ _ _ = _ => fresh "eq_transl_variable"
-    | transl_type _ _ = Error _ => fresh "eq_transl_type_RE"
-    | transl_type _ _ = _ => fresh "eq_transl_type"
-    | transl_basetype _ _ = Error _ => fresh "eq_transl_basetype_RE"
-    | transl_basetype _ _ = _ => fresh "eq_transl_basetype"
-
-    | transl_exprlist _ _ ?x = Error _ => fresh "trans_exprl_Err_" x
-    | transl_exprlist _ _ _ = Error _ => fresh "trans_exprl_Err"
-    | transl_exprlist _ _ ?x = Some ?y => fresh "trans_exprl_" x "_" y
-    | transl_exprlist _ _ ?x = Some _ => fresh "trans_exprl_" x
-    | transl_exprlist _ _ _ = _ => fresh "trans_exprl"
-
-    | transl_paramexprlist _ _ ?x _ = Error _ => fresh "trans_prmexprl_Err_" x
-    | transl_paramexprlist _ _ _ _ = Error _ => fresh "trans_prmexprl_Err"
-    | transl_paramexprlist _ _ ?x _ = Some ?y => fresh "trans_prmexprl_" x "_" y
-    | transl_paramexprlist _ _ ?x _ = Some _ => fresh "trans_prmexprl_" x
-    | transl_paramexprlist _ _ _ _ = _ => fresh "trans_prmexprl"
-
-    | transl_params _ _ _ _ = Error _ => fresh "eq_transl_params_ERR"
-    | transl_params _ ?p _ _ = (OK ?r) => fresh "eq_transl_params_" p "_" r
-    | transl_params _ ?p _ _ = ?r => fresh "eq_transl_params_" p "_" r
-    | transl_params _ ?p _ _ = _ => fresh "eq_transl_params_" p
-    | transl_params _ _ _ _ = _ => fresh "eq_transl_params"
-
-    | transl_procsig _ _ = Error _ => fresh "eq_transl_procsig_ERR"
-    | transl_procsig _ ?p = (OK ?r) => fresh "eq_transl_procsig_" p "_" r
-    | transl_procsig _ ?p = ?r => fresh "eq_transl_procsig_" p "_" r
-    | transl_procsig _ ?p = _ => fresh "eq_transl_procsig_" p
-    | transl_procsig _ _ = _ => fresh "eq_transl_procsig"
-
-    | transl_procedure _ _ _ _ = Error _ => fresh "eq_transl_proc_ERR"
-    | transl_procedure _ _ _ ?p = (OK ?r) => fresh "eq_transl_proc_" p "_" r
-    | transl_procedure _ _ _ ?p = ?r => fresh "eq_transl_proc_" p "_" r
-    | transl_procedure _ _ _ ?p = _ => fresh "eq_transl_proc_" p
-    | transl_procedure _ _ _ _ = _ => fresh "eq_transl_proc"
-
-    | transl_declaration _ _ _ _ = Error _ => fresh "eq_transl_decl_ERR"
-    | transl_declaration _ _ _ ?p = (OK ?r) => fresh "eq_transl_decl_" p "_" r
-    | transl_declaration _ _ _ ?p = ?r => fresh "eq_transl_decl_" p "_" r
-    | transl_declaration _ _ _ ?p = _ => fresh "eq_transl_decl_" p
-    | transl_declaration _ _ _ _ = _ => fresh "eq_transl_decl"
-
-    | transl_lparameter_specification_to_procsig _ _ _ = Error _ => fresh "eq_transl_lprm_spec_ERR"
-    | transl_lparameter_specification_to_procsig _ _ ?p = (OK ?r) => fresh "eq_transl_lprm_spec_" p "_" r
-    | transl_lparameter_specification_to_procsig _ _ ?p = ?r => fresh "eq_transl_lprm_spec_" p "_" r
-    | transl_lparameter_specification_to_procsig _ _ ?p = _ => fresh "eq_transl_lprm_spec_" p
-    | transl_lparameter_specification_to_procsig _ _ _ = _ => fresh "eq_transl_lprm_spec"
-
-
-
-    | make_load _ _ = Error _ => fresh "eq_make_load_RE"
-    | make_load _ _ = _ => fresh "eq_make_load"
-    | reduce_type _ _ _ = Error _ => fresh "eq_reduce_type_RE"
-    | reduce_type _ _ _ = _  => fresh "eq_reduce_type"
-    | concrete_type_of_value _ = Error _ => fresh "concrete_type_of_value_RE"
-    | concrete_type_of_value _ = _ => fresh "concrete_type_of_value"
-
-    | CompilEnv.fetchG ?id ?CE = _ => fresh "eq_CEfetchG_" id "_" CE
-    | CompilEnv.fetchG ?id _ = _ => fresh "eq_CEfetchG_" id
-    | CompilEnv.fetchG _ _ = Some _ => fresh "eq_CEfetchG"
-    | CompilEnv.fetchG _ _ = None => fresh "eq_CEfetchG_none"
-
-    | CompilEnv.fetch ?id ?CE = _ => fresh "eq_CEfetch_" id "_" CE
-    | CompilEnv.fetch ?id _ = _ => fresh "eq_CEfetch_" id
-    | CompilEnv.fetch _ _ = Some _ => fresh "eq_CEfetch"
-    | CompilEnv.fetch _ _ = None => fresh "eq_CEfetch_none"
-
-    | CompilEnv.fetches ?id ?CE = _ => fresh "eq_CEfetches_" id "_" CE
-    | CompilEnv.fetches ?id _ = _ => fresh "eq_CEfetches_" id
-    | CompilEnv.fetches _ _ = Some _ => fresh "eq_CEfetches"
-    | CompilEnv.fetches _ _ = None => fresh "eq_CEfetches_none"
-
-    | CompilEnv.frameG ?id ?CE = _ => fresh "eq_CEframeG_" id "_" CE
-    | CompilEnv.frameG ?id _ = _ => fresh "eq_CEframeG_" id
-    | CompilEnv.frameG _ _ = Some _ => fresh "eq_CEframeG"
-    | CompilEnv.frameG _ _ = None => fresh "eq_CEframeG_none"
-
-    | CompilEnv.level_of_top ?ce = None => fresh "eq_lvloftop_none_" ce
-    | CompilEnv.level_of_top ?ce = None => fresh "eq_lvloftop_none"
-    | CompilEnv.level_of_top ?ce = Some ?s => fresh "eq_lvloftop_" ce "_" s
-    | CompilEnv.level_of_top ?ce = ?s => fresh "eq_lvloftop_" ce "_" s
-    | CompilEnv.level_of_top ?ce = _ => fresh "eq_lvloftop_" ce
-    | CompilEnv.level_of_top _ = Some ?s => fresh "eq_lvloftop_" s
-    | CompilEnv.level_of_top _ = _ => fresh "eq_lvloftop"
-
-    | transl_expr ?stbl ?CE ?e = Error => fresh "eq_tr_expr_none"
-    | transl_expr ?stbl ?CE ?e = OK ?r => fresh "eq_tr_expr_" e
-    | transl_expr ?stbl ?CE ?e = ?r => fresh "eq_tr_expr"
-
-    | init_locals ?stbl ?CE ?declpart = Error => fresh "eq_init_lcl_ERR_" declpart
-    | init_locals ?stbl ?CE ?declpart = Error => fresh "eq_init_lcl_ERR"
-    | init_locals ?stbl ?CE ?declpart = OK ?r => fresh "eq_init_lcl_" declpart "_"r
-    | init_locals ?stbl ?CE ?declpart = ?r => fresh "eq_init_lcl"
-
-    | store_params ?stbl ?CE ?declpart = Error => fresh "eq_store_prms_ERR_" declpart
-    | store_params ?stbl ?CE ?declpart = Error => fresh "eq_store_prms_ERR"
-    | store_params ?stbl ?CE ?declpart = OK ?r => fresh "eq_store_prms_" declpart "_"r
-    | store_params ?stbl ?CE ?declpart = ?r => fresh "eq_store_prms"
-
-    | copy_out_params ?st ?CE ?paramsprf = (OK ?res) => fresh "cpout_prm_" paramsprf "_" res 
-    | copy_out_params ?st ?s ?paramsprf = (OK _) => fresh "cpout_prm_" paramsprf
-    | copy_out_params ?st ?s ?paramsprf = (OK _) => fresh "cpout_prm"
-    | copy_out_params ?st ?s ?paramsprf = Error => fresh "cpout_prm_" paramsprf "_ERR"
-    | copy_out_params ?st ?s ?paramsprf = Error => fresh "cpout_prm_ERR"
-    | copy_out_params ?st ?s ?paramsprf = Error => fresh "cpout_prm_ERR"
-
-    | compute_size _ ?subtype = Some ?sz => fresh "eq_cmpt_size_" subtype "_" sz
-    | compute_size _ ?subtype = Error => fresh "eq_cmpt_size_ERR_" subtype
-    | compute_size _ _ = Error => fresh "eq_cmpt_size_ERR"
-    | compute_size _ ?subtype = _ => fresh "eq_cmpt_size_" subtype
-    | compute_size _ _ = _ => fresh "eq_cmpt_size"
-
-    | build_frame_lparams _ _ ?lprm = Error _ => fresh "eq_bld_frm_ERR_" lprm
-    | build_frame_lparams _ _ _ = Error _ => fresh "eq_bld_frm_ERR"
-    | build_frame_lparams _ _ ?lprm = _ => fresh "eq_bld_frm_" lprm
-    | build_frame_lparams _ _ _ = _ => fresh "eq_bld_frm"
-
-    | add_to_frame _ _ ?typ _ = Error _ => fresh "eq_add_to_fr_ERR_" typ
-    | add_to_frame _ _ _ _ = Error _ => fresh "eq_add_to_fr_ERR" 
-    | add_to_frame _ _ ?typ _ = _ => fresh "eq_add_to_fr_" typ 
-    | add_to_frame _ _ _ _ = _ => fresh "eq_add_to_fr" 
+    | transl_stmt _ _ ?s => name(`_transl_stmt` ++ s#n)
+    | transl_name _ _ _ => name(`_transl_name`)
+    | transl_value ?v ?vt => name(`_transl_value` ++ v#n ++ vt#n)
+    | transl_variable _ _ _ _ => name(`_transl_var`)
+    | transl_type _ _ => name(`_transl_type`)
+    | transl_basetype _ _ => name(`_transl_basetype`)
+    | transl_exprlist _ _ ?x => name(`_trans_exprl` ++ x#n)
+    | transl_paramexprlist _ _ ?x _ => name(`_trans_prmexprl` ++ x#n)
+    | transl_params _ ?p _ _ => name(`_transl_params` ++ p#n)
+    | transl_procsig _ ?p => name(`_transl_procsig` ++ p#n)
+    | transl_procedure _ _ _ ?p => name(`_transl_proc` ++ p#n)
+    | transl_literal ?l => name(`_transl_lit` ++ l#n)
+    | transl_declaration _ _ _ ?p => name(`_transl_decl` ++ p#n)
+    | transl_lparameter_specification_to_procsig _ _ ?p => name(`_transl_lprm_spec` ++ p#n)
+    | make_load _ _ => name(`_make_load`)
+    | reduce_type _ _ _ => name(`_reduce_type`)
+    | concrete_type_of_value _ => name(`_concrete_type_of_value`)
+    | CompilEnv.fetchG ?id ?CE => name(`_CEfetchG` ++ id#n ++ CE#n)
+    | CompilEnv.fetch ?id ?CE => name(`_CEfetch` ++ id#n ++ CE#n)
+    | CompilEnv.fetches ?id ?CE => name(`_CEfetches` ++ id#n ++ CE#n)
+    | CompilEnv.frameG ?id ?CE => name(`_CEframeG` ++ id#n ++ CE#n)
+    | CompilEnv.level_of_top ?ce => name(`_lvloftop` ++ ce#n)
+    | transl_expr ?stbl ?CE ?e => name(`_tr_expr` ++ e#n)
+    | init_locals ?stbl ?CE ?declpart => name(`_init_lcl` ++ declpart#n)
+    | store_params ?stbl ?CE ?declpart => name(`_store_prms` ++ declpart#n)
+    | copy_out_params ?st ?s ?paramsprf = Error => name(`_cpout_prm` ++ paramsprf#n ++ `__ERR`)
+    | compute_size _ ?subtype => name(`_cmpt_size` ++ subtype#n)
+    | build_frame_lparams _ _ ?lprm => name(`_bld_frm` ++ lprm#n)
+    | add_to_frame _ _ ?typ _ => name(`_add_to_fr` ++ typ#n)
 end.
 
+(* Tests
+Local Ltac rename_depth := constr:(5%nat).
 
+Local Ltac LibHypsNaming.rename_hyp ::= rename_hyp1.
+
+Goal forall a b c d, transl_stmt a b c = d ->  True.
+  intros/ng.
+  Check h_eq_transl_stmt_c_d_.
+  exact I.
+Qed.
+
+Goal forall a b c d, transl_name a b c = d -> True.
+  intros/ng.
+  Check h_eq_transl_name_d_.
+  exact I.
+Qed.
+
+Goal forall a b, transl_value a b -> True.
+  intros/ng.
+  Check h_transl_value_a_b_.
+  exact I.
+Qed.
+
+
+Goal forall a b c d e, transl_variable a b c d = e -> True.
+  intros/ng.
+  Check h_eq_transl_variable_e_.
+  exact I.
+Qed.
+*)
