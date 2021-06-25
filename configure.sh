@@ -5,7 +5,7 @@
 # TODO: add LibHyps argument?
 function usage {
     echo
-    echo usage:  configure.sh [-reuseconf] [-coqtags bin] [-compcert path] [-spark path] [-sireum path]
+    echo usage:  configure.sh [-reuseconf] [-coqtags bin] [-compcert path] [-spark path] [-sireum path] [-libhyps path]
     echo 
 
     echo "  builds the _CoqProject and makefile (coq_makefile -f _CoqProject) of the"
@@ -21,7 +21,9 @@ function usage {
     echo "    that we don't use anyway."
     echo "  NOTE: Compiler executable generation is currently broken, so -sireum option"
     echo "  is useless for now."
+    echo "  NOTE: option libhyps is only for users not having LibHyps installed as a plugin."
 }
+
 for i in $*; do
     case $i in
 	"-h") usage; exit 0;;
@@ -47,6 +49,7 @@ for i in $*; do
 	"-coqtags") FOUNDCOQTAGS=yes;;
 	"-spark") FOUNDSPARK=yes;;
 	"-compcert") FOUNDCOMPCERT=yes;;
+	"-libhyps") FOUNDLIBHYPS=yes;;
 	"-sireum") SIREUM=yes;;
 	*)
             if [[ $FOUNDCOQTAGS == yes ]] ;
@@ -61,10 +64,15 @@ for i in $*; do
 	    then
 		COMPCERT=$i
 		FOUNDCOMPCERT=finished;
+	    else if [[ $FOUNDLIBHYPS == yes ]] ;
+            then
+                LIBHYPS=$i
+                FOUNDLIBHYPS=finished
 	    else if [[ $SIREUM == yes ]] ;
 	    then
 		SIREUM=$i
 		FOUNDSIREUM=finished;
+	    fi
 	    fi
 	    fi
 	    fi
@@ -78,6 +86,7 @@ done
 echo COQTAGS=$COQTAGS >> $resourcedir/.config
 echo COMPCERT=$COMPCERT >> $resourcedir/.config
 echo SPARK=$SPARK >> $resourcedir/.config
+echo LIBHYPS=$LIBHYPS >> $resourcedir/.config
 echo SIREUM=$SIREUM >> $resourcedir/.config
 
 # Generate the _CoqProject file
@@ -90,6 +99,13 @@ cat < $resourcedir/Config/_CoqProject.in >> ./_CoqProject
 sed --posix -e "s%@COMPCERT%$COMPCERT%" ./_CoqProject | sponge ./_CoqProject
 sed --posix -e "s%@SPARK%$SPARK%" ./_CoqProject | sponge ./_CoqProject
 
+if [[ $FOUNDLIBHYPS == "finished" ]] ;
+then
+   sed --posix -e "s%@LIBHYPS%$LIBHYPS%" ./_CoqProject | sponge ./_CoqProject
+else
+   sed 's/.*@LIBHYPS.*/#not used/' ./_CoqProject | sponge ./_CoqProject
+   # sed '/@LIBHYPS/d' ./_CoqProject | sponge ./_CoqProject
+fi
 
 echo "Options set in _CoqProject files:"
 echo "***************************"

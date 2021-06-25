@@ -5,25 +5,27 @@
 
 # This makes library accessible and compilable from here But make
 # install is unusable (coq_makefile produces a warning about that)
--R ../sparkformal/spark2014_semantics/src spark
+-R @SPARK/spark2014_semantics/src spark
 
 # Same here for compcert part. ../CompCert compcert would not work
 # because of flock and menhir that do not share the prefix compcert.
--R ../CompCert/lib compcert.lib
--R ../CompCert/common compcert.common
--R ../CompCert/x86_64 compcert.x86_64
--R ../CompCert/x86 compcert.x86
--R ../CompCert/backend compcert.backend
--R ../CompCert/cfrontend compcert.cfrontend
--R ../CompCert/driver compcert.driver
--R ../CompCert/exportclight compcert.exportclight
--R ../CompCert/cparser compcert.cparser 
--R ../CompCert/x86_32 compcert.x86_32 
+-R @COMPCERT/lib compcert.lib
+-R @COMPCERT/common compcert.common
+-R @COMPCERT/x86_64 compcert.x86_64
+-R @COMPCERT/x86 compcert.x86
+-R @COMPCERT/backend compcert.backend
+-R @COMPCERT/cfrontend compcert.cfrontend
+-R @COMPCERT/driver compcert.driver
+-R @COMPCERT/exportclight compcert.exportclight
+-R @COMPCERT/cparser compcert.cparser 
+-R @COMPCERT/x86_32 compcert.x86_32 
 
--R ../CompCert/flocq Flocq
--R ../CompCert/MenhirLib MenhirLib
+-R @COMPCERT/flocq Flocq
+-R @COMPCERT/MenhirLib MenhirLib
 
 # This is for our files: we will compile them
 -R . sparkfrontend
 
+# optional path to LibHyps (if not installed as a plugin).
+-R @LIBHYPS/LibHyps LibHyps 
 
