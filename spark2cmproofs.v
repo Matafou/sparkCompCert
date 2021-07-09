@@ -695,7 +695,7 @@ Proof.
   rename n0 into v1.
   rename n3 into v2.
   invclear h_do_rtc_binop_;simpl in *; eq_same_clear /sng.
-  { decompose [or] h_or_eq_Divide_or_;discriminate. }
+  { decompose [or] h_or_eq_Divide_or_ /sng ;discriminate. }
   inv_rtc /sng.
   rewrite min_signed_ok, max_signed_ok in *.
   inversion h_do_division_check_ /sng.
@@ -1911,8 +1911,9 @@ Lemma transl_variable_exact_lvl_le_toplvl:
     (δlvl < (Datatypes.length CE))%nat.
 Proof.
   intros /sng.
-  functional inversion h_eq_transl_var_bldlds_ /sng.
-  specialize CompilEnv.exact_lvl_level_of_top with (1:=h_exct_lvlG_CE_)(2:=h_eq_CEframeG_id_CE_lvl_id_fr_id_) as h /sng.
+  functional inversion h_eq_transl_var_bldlds_/sng.
+  specialize CompilEnv.exact_lvl_level_of_top
+    with (1:=h_exct_lvlG_CE_)(2:=h_eq_CEframeG_id_CE_lvl_id_fr_id_) as h /sng.
   decomp h_ex_and_.
   rewrite h_eq_lvloftop_CE_m'_ in h_eq_lvloftop_CE_top_.
   invclear h_eq_lvloftop_CE_top_ /sng.
@@ -2025,7 +2026,7 @@ Lemma stack_complete_empty: forall st,stack_complete st [ ] [ ].
 Proof.
   red;intros /sng.
 
-  functional inversion h_eq_transl_var_nme_t_ /sng.    
+  functional inversion h_eq_transl_var_nme_t_/sng.
   functional inversion h_eq_CEframeG_nme_nil_lvl_nme_fr_nme_.
 Qed.
 
@@ -2233,7 +2234,7 @@ Proof.
   specialize h_stk_mtch_s_m_ with(vaddr := nme_t_v) (3:=h_eval_name_nme_v_) (5:=h_eq_type_of_name_st_nme_typ_nme_) (1:=h_eq_transl_name_nme_t_) (4:=h_eq_transl_type_cm_typ_nme_) (6:=h_eq_make_load_load_addr_nme_).
   destruct h_stk_mtch_s_m_ as [? [? ?]] /sng.
   - eapply eval_expr_transl_name_inv_locenv;eauto.
-  - exists v_t;split;auto.
+  - eexists;split;eauto.
     functional inversion h_eq_make_load_load_addr_nme_;subst /sng.
     inversion h_CM_eval_expr_load_addr_nme_v_t_ /sng.
     econstructor;eauto.
@@ -2653,10 +2654,11 @@ Proof.
     rename s'' into CE''.
     rename l' into s'.
     rename s''0 into s''.
+    
     inversion h_strg_mtch_s_f_CE_m_ /sng.
     simpl in h_eq_length_f_CE_length_.
     apply eq_add_S in h_eq_length_f_CE_length_.
-    simpl in *.
+    cbn in hnot_lt_level_of_n_.
     assert (STACK.cut_until (s' ++ s'') n s' s'') /sng. {
       rewrite <- h_eq_app_s'0_s''0_s_ in *.
       inversion h_stkcut_s_n_ /sng.
@@ -2664,7 +2666,7 @@ Proof.
     assert (invariant_compile CE st) /sng.
     { eapply invariant_compile_subcons;eauto. }
     simpl Datatypes.length in h_repeat_loadv_sub_sp_.
-    assert (n <= Datatypes.length CE)%nat. {
+    assert (n <= Datatypes.length CE)%nat/ng. {
       simpl in *.
       specialize ci_exact_lvls with (1:=h_inv_comp_f_CE_st_) as ? /sng.
       inversion h_exct_lvlG_lvl_stoCE_CE_ /sng.
@@ -2673,13 +2675,15 @@ Proof.
     inversion h_repeat_loadv_sub_sp_ /sng.
     rewrite h_eq_loadv_sp_v_ in h_eq_loadv_sp_sp'_.
     invclear h_eq_loadv_sp_sp'_ /sng.
-    specialize h_all_and_ with (1:=h_strg_mtch_s0_CE_m_). (2:=h_inv_comp_CE_st_)(3:=h_eq_length_f_CE_length_). (4:=h_stkcut_x_s0_n_)
-                                     (5:=h_repeat_loadv_sub_sp'_).
+    inversion h_stkcut_s_n_ /sng.
+    inversion h_eq_app_f_s'_s''_f_CE_/s.
+    specialize IHh_CEcut_CE_lvl_ with (1:=h_strg_mtch_s0_CE_m_) (2:=h_inv_comp_CE_st_)(3:=h_eq_length_f_CE_length_) (4:=h_stkcut_s0_n_) (5:=h_repeat_loadv_sub_sp'_).
+    
     destruct IHh_CEcut_CE_lvl_ ;auto /sng.
-    { simpl in h_eq_app0_.
-      inversion h_eq_app0_.
+    { simpl in *.
+      inversion h_eq_app_s'0_s''0_s_.
       reflexivity. }
-    decomp h_and_.
+    decomp h_and_repeat_loadv_.
     assumption.
 Qed.
 
@@ -2735,8 +2739,8 @@ Lemma eval_build_loads_offset: forall lvl g stkptr locenv m δ_lvl δ_id b ofs,
 Proof.
   intros /sng.
   unfold build_loads in *.
-  inversion h_CM_eval_expr_ /sng.
-  inversion h_CM_eval_expr_v2_ /sng.
+  inversion h_CM_eval_expr_bldlds_vptr_ /sng.
+  inversion h_CM_eval_expr_Econst_v2_ /sng.
   simpl in *.
   red in h_aligned_g_m_.
   specialize h_aligned_g_m_ with (1:=h_le_δ_lvl_lvl_).
@@ -2746,15 +2750,17 @@ Proof.
   subst.
   cbn  in *.
   destruct v2;destruct Archi.ptr64;cbn in *;try discriminate.
-  inversion h_eval_binop_Oadd_v1_v2_.
-  inversion h_eval_constant_.
-  subst.
+  inversion h_eq_evop_Oadd_v1_v2_vptr_/sng.
+  inversion h_eq_evalcst_stkptr_Ointconst_v2_/sng.
   rewrite Ptrofs.add_zero_l.
   unfold Ptrofs.of_int.
   apply f_equal.
   rewrite Int.unsigned_repr_eq.
-  auto.              
+  auto.
+  rewrite Ptrofs.modulus_eq32;auto.
+  apply Zmod_mod.
 Qed.
+
 
 
 (** Property of the translation: Since chain variables have always
@@ -2769,25 +2775,40 @@ Lemma eval_build_loads_offset_non_null_var:
     Cminor.eval_expr g stkptr locenv m bld_lds (Values.Vptr b ofs) ->
     4 <= Ptrofs.unsigned ofs.
 Proof.
-  intros /sng.
-  functional inversion h_eq_transl_var_;subst /sng.
+  
+  Ltac rename_delta n :=
+    match reverse goal with
+      H: CompilEnv.fetchG ?X _ = Some n |- _ => let nm := fresh "δ_" X in rename n into nm
+    | H: CompilEnv.frameG ?X _ = Some (_, n) |- _ => let nm := fresh "fr_" X in rename n into nm
+    | H: transl_variable _ _ _ ?X = Errors.OK n |- _ => let nm := fresh X "_t" in rename n into nm
+    | H: CompilEnv.frameG ?X _ = Some (n, _) |- _ => let nm := fresh "lvl_" X in rename n into nm
+
+    end.
+  (* il faut faire le rename_delta AVANT le /sng *)
+  intros/sng.
+  
+  functional inversion h_eq_transl_var_nme_t_;subst/sng.
+  
   assert (ofs=(Ptrofs.repr δ_nme)) /sng. {
-    assert (δ_nme mod Ptrofs.modulus = δ_nme) /sng.
+    assert (δ_nme mod Ptrofs.modulus = δ_nme) /ng.
     { red in h_no_overf_CE_.
-      specialize h_no_overf_CE_ with (1:=h_eq_CEfetchG_nme_CE_).
+      specialize h_no_overf_CE_ with (1:=h_eq_CEfetchG_nme_CE_δ_nme_).
       apply Z.mod_small.
       assumption. }
-    eapply (eval_build_loads_offset (Datatypes.length CE) g stkptr locenv m (m' - lvl_nme) _ b ofs  h_eq_modulo_ h_aligned_g_m_);auto with arith.
+    eapply eval_build_loads_offset with (δ_lvl:= (m' - lvl_nme)%nat).
+    - assumption.
+    - eassumption.
     - erewrite <- CompilEnv.exact_lvl_lvl_of_top with (n:=m').
       + lia.
       + assumption.
-      + assumption. }
+      + assumption.
+    - eassumption. }
   subst.
   red in h_nonul_ofs_CE_.
   red in h_nonul_ofs_CE_.
-  specialize h_nonul_ofs_CE_ with (1:=h_eq_CEfetchG_nme_CE_).
+  specialize h_nonul_ofs_CE_ with (1:=h_eq_CEfetchG_nme_CE_δ_nme_).
   red in h_no_overf_CE_.
-  specialize h_no_overf_CE_ with (1:=h_eq_CEfetchG_nme_CE_).
+  specialize h_no_overf_CE_ with (1:=h_eq_CEfetchG_nme_CE_δ_nme_).
   rewrite Ptrofs.unsigned_repr;auto.
   split;try lia.
   unfold Ptrofs.max_unsigned.
@@ -2798,13 +2819,15 @@ Lemma transl_expr_ok : forall stbl CE e e',
     transl_expr stbl CE e = Errors.OK e' ->
     forall locenv g m (s:STACK.state)  (v:value) stkptr,
       evalExp stbl s e (OK v) ->
-      match_env_ stbl s CE stkptr locenv g m ->
+      match_env stbl s CE stkptr locenv g m ->
       exists v_t,
         (transl_value v v_t /\ Cminor.eval_expr g stkptr locenv m e' v_t).
 Proof.
   intros until e.
-  functional induction (transl_expr stbl CE e) ;try discriminate;simpl; intros;
-  invclear h_eval_expr_v_;eq_same_clear /sng.
+  functional induction (transl_expr stbl CE e) ;try discriminate;simpl; intros/sng;
+    match goal with
+      H: evalExp _ _ _ _ |- _ => invclear H
+    end;eq_same_clear /sng.
   - inversion h_eval_literal_;subst.
     + destruct v0 /sng.
       * eexists;split;intros; econstructor;eauto /sng.
@@ -2814,68 +2837,73 @@ Proof.
         econstructor.
       * constructor.
         reflexivity.
-  - unfold value_at_addr in heq_value_at_addr_.
+  - (* invclear h_eval_expr_v_;eq_same_clear /sng. *)
+    (* invclear h_eval_expr_Name_id_v_; eq_same_clear /sng. *)
+    unfold value_at_addr in h_eq_value_at_addr_id_t_val_at_id_t_.
     destruct (transl_type stbl astnum_type) eqn:heq_transl_type_;simpl in *.
     + destruct h_match_env_ /sng.
-      edestruct h_safe_cm_CE_m_.(me_stack_match_addresses) with (nme:=Identifier astnum id);eauto. 
+      edestruct h_safe_cm_CE_m_.(me_stack_match_addresses) with (nme:=Identifier astnum id);eauto /sng. 
       eapply h_stk_mtch_s_m_;eauto.
       * simpl.
         assumption.
       * simpl.
-        rewrite heq_fetch_exp_type_.
+        rewrite h_eq_fetch_exp_type_astnum_stbl_astnum_type_.
         reflexivity.
     + discriminate.
-  - decomp (h_forall_e'_ _ heq_tr_expr_e_ _ _ _ _ _ _ h_eval_expr_e_e_v_ h_match_env_).
-    decomp (h_forall_e'0_ _ heq_tr_expr_e0_ _ _ _ _ _ _ h_eval_expr_e0_e0_v_ h_match_env_).
+  - specialize h_all_and_
+      with (1:=h_eq_tr_expr_e1_e1_t_) (2:=h_eval_expr_e1_v1_) (3:=h_match_env_).
+    decomp h_all_and_.
+    specialize h_all_and_0 with (1:=h_eq_tr_expr_e2_e2_t_)(2:=h_eval_expr_e2_v2_)(3:=h_match_env_).
+    decomp h_all_and_0.
     assert (hex:or (exists b, v = Bool b) (exists n, v = Int n)). {
       apply do_run_time_check_on_binop_ok in h_do_rtc_binop_.
       rewrite binopexp_ok in h_do_rtc_binop_.
       functional inversion h_do_rtc_binop_;subst;eq_same_clear
        ;try contradiction;eauto /sng.
-      unfold Math.mod' in  heq_mod'_.
-      destruct e_v;try discriminate.
-      destruct e0_v;try discriminate.
-      inversion heq_mod'_.
+      unfold Math.mod' in  h_eq_mod'_v1_v2_v_.
+      destruct v1;try discriminate.
+      destruct v2;try discriminate.
+      inversion h_eq_mod'_v1_v2_v_.
       right;eauto. }
     decomp hex;subst.
     + destruct b; eexists;(split;[econstructor;eauto|]).
       * eapply eval_Ebinop;try econstructor;eauto.
-        eapply binary_operator_ok with (v1:=e_v) (v2:=e0_v);eauto with spark.
+        eapply binary_operator_ok with (v1:=v1) (v2:=v2);eauto with spark.
         econstructor;eauto.
       * eapply eval_Ebinop;try econstructor;eauto.
-        eapply binary_operator_ok with (v1:=e_v) (v2:=e0_v);eauto with spark.
+        eapply binary_operator_ok with (v1:=v1) (v2:=v2);eauto with spark.
         econstructor;eauto.
     + eexists;(split;[econstructor;eauto|]).
       eapply eval_Ebinop;try econstructor;eauto.
-        eapply binary_operator_ok with (v1:=e_v) (v2:=e0_v);eauto with spark.
+        eapply binary_operator_ok with (v1:=v1) (v2:=v2);eauto with spark.
         econstructor;eauto.
   - (* Unary minus *)
-    simpl in heq_transl_unop_.
+    simpl in h_eq_transl_unop_Unary_Minus_x0_.
     eq_same_clear.
-    specialize h_forall_e'_ with (1:=heq_tr_expr_e_) (2:=h_eval_expr_e_e_v_) (3:=h_match_env_).
-    decomp h_forall_e'_.
+    specialize h_all_and_ with (1:=h_eq_tr_expr_e0_e0_t_) (2:=h_eval_expr_e0_v0_) (3:=h_match_env_).
+    decomp h_all_and_.
     invclear h_do_rtc_unop_;eq_same_clear /sng.
-    invclear h_overf_check_ /sng.
+    invclear h_overf_check_v_ /sng.
     eexists.
     split.
     * econstructor.
-    * assert (h:=unaryneg_ok _ _ _ h_transl_value_e_v_e_t_v_ heq_unary_minus_).
+    * assert (h:=unaryneg_ok _ _ _ h_transl_value_v0_v0_t_ h_eq_unary_minus_v0_v'_).
       econstructor;eauto.
       simpl.
       inversion h.
       reflexivity.
   (* Not *)
   - invclear h_do_rtc_unop_;simpl in *;try eq_same_clear /sng.
-    specialize h_forall_e'_ with (1:=heq_tr_expr_e_) (2:=h_eval_expr_e_e_v_) (3:=h_match_env_).
-    decomp h_forall_e'_.
-    generalize (not_ok _ _ _ h_transl_value_e_v_e_t_v_ heq_unary_operation_).
+    specialize h_all_and_ with (1:=h_eq_tr_expr_e0_e0_t_) (2:=h_eval_expr_e0_v0_) (3:=h_match_env_).
+    decomp h_all_and_.
+    generalize (not_ok _ _ _ h_transl_value_v0_v0_t_ h_eq_unary_not_v0_v_).
     intro /sng.
-    exists (Values.Val.notbool e_t_v).
+    exists (Values.Val.notbool v0_t).
     split;auto.
     econstructor;simpl in *;eauto.
     + econstructor;eauto.
       reflexivity.
-    + destruct e_t_v;simpl in *; try (inversion h_transl_value_e_v_e_t_v_;fail).
+    + destruct v0_t;simpl in *; try (inversion h_transl_value_v0_v0_t_;fail).
       unfold  Values.Val.cmp.
       simpl.
       unfold Values.Val.of_bool.
@@ -2884,7 +2912,7 @@ Qed.
 
 Declare Scope res_scope.
 Notation " x =: y" := (x = Errors.OK y) (at level 90): res_scope.
-Notation " x = y" := (x = Error y) (at level 120): res_scope /sng.
+Notation " x =! y" := (x = Error y) (at level 120): res_scope.
 Open Scope res_scope.
 
 Lemma transl_name_ok : forall stbl CE nme nme' typ_nme cm_typ_nme load_addr_nme,
@@ -2895,30 +2923,31 @@ Lemma transl_name_ok : forall stbl CE nme nme' typ_nme cm_typ_nme load_addr_nme,
     
     forall locenv g m (s:STACK.state)  (v:value) stkptr,
       evalName stbl s nme (OK v) ->
-      match_env_ stbl s CE stkptr locenv g m ->
+      match_env stbl s CE stkptr locenv g m ->
       exists v_t ,
         (transl_value v v_t
          /\ Cminor.eval_expr g stkptr locenv m load_addr_nme v_t).
 Proof.
   intros /sng.
-  assert (forall n, evalExp stbl s (Name n nme) (OK v)). {
+  assert (forall n, evalExp stbl s (Name n nme) (OK v))/sng. {
     intros /sng. 
     constructor.
     assumption. }
   
-  specialize (h_match_env_ /sng.(me_safe_cm_env).(me_stack_match_addresses)) as ?.
+  specialize (h_match_env_.(me_safe_cm_env).(me_stack_match_addresses)) as ? /sng.
   red in h_stk_mtch_addr_stkptr_m_.
-  specialize h_stk_mtch_addr_stkptr_m_ with (1:=heq_transl_name_).
+  specialize h_stk_mtch_addr_stkptr_m_ with (1:=h_eq_transl_name_nme_t_).
   decomp h_stk_mtch_addr_stkptr_m_.
   
-  specialize (h_match_env_ /sng.(me_stack_match)) as ?.
+  specialize (h_match_env_.(me_stack_match)) as ? /sng.
   red in h_stk_mtch_s_m_.
-  specialize h_stk_mtch_s_m_ with (1:=heq_transl_name_) (2:=h_CM_eval_expr_nme_t_nme_t_v_)
-                                 (3:=h_eval_name_nme_v_)(4:=heq_transl_type_) (5:=heq_type_of_name_)
-                                 (6:=heq_make_load_).
+  specialize h_stk_mtch_s_m_ with (1:=h_eq_transl_name_nme_t_) (2:=h_CM_eval_expr_nme_t_nme_t_v_)
+                                  (3:=h_eval_name_nme_v_)(4:=h_eq_transl_type_cm_typ_nme_)
+                                  (5:=h_eq_type_of_name_stbl_nme_typ_nme_)
+                                  (6:=h_eq_make_load_load_addr_nme_).
   decomp h_stk_mtch_s_m_.
   eexists.
-    split;eauto.
+  split;eauto.
 Qed.
 
 Scheme Equality for binary_operator.
@@ -2964,7 +2993,7 @@ Lemma CEfetch_reside_true_ : forall id a x,
 Proof.
   intros until a.
   unfold CompilEnv.fetch, CompilEnv.reside.
-  induction (CompilEnv.store_of a);simpl;intros;try discriminate /sng.
+  induction (CompilEnv.store_of a);simpl;intros;try discriminate.
   destruct a0.
   destruct (beq_nat id i).
   - reflexivity.
@@ -2976,7 +3005,7 @@ Lemma CEfetch_reside_false_ : forall id a,
 Proof.
   intros until a.
   unfold CompilEnv.fetch, CompilEnv.reside.
-  induction (CompilEnv.store_of a);simpl;intros;try reflexivity /sng.
+  induction (CompilEnv.store_of a);simpl;intros;try reflexivity.
   destruct a0.
   destruct (beq_nat id i).
   - discriminate.
@@ -2992,11 +3021,11 @@ Proof.
   intro a.
   induction a;simpl;intros;try discriminate /sng.
   destruct (CompilEnv.reside id a) /sng.
-  - inversion heq_Some_.
+  - inversion h_eq_st_.
     left.
     reflexivity.
   - right.
-    eapply h_forall_id_;eauto.
+    eapply h_all_lst_in_;eauto.
 Qed.
 
 Lemma fetches_In : forall a id st,
@@ -3007,14 +3036,14 @@ Proof.
   induction a;simpl;intros;try discriminate /sng.
   destruct a;simpl in * /sng.
   destruct (eq_nat_dec id i);subst;simpl in * /sng.
-  - rewrite <- beq_nat_refl in heq_Some_.
-    inversion heq_Some_.
+  - rewrite <- beq_nat_refl in h_eq_st_.
+    inversion h_eq_st_.
     left.
     reflexivity.
   - right.
-    rewrite <- beq_nat_false_iff in hneq_id.
-    rewrite hneq_id in heq_Some_.
-    eapply h_forall_id_;eauto.
+    rewrite <- beq_nat_false_iff in h_neq_id_i_.
+    rewrite h_neq_id_i_ in h_eq_st_.
+    eapply h_all_lst_in_;eauto.
 Qed.
 
 
@@ -3022,18 +3051,18 @@ Lemma fetches_none_notin: ∀ (a : localframe) (id : idnum) (st : CompilEnv.V), 
 Proof.
   intros /sng.
   (functional induction (CompilEnv.fetches id a);intros; try discriminate) /sng.
-  - specialize (h_impl_neg_lst_in_ heq_CEfetches_id_a_).
+  - specialize (h_implnot_lst_in_ h_eq_CEfetches_id_a_None_).
     intro abs.
     simpl in *.
     destruct abs /sng.
-    + inversion heq_pair_;subst.
-      rewrite <- beq_nat_refl in hbeqnat_false.
+    + inversion h_eq_y_v_id_st_;subst.
+      rewrite <- beq_nat_refl in h_eq_eqb_id_y_false_.
       discriminate.
     + contradiction.
   - apply in_nil.
 Qed.
 
-Arguments fst _ _ p /sng.
+Arguments fst _ _ !p.
 
 Lemma fetches_none_notinA: ∀ (a : localframe) (id : idnum) (st : CompilEnv.V),
     CompilEnv.fetches id a = None →
@@ -3041,12 +3070,12 @@ Lemma fetches_none_notinA: ∀ (a : localframe) (id : idnum) (st : CompilEnv.V),
 Proof.
   intros * /sng.
   (functional induction (CompilEnv.fetches id a);intros; try discriminate) /sng.
-  - specialize (h_impl_neg_inA_ heq_CEfetches_id_s'_).
+  - specialize (h_implnot_inA_ h_eq_CEfetches_id_s'_None_).
     intro abs.
     inversion abs /sng.
-    + red in h_eqfst_idnum_;simpl in h_eqfst_idnum_.
+    + red in h_eq_fst_idnum_id_st_y_v_;simpl in h_eq_fst_idnum_id_st_y_v_.
       subst.
-      rewrite <- beq_nat_refl in hbeqnat_false.
+      rewrite <- beq_nat_refl in h_eq_eqb_id_y_false_.
       discriminate.
     + contradiction.
   - rewrite InA_nil.
@@ -3060,14 +3089,14 @@ Lemma In_fetches_NoDup: forall l id st,
 Proof.
   intro l.
   induction l;simpl;intros;try contradiction /sng.
-  destruct h_or_;subst /sng.
+  destruct h_or_eq_a_lst_in_;subst /sng.
   - rewrite <- beq_nat_refl.
     reflexivity.
   - destruct a.
     assert (hneq:i<>id).
     { intro abs.
       subst.
-      inversion h_NoDupA_;subst.
+      inversion h_NoDupA_a_l_;subst.
       absurd (InA eq_fst_idnum (id, t) l);auto.
       apply InA_alt.
       exists (id, st).
@@ -3075,8 +3104,8 @@ Proof.
     apply not_eq_sym in hneq.
     rewrite <- beq_nat_false_iff in hneq.
     rewrite hneq.
-    apply h_forall_id_;auto.
-    inversion h_NoDupA_;auto.
+    apply h_all_eq_CEfetches_;auto.
+    inversion h_NoDupA_a_l_;auto.
 Qed.
 
 
@@ -3089,9 +3118,9 @@ Proof.
   intros * /sng.
   rew add_to_frame_ok with (idtac;functional induction (function_utils.add_to_frame stbl fram_sz nme subtyp_mrk);simpl;intros;
     try discriminate) /sng.
-  invclear heq_OK_ /sng.
+  invclear h_eq_nme_sz_cenv_add_sz_x_new_fram_new_sz_ /sng.
   constructor 2.
-  - eapply fetches_none_notinA with (st:=sz) in heq_CEfetches_nme_cenv_ .
+  - eapply fetches_none_notinA with (st:=sz) in h_eq_CEfetches_nme_cenv_None_ .
     assumption.
   - assumption.
 Qed.
@@ -3121,7 +3150,7 @@ Lemma transl_name_OK_inv : forall stbl CE nme nme_t,
                           /\ nme = Identifier astnum id).
 Proof.
   intros /sng.
-  functional inversion heq_transl_name_.
+  functional inversion h_eq_transl_name_nme_t_.
   eauto.
 Qed.
 
@@ -3132,7 +3161,7 @@ Lemma exact_level_top_lvl: forall CE s3,
 Proof.
   intros /sng.
   inversion h_exct_lvlG_CE_;subst;cbn in *;try discriminate.
-  inversion heq_lvloftop_CE_s3_.
+  inversion h_eq_lvloftop_CE_s3_.
   reflexivity.
 Qed.
 
@@ -3145,26 +3174,25 @@ Lemma increase_order_level_of_top_ge: forall CE id s s0 s3,
 Proof.
   intros until 1 /sng.
   revert id s s0 s3.
-  induction h_exct_lvlG_CE_;cbn /sng.
+  induction h_exct_lvlG_CE_ /sng.
   - discriminate.
-  - intros /sng.
-    destruct (CompilEnv.resides id fr) eqn:heq_resides_.
-    + invclear heq_Some_ /sng.
-      invclear heq_Some0_ /sng.
+  - intros /sng;cbn in *.
+    destruct (CompilEnv.resides id fr) eqn:h_eq_resides_.
+    + invclear h_eq_lvloftop_length_fr_stk_s3_ /sng.
+      invclear h_eq_CEframeG_id_length_fr_stk_lvl_id_fr_id_ /sng.
       auto.
-    + invclear heq_Some0_ /sng.
-      destruct (CompilEnv.level_of_top stk) eqn:heq_lvltop_.
-      * specialize(h_forall_id_ id s s0 s1).
-        specialize (exact_level_top_lvl _ _ h_exct_lvlG_CE_ heq_lvltop_).
-        intro /sng.
+    + invclear h_eq_lvloftop_length_fr_stk_s3_ /sng.
+      destruct (CompilEnv.level_of_top stk) eqn:h_eq_lvltop_.
+      * (*specialize(h_all_ge_ id s s0 s1).*)
+        specialize exact_level_top_lvl with (1:=h_exct_lvlG_CE_)(2:=h_eq_lvltop_) as ? /sng.
         red.
-        apply Nat.le_trans with s1.
-        -- apply h_forall_id_;auto.
+        apply Nat.le_trans with s.
+        -- eapply h_all_ge_;eauto.
         -- lia.
       * destruct stk.
-        -- cbn in heq_Some_.
+        -- cbn in h_eq_CEframeG_id_length_fr_stk_lvl_id_fr_id_.
            discriminate.
-        -- cbn in heq_lvltop_.
+        -- cbn in h_eq_lvltop_.
            destruct f.
            discriminate.
 Qed.
@@ -3181,11 +3209,11 @@ Proof.
   - discriminate.
   - destruct a.
     destruct (Nat.eq_dec id₁ i);subst.
-    + rewrite Nat.eqb_refl in heq_Some_.
-      invclear heq_Some_ /sng.
+    + rewrite Nat.eqb_refl in h_eq_Some_.
+      invclear h_eq_Some_ /sng.
       assert (h:id₂ ≠ i) by auto.
       rewrite <- (Nat.eqb_neq id₂ i) in h.
-      rewrite h in heq_Some0_.
+      rewrite h in h_eq_Some0_.
       inversion h_incr_order_;subst;simpl in * /sng.
       assert (δ₂ < δ₁). {
         rewrite Forall_forall in h_lst_forall_lf_.
@@ -3197,11 +3225,11 @@ Proof.
       assumption.
     + destruct (Nat.eq_dec id₂ i).
       * subst.
-        rewrite Nat.eqb_refl in heq_Some0_.
-        invclear heq_Some0_ /sng.
+        rewrite Nat.eqb_refl in h_eq_Some0_.
+        invclear h_eq_Some0_ /sng.
         assert (h:id₁ ≠ i) by auto.
         rewrite <- (Nat.eqb_neq id₁ i) in h.
-        rewrite h in heq_Some_.
+        rewrite h in h_eq_Some_.
         inversion h_incr_order_;subst;simpl in * /sng.
         assert (δ₁ < δ₂). {
           rewrite Forall_forall in h_lst_forall_lf_.
@@ -3240,7 +3268,7 @@ Lemma increasing_order_frameG: forall lvla lvlb fra l id ,
     (lvla < lvlb)%nat.
 Proof.
   intros /sng.
-  apply frameG_In in heq_CEframeG_id_l_.
+  apply frameG_In in h_eq_CEframeG_id_l_.
   rewrite Forall_forall in h_lst_forall_l_.
   apply (h_lst_forall_l_ (lvl_id, fr_id)).
   assumption.
@@ -3258,9 +3286,9 @@ Proof.
   - cbn. intro /sng.
     rename h_impl_le_ into IH.
     destruct (CompilEnv.resides id fr) /sng.
-    + invclear heq_Some_ /sng.
+    + invclear h_eq_Some_ /sng.
       auto.
-    + specialize (IH heq_Some_).
+    + specialize (IH h_eq_Some_).
       lia.
 Qed.
 
@@ -3279,8 +3307,8 @@ Proof.
   intro /sng.
   induction h_exct_lvlG_CE_;intros;simpl in *;try discriminate /sng.
   unfold CompilEnv.level_of in *.
-  destruct (CompilEnv.fetch id₁ (Datatypes.length stk, fr)) eqn:heq_fetch_id_₁;
-    destruct (CompilEnv.fetch id₂ (Datatypes.length stk, fr)) eqn:heq_fetch_id_₂;
+  destruct (CompilEnv.fetch id₁ (Datatypes.length stk, fr)) eqn:h_eq_fetch_id_₁;
+    destruct (CompilEnv.fetch id₂ (Datatypes.length stk, fr)) eqn:h_eq_fetch_id_₂;
     eq_same_clear;subst;simpl in *;try discriminate.
   - right.
     eapply CEfetch_inj_;eauto.
@@ -3290,21 +3318,21 @@ Proof.
   - left.
     symmetry.
     apply Nat.lt_neq.
-    apply CEfetch_reside_false_ in heq_fetch_id_₂.
-    apply CEfetch_reside_true_ in heq_fetch_id_₁.
-    rewrite heq_fetch_id_₂,heq_fetch_id_₁ in *;simpl in *.
-    invclear heq_CEframeG_id_₁;simpl in * /sng.
+    apply CEfetch_reside_false_ in h_eq_fetch_id_₂.
+    apply CEfetch_reside_true_ in h_eq_fetch_id_₁.
+    rewrite h_eq_fetch_id_₂,h_eq_fetch_id_₁ in *;simpl in *.
+    invclear h_eq_CEframeG_id_₁;simpl in * /sng.
     eapply exact_levelG_lgth;eauto.
   - left.
     apply Nat.lt_neq.
-    apply CEfetch_reside_true_ in heq_fetch_id_₂.
-    apply CEfetch_reside_false_ in heq_fetch_id_₁.
-    rewrite heq_fetch_id_₂,heq_fetch_id_₁ in *;simpl in *.
-    invclear heq_CEframeG_id_₂;simpl in * /sng.
+    apply CEfetch_reside_true_ in h_eq_fetch_id_₂.
+    apply CEfetch_reside_false_ in h_eq_fetch_id_₁.
+    rewrite h_eq_fetch_id_₂,h_eq_fetch_id_₁ in *;simpl in *.
+    invclear h_eq_CEframeG_id_₂;simpl in * /sng.
     eapply exact_levelG_lgth;eauto.
-  - apply CEfetch_reside_false_ in heq_fetch_id_₁.
-    apply CEfetch_reside_false_ in heq_fetch_id_₂.
-    rewrite heq_fetch_id_₁,heq_fetch_id_₂ in *.
+  - apply CEfetch_reside_false_ in h_eq_fetch_id_₁.
+    apply CEfetch_reside_false_ in h_eq_fetch_id_₂.
+    rewrite h_eq_fetch_id_₁,h_eq_fetch_id_₂ in *.
     eapply IHh_exct_lvlG_CE_ ;eauto.
     inversion h_allincr_.
     assumption.
@@ -3320,19 +3348,19 @@ Proof.
   - inversion h_le_s_O_;inversion h_le_s1_O_;auto /sng.
   - inversion h_le_s_;inversion h_le_s1_;subst /sng.
     + reflexivity.
-    + rewrite minus_diag in heq_sub_.
-      apply Nat.sub_0_le in heq_sub_.
+    + rewrite minus_diag in h_eq_sub_.
+      apply Nat.sub_0_le in h_eq_sub_.
       assert (s3 < s3)%nat /sng. {
         eapply lt_le_trans with s1;auto. }
       destruct (lt_irrefl s3);auto.
-    + rewrite minus_diag in heq_sub_.
-      symmetry in heq_sub_.
-      apply Nat.sub_0_le in heq_sub_.
+    + rewrite minus_diag in h_eq_sub_.
+      symmetry in h_eq_sub_.
+      apply Nat.sub_0_le in h_eq_sub_.
       assert (s3 < s3)%nat. {
         eapply lt_le_trans with s;auto. }
       destruct (lt_irrefl s3);auto.
     + eapply h_forall_s_;eauto.
-      setoid_rewrite <- minus_Sn_m in heq_sub_;auto.
+      setoid_rewrite <- minus_Sn_m in h_eq_sub_;auto.
 Qed.
 
 Lemma minus_same_neq : forall s3 s s1,
@@ -3375,8 +3403,8 @@ Proof.
     remember (build_loads (s3 - s1) t0) as fooo.
     remember (build_loads (s3 - s) t) as fooo'.
     inversion h_eq_transl_var_ as [heqfoo].
-    inversion heq_transl_variable0_ as [heqfoo'].
-    clear h_eq_transl_var_ heq_transl_variable0_.
+    inversion h_eq_transl_variable0_ as [heqfoo'].
+    clear h_eq_transl_var_ h_eq_transl_variable0_.
     subst.
     apply build_loads_inj in heqfoo.
     apply build_loads_inj in heqfoo'.
@@ -3415,20 +3443,20 @@ Proof.
   { assumption. }
   exfalso.
   functional inversion h_eq_transl_var_ /sng.
-  rewrite <- heq_build_loads_ in h_eq_transl_var_.
-  functional inversion heq_transl_variable0_ /sng.
-  rewrite <- heq_build_loads0_ in heq_transl_variable0_.
+  rewrite <- h_eq_build_loads_ in h_eq_transl_var_.
+  functional inversion h_eq_transl_variable0_ /sng.
+  rewrite <- h_eq_build_loads0_ in h_eq_transl_variable0_.
   specialize transl_variable_inj with (1:=h_exct_lvlG_CE_)(2:=h_allincr_CE_)
                                       (3:=h_no_overf_CE_)(4:=h_eq_transl_var_)
-                                      (5:=heq_transl_variable0_).
+                                      (5:=h_eq_transl_variable0_).
   assert (m' = m'0).
-  { rewrite heq_lvloftop_CE_m'_ in heq_lvloftop_CE_m'0_.
-    injection heq_lvloftop_CE_m'0_;auto. } 
+  { rewrite h_eq_lvloftop_CE_m'_ in h_eq_lvloftop_CE_m'0_.
+    injection h_eq_lvloftop_CE_m'0_;auto. } 
   subst m'0.
-  clear heq_lvloftop_CE_m'0_.
+  clear h_eq_lvloftop_CE_m'0_.
   up_type.
   subst x.
-  specialize build_loads_inj with (1:=heq_build_loads0_);intros ? h_inj_ /sng.
+  specialize build_loads_inj with (1:=h_eq_build_loads0_);intros ? h_inj_ /sng.
   decomp h_and_.
   assert (lvl_id₁ = lvl_id₂).
   { assert (lvl_id₁ <= m')%nat /sng.
@@ -3439,19 +3467,19 @@ Proof.
   subst lvl_id₂.
   assert (δ_id₁ = δ_id₂).
   { red in h_no_overf_CE_.
-    specialize h_no_overf_CE_ with (1:=heq_CEfetchG_id_₁_CE) as h.
-    specialize h_no_overf_CE_ with (1:=heq_CEfetchG_id_₂_CE) as h'.
+    specialize h_no_overf_CE_ with (1:=h_eq_CEfetchG_id_₁_CE) as h.
+    specialize h_no_overf_CE_ with (1:=h_eq_CEfetchG_id_₂_CE) as h'.
     decomp h.
     decomp h'.
     repeat rewrite Int.Z_mod_modulus_eq in *.
-    rewrite Zmod_small in heq_Z_mod_modulus_.
-    rewrite Zmod_small in heq_Z_mod_modulus_.
+    rewrite Zmod_small in h_eq_Z_mod_modulus_.
+    rewrite Zmod_small in h_eq_Z_mod_modulus_.
     - auto.
     - split; auto.
     - split; auto. } 
   specialize (h_impl_or_ n).
   destruct h_impl_or_ /sng.
-  + symmetry in heq_sub_. contradiction.
+  + symmetry in h_eq_sub_. contradiction.
   + contradiction.
 Qed.
 
@@ -3463,7 +3491,7 @@ Proof.
   intros /sng.
   unfold transl_variable.
   functional inversion h_eq_transl_var_ /sng.
-  rewrite  heq_CEfetchG_id'_CE_, heq_CEframeG_id'_CE_, heq_lvloftop_CE_m'_.
+  rewrite  h_eq_CEfetchG_id'_CE_, h_eq_CEframeG_id'_CE_, h_eq_lvloftop_CE_m'_.
   reflexivity.
 Qed.
 
@@ -3474,10 +3502,10 @@ Lemma compute_chk_32 : forall stbl t,
     -> transl_type stbl t = Errors.OK (Ctypes.Tint Ctypes.I32 Ctypes.Signed Ctypes.noattr).
 Proof.
   intros /sng.
-  functional inversion heq_compute_chnk_of_type_;subst;simpl /sng.
-  - functional inversion heq_reduce_type_;simpl /sng.
+  functional inversion h_eq_compute_chnk_of_type_;subst;simpl /sng.
+  - functional inversion h_eq_reduce_type_;simpl /sng.
     reflexivity.
-  - functional inversion heq_reduce_type_;simpl /sng.
+  - functional inversion h_eq_reduce_type_;simpl /sng.
     reflexivity.
 Qed.
 
@@ -3536,7 +3564,7 @@ Proof.
         destruct h_aligned_g_m_ /sng.
         assert ((Values.Vptr b0 i) = (Values.Vptr x Ptrofs.zero)) /sng.
         { eapply det_eval_expr;eauto. }
-        invclear heq_vptr_b0_i_ /sng.
+        invclear h_eq_vptr_b0_i_ /sng.
         discriminate.
       * apply h_ofs_non_zero_.
 Qed.
@@ -3580,7 +3608,7 @@ Proof.
         destruct (h_aligned_g_m'_ _ h_le_lvl'_lvl0_) /sng.
         assert ((Values.Vptr b0 i) = (Values.Vptr x Ptrofs.zero)) /sng.
         { eapply det_eval_expr;eauto. }
-        invclear heq_vptr_b0_i_ /sng.
+        invclear h_eq_vptr_b0_i_ /sng.
         vm_compute.
         intro abs;discriminate.
       * apply h_ofs_non_zero_.
@@ -3623,7 +3651,7 @@ Proof.
       decomp h_ex_.
       assert ((Values.Vptr b0 i) = (Values.Vptr b_δ Ptrofs.zero)) /sng.
       { eapply det_eval_expr;eauto. }
-      invclear heq_vptr_b0_i_ /sng.
+      invclear h_eq_vptr_b0_i_ /sng.
       right.
       left.
       rewrite Ptrofs.unsigned_zero.
@@ -3721,8 +3749,8 @@ Proof.
   rename m'0 into max_lvl.
   set (δ_lvl:=(max_lvl - lvl_id)%nat) in *.
   eapply wf_chain_load';eauto.
-  specialize CompilEnv.exact_lvl_lvl_of_top with (1:=h_exct_lvlG_CE_)(2:=heq_lvloftop_CE_m'0_) as ? /sng.
-  rewrite <- heq_S_ in *.
+  specialize CompilEnv.exact_lvl_lvl_of_top with (1:=h_exct_lvlG_CE_)(2:=h_eq_lvloftop_CE_m'0_) as ? /sng.
+  rewrite <- h_eq_S_ in *.
   subst δ_lvl.
   lia.
 Qed.
@@ -3749,8 +3777,8 @@ Proof.
   rename m'0 into max_lvl.
   set (δ_lvl:=(max_lvl - lvl_id)%nat) in *.
   eapply wf_chain_load'_2;eauto.
-  specialize CompilEnv.exact_lvl_lvl_of_top with (1:=h_exct_lvlG_CE_)(2:=heq_lvloftop_CE_m'0_) as ? /sng.
-  rewrite <- heq_S_ in *.
+  specialize CompilEnv.exact_lvl_lvl_of_top with (1:=h_exct_lvlG_CE_)(2:=h_eq_lvloftop_CE_m'0_) as ? /sng.
+  rewrite <- h_eq_S_ in *.
   subst δ_lvl.
   lia.
 Qed.
@@ -3789,7 +3817,7 @@ Proof.
     decomp h_aligned_g_m0_.
     assert ((Values.Vptr b0 i) = (Values.Vptr b_δ0 Ptrofs.zero)) /sng.
     { eapply det_eval_expr;eauto. }
-    invclear heq_vptr_b0_i_ /sng.
+    invclear h_eq_vptr_b0_i_ /sng.
     right.
     left.
     rewrite Ptrofs.unsigned_zero.
@@ -3828,8 +3856,8 @@ Lemma assignment_preserve_loads_offset_non_null:
     stack_localstack_aligned (Datatypes.length CE) locenv' g m' (Values.Vptr spb ofs).
 Proof.
   intros /sng.
-  decomp (storev_inv _ _ _ _ _ heq_storev_e_t_v_m'_) ;subst.
-  functional inversion heq_transl_name_.
+  decomp (storev_inv _ _ _ _ _ h_eq_storev_e_t_v_m'_) ;subst.
+  functional inversion h_eq_transl_name_.
   eapply wf_chain_load_aligned;eauto with spark.
   eapply eval_build_loads_offset_non_null_var;eauto with spark.
 Qed.
@@ -3852,7 +3880,7 @@ Lemma assignment_preserve_stack_match_addresses :
     stack_match_addresses stbl CE stkptr locenv g m'.
 Proof.
   intros; red /sng. intros /sng.
-  functional inversion heq_transl_name_;subst /sng.
+  functional inversion h_eq_transl_name_;subst /sng.
   functional inversion h_eq_transl_var_;subst /sng.
   assert (exists id_t_v_pt id_t_v_ofs, id_t_v = Values.Vptr id_t_v_pt id_t_v_ofs) /sng.
   { destruct id_t_v;try discriminate. eauto. }
@@ -3865,8 +3893,8 @@ Proof.
     + eapply assignment_preserve_loads_offset_non_null;eauto.
     + eapply eval_build_loads_offset_non_null_var;eauto with spark.
     + destruct (transl_variable_astnum _ _ _ _ _ h_eq_transl_var_ astnum).
-      rewrite h_eq_transl_var_ in heq_transl_variable0_.
-      inversion heq_transl_variable0_;subst.
+      rewrite h_eq_transl_var_ in h_eq_transl_variable0_.
+      inversion h_eq_transl_variable0_;subst.
       assumption.
   - assert (∃ addr : Values.val, Cminor.eval_expr g stkptr locenv m nme_t addr) /sng.
     { eapply h_match_env_;eauto. }
@@ -3906,8 +3934,8 @@ Proof.
   rename m'0 into lvl_max.
   (* done *)
   (* getting rid of erroneous storev parameter *)
-  (* rewrite <- cm_storev_ok in heq_storev_e_t_v_m'_. *)
-  rew cm_storev_ok with functional inversion heq_storev_e_t_v_m'_;subst /sng.
+  (* rewrite <- cm_storev_ok in h_eq_storev_e_t_v_m'_. *)
+  rew cm_storev_ok with functional inversion h_eq_storev_e_t_v_m'_;subst /sng.
   set (loads_id:=(build_loads (lvl_max - lvl_id) δ_id)) in *.
   (* done *)
   assert (h_ofs_nonzero_:4 <= Ptrofs.unsigned ofs). {
@@ -3918,63 +3946,63 @@ Proof.
   (* NO MORE completestack destruct (h_stk_cmpl_s_CE_ _ _ _ h_eq_transl_var_) as [v_id_prev h_eval_name_id_val_prev_]. *)
   set (nme:=(Identifier a id)) in *.
   (* Getting rid of erronous cases *)
-  functional inversion heq_transl_name_ /sng.
+  functional inversion h_eq_transl_name_ /sng.
   subst.
   (* done *)
   rename id0 into other_id.
   set (other_nme:=(Identifier astnum other_id)) in *.
   (* other_nme can already be evaluated in s *)
-  assert (heq_ftch_astnum_:symboltable.fetch_exp_type_ astnum stbl = Some cm_typ_other). {
-    simpl in heq_type_of_name_.
+  assert (h_eq_ftch_astnum_:symboltable.fetch_exp_type_ astnum stbl = Some cm_typ_other). {
+    simpl in h_eq_type_of_name_.
     destruct (symboltable.fetch_exp_type_ astnum stbl);try discriminate.
-    inversion heq_type_of_name_ /sng.
+    inversion h_eq_type_of_name_ /sng.
     reflexivity. }
   assert (h_tr_exp_other_:
             transl_expr stbl CE (Name 1%nat (Identifier astnum other_id))
                         =: load_addr_other). {
     simpl.
-    simpl in heq_type_of_name_.
-    rewrite heq_ftch_astnum_.
-    rewrite heq_transl_variable0_.
-    invclear heq_type_of_name_ /sng.
+    simpl in h_eq_type_of_name_.
+    rewrite h_eq_ftch_astnum_.
+    rewrite h_eq_transl_variable0_.
+    invclear h_eq_type_of_name_ /sng.
     unfold value_at_addr.
-    rewrite heq_transl_type_;simpl.
+    rewrite h_eq_transl_type_;simpl.
     assumption. }
   destruct (Nat.eq_dec id other_id) /sng.
   - subst nme. (* same variable ==> result is the value just stored *)
     subst other_nme.
     subst other_id.
-    simpl in heq_type_of_name_.
+    simpl in h_eq_type_of_name_.
     assert (chk = AST.Mint32). {
-      rew compute_chnk_ok with functional inversion heq_compute_chnk_;subst;auto /sng. }
-    simpl in heq_compute_chnk_.
-    unfold compute_chnk_astnum in heq_compute_chnk_.
-(*     unfold compute_chnk_id in heq_compute_chnk_. *)
-    rewrite heq_ftch_astnum_ in heq_type_of_name_.
-(*     rewrite heq_type_of_name_ in heq_compute_chnk_. *)
-    lazy beta iota delta [bind] in heq_compute_chnk_.
-    rewrite (transl_variable_astnum _ _ _ _ _ heq_transl_variable0_ a) in *.
-    rewrite heq_transl_variable0_ in h_eq_transl_var_.
+      rew compute_chnk_ok with functional inversion h_eq_compute_chnk_;subst;auto /sng. }
+    simpl in h_eq_compute_chnk_.
+    unfold compute_chnk_astnum in h_eq_compute_chnk_.
+(*     unfold compute_chnk_id in h_eq_compute_chnk_. *)
+    rewrite h_eq_ftch_astnum_ in h_eq_type_of_name_.
+(*     rewrite h_eq_type_of_name_ in h_eq_compute_chnk_. *)
+    lazy beta iota delta [bind] in h_eq_compute_chnk_.
+    rewrite (transl_variable_astnum _ _ _ _ _ h_eq_transl_variable0_ a) in *.
+    rewrite h_eq_transl_variable0_ in h_eq_transl_var_.
     invclear h_eq_transl_var_ /sng.
     assert (e_v = other_v) /sng. { eapply storeUpdate_id_ok_same_eval_name ;eauto. }
                                subst other_v.
     exists e_t_v;split;auto.
-    functional inversion heq_make_load_;subst /sng.
+    functional inversion h_eq_make_load_;subst /sng.
     eapply eval_Eload with (Values.Vptr b ofs).
-    * { eapply wf_chain_load_var with (2:= heq_storev_e_t_v_m'_);eauto.
+    * { eapply wf_chain_load_var with (2:= h_eq_storev_e_t_v_m'_);eauto.
         - eapply wf_chain_load_aligned;eauto. }
     * simpl.
       (* Should be ok by well typedness of the chained stack wrt
            stbl (see hyp on compute_chk). *)
       (* assert (chunk = AST.chunk_of_type t). {
-           rewrite cmtype_chk with (1:=heq_transl_type_) (2:=heq_opttype_) (3:=heq0).
+           rewrite cmtype_chk with (1:=h_eq_transl_type_) (2:=h_eq_opttype_) (3:=heq0).
            reflexivity. } *)
       assert (chunk = AST.Mint32). {
-        functional inversion heq_transl_type_;subst;simpl in h_access_mode_cm_typ_nme_ /sng.
+        functional inversion h_eq_transl_type_;subst;simpl in h_access_mode_cm_typ_nme_ /sng.
         - inversion h_access_mode_cm_typ_nme_;auto.
         - inversion h_access_mode_cm_typ_nme_;auto. }
       subst.
-      specialize Mem.load_store_same with (1:=heq_store_e_t_v_m'_);intro h.
+      specialize Mem.load_store_same with (1:=h_eq_store_e_t_v_m'_);intro h.
       erewrite h.
       destruct e_t_v;auto;destruct e_v;simpl in *;try discriminate;
         now inversion h_transl_value_e_v_e_t_v_.
@@ -3986,16 +4014,16 @@ Proof.
          different, then conclude that the value stored in id' did
          not change. *)
     assert (chk = AST.Mint32) /sng. {
-      rew function_utils.compute_chnk_ok with functional inversion heq_compute_chnk_; reflexivity. }
+      rew function_utils.compute_chnk_ok with functional inversion h_eq_compute_chnk_; reflexivity. }
 
-    (*xxxx NO MORE destruct (h_stk_cmpl_s_CE_ _ _ _ heq_transl_variable0_) as [v_other_id_prev h_eval_name_other_id_val_prev_]. *)
+    (*xxxx NO MORE destruct (h_stk_cmpl_s_CE_ _ _ _ h_eq_transl_variable0_) as [v_other_id_prev h_eval_name_other_id_val_prev_]. *)
     generalize h_stk_mtch_addr_stkptr_m_;intros /sng.
     red in h_stk_mtch_addr_stkptr_m0_.
-    specialize h_stk_mtch_addr_stkptr_m0_ with (1:=heq_transl_name_).
+    specialize h_stk_mtch_addr_stkptr_m0_ with (1:=h_eq_transl_name_).
     destruct h_stk_mtch_addr_stkptr_m0_ /sng.
     red in h_stk_mtch_s_m_.
-    specialize h_stk_mtch_s_m_ with (2:=h_CM_eval_expr_addr_other_addr_other_v_) (1:=heq_transl_name_)
-                                   (5:=heq_type_of_name_) (4:=heq_transl_type_)(6:=heq_make_load_) as h.
+    specialize h_stk_mtch_s_m_ with (2:=h_CM_eval_expr_addr_other_addr_other_v_) (1:=h_eq_transl_name_)
+                                   (5:=h_eq_type_of_name_) (4:=h_eq_transl_type_)(6:=h_eq_make_load_) as h.
     
     assert (evalName stbl s (Identifier astnum other_id) (OK other_v)) /sng.
     { constructor.
@@ -4010,13 +4038,13 @@ Proof.
     split;auto.
     assert (h_aligned_m'_ : stack_localstack_aligned (Datatypes.length CE) locenv g m' stkptr). {
       eapply wf_chain_load_aligned;eauto. }
-    functional inversion heq_make_load_;subst /sng.
+    functional inversion h_eq_make_load_;subst /sng.
      
     (* inversion cm_eval_m_v_other /sng. *)
     generalize (wf_chain_load_var _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
                                   h_exct_lvlG_CE_
-                                  heq_storev_e_t_v_m'_ h_aligned_m'_
-                                  h_ofs_nonzero_ heq_transl_variable0_
+                                  h_eq_storev_e_t_v_m'_ h_aligned_m'_
+                                  h_ofs_nonzero_ h_eq_transl_variable0_
                                   h_CM_eval_expr_addr_other_addr_other_v_).
     intro /sng.
     econstructor.
@@ -4029,9 +4057,9 @@ Proof.
       clear h_tr_exp_other_.
       erewrite Mem.load_store_other;[now eassumption| now eassumption | ].
       subst nme other_nme.
-      unfold compute_chnk_id in heq_compute_chnk_.
-      destruct (symboltable.fetch_exp_type_ astnum stbl) eqn:heq_fetchvartyp_;try discriminate.
-      invclear heq_ftch_astnum_ /sng.
+      unfold compute_chnk_id in h_eq_compute_chnk_.
+      destruct (symboltable.fetch_exp_type_ astnum stbl) eqn:h_eq_fetchvartyp_;try discriminate.
+      invclear h_eq_ftch_astnum_ /sng.
       unfold stack_separate in h_separate_CE_m_.
 
 
@@ -4039,18 +4067,18 @@ Proof.
                                     (nme':=(Identifier astnum other_id))
                                     (k₂ := b0) (k₁:=b);
         clear h_separate_CE_m_;simpl;try eassumption;auto.
-        * rewrite heq_fetchvartyp_.
+        * rewrite h_eq_fetchvartyp_.
           reflexivity.
-        * rewrite heq_fetchvartyp_.
+        * rewrite h_eq_fetchvartyp_.
           reflexivity.
         * erewrite transl_variable_astnum;eauto.
         * rewrite h_access_mode_cm_typ_nme_.
           f_equal.
           eq_same_clear.
-          clear heq_type_of_name_.
-          functional inversion heq_transl_type_;subst;auto;cbn in *.
-          -- inversion heq_make_load_;reflexivity.
-          -- inversion heq_make_load_;reflexivity.
+          clear h_eq_type_of_name_.
+          functional inversion h_eq_transl_type_;subst;auto;cbn in *.
+          -- inversion h_eq_make_load_;reflexivity.
+          -- inversion h_eq_make_load_;reflexivity.
         * intro abs.
           inversion abs;subst;try discriminate.
           elim hneq_id;reflexivity.
@@ -4082,7 +4110,7 @@ Proof.
   destruct h_safe_cm_CE_m_ /sng.
   up_type.
   red in h_stk_mtch_fun_.
-  specialize (h_stk_mtch_fun_ p pb_lvl pb heq_fetch_proc_p_).
+  specialize (h_stk_mtch_fun_ p pb_lvl pb h_eq_fetch_proc_p_).
    destruct h_stk_mtch_fun_ as [CE' [CE'' [paddr [pnum [fction [lglobdef [? [? [? ?]]]]]]]]] /sng.
   exists CE', CE'', paddr, pnum, fction, lglobdef.
   split;[|split;[|split]];subst;eauto.
@@ -4103,15 +4131,15 @@ Lemma updateG_ok_frameG_same_lvl : forall stk id v stk' sto_id  lvl,
       Some (lvl,sto'_id') = update (lvl, sto_id) id' v.
 Proof.
   intros /sng.
-  specialize updateG_spec_1 with (1:=heq_updateG_stk_id_) /sng.
+  specialize updateG_spec_1 with (1:=h_eq_updateG_stk_id_) /sng.
   intro h_ex_;decomp h_ex_;subst;up_type.
   rename H2 into h_forall_.
-  rewrite heq_frameG_ in heq_frameG2_.
-  invclear heq_frameG2_ /sng.
-  unfold update in heq_update_sto_id_.
-  cbn in heq_update_sto_id_.
+  rewrite h_eq_frameG_ in h_eq_frameG2_.
+  invclear h_eq_frameG2_ /sng.
+  unfold update in h_eq_update_sto_id_.
+  cbn in h_eq_update_sto_id_.
   destruct (updates sto_id id v) eqn:heq; try discriminate /sng.
-  invclear heq_update_sto_id_ /sng.
+  invclear h_eq_update_sto_id_ /sng.
   assert (s =sto'_id').
   { eapply exact_levelG_frameG_unique_lvl;eauto.
     admit. }
@@ -4131,47 +4159,47 @@ Proof.
   intros until v.
   functional induction (updateG stk id v);simpl;intros;try discriminate;rename x into id;subst;up_type /sng.
   - unfold update;cbn.
-    invclear heq_Some_;simpl /sng.
+    invclear h_eq_Some_;simpl /sng.
     assert (reside id f = true) /sng.
     { eapply update_ok_same_reside_orig; eauto. }
-    rewrite heq_reside_ in heq_Some0_.
-    invclear heq_Some0_ /sng.
-    unfold update in heq_update_f_x_.
-    cbn in heq_update_f_x_.
+    rewrite h_eq_reside_ in h_eq_Some0_.
+    invclear h_eq_Some0_ /sng.
+    unfold update in h_eq_update_f_x_.
+    cbn in h_eq_update_f_x_.
     assert (updates sto_id id v) /sng.
 
     assert (reside id' (lvl_id, sto_id) = false) /sng.
     { cbn in *.
       destruct (resides id' sto_id);auto.
       exfalso.
-      inversion heq_Some1_.
+      inversion h_eq_Some1_.
       now apply hneq. }
-    rewrite heq_reside0_ in heq_Some1_.
-    unfold update in heq_update_f_x_.
-    cbn in heq_update_f_x_.
+    rewrite h_eq_reside0_ in h_eq_Some1_.
+    unfold update in h_eq_update_f_x_.
+    cbn in h_eq_update_f_x_.
 
-    functional inversion heq_frameG_;subst.
+    functional inversion h_eq_frameG_;subst.
     + exfalso.
       apply hneq.
       destruct (updates sto_id id v);try discriminate.
-      now inversion heq_update_f_x_.
-    + rewrite X in heq_Some1_.
-      now inversion heq_Some1_.
+      now inversion h_eq_update_f_x_.
+    + rewrite X in h_eq_Some1_.
+      now inversion h_eq_Some1_.
   - up_type.
     assert (reside id f = false) /sng.
     { apply reside_false_fetch_none_.
       rewrite <- update_ok_none;eauto. }
-    rewrite heq_reside_ in heq_Some0_.
-    invclear heq_Some_ /sng.
+    rewrite h_eq_reside_ in h_eq_Some0_.
+    invclear h_eq_Some_ /sng.
     destruct (reside id' f) eqn:heq.
-    + invclear heq_Some1_ /sng.
-      cbn in heq_frameG_.
+    + invclear h_eq_Some1_ /sng.
+      cbn in h_eq_frameG_.
       cbn in heq.
-      rewrite heq in heq_frameG_.
-      now inversion  heq_frameG_.
+      rewrite heq in h_eq_frameG_.
+      now inversion  h_eq_frameG_.
     + eapply IHo ;eauto.
-      cbn in heq_frameG_.
-      now rewrite heq in heq_frameG_.
+      cbn in h_eq_frameG_.
+      now rewrite heq in h_eq_frameG_.
 Qed.
 *)
 
@@ -4197,31 +4225,31 @@ Proof.
     subst.
     inversion h_storeUpd_;subst /sng.
     pose proof (storeUpdate_id_ok_same _ _ _ _ _ _ h_storeUpd_) /sng.
-    destruct (updateG_ok_same_orig _ _ _ _ heq_updateG_s_id_) /sng.
+    destruct (updateG_ok_same_orig _ _ _ _ h_eq_updateG_s_id_) /sng.
     rename x into e_v'.
     split;intros /sng.
-    + pose proof updateG_ok_same_frameG_orig _ _ _ _ _ _ heq_updateG_s_id_ heq_frameG_ /sng.
+    + pose proof updateG_ok_same_frameG_orig _ _ _ _ _ _ h_eq_updateG_s_id_ h_eq_frameG_ /sng.
       destruct h_ex_ /sng.
-      apply h_stk_mtch_CE_s_CE_ with (1:=heq_frameG0_).
-    + specialize h_stk_mtch_CE_s_CE'_ with (1:=heq_CEframeG_id_CE0_).
+      apply h_stk_mtch_CE_s_CE_ with (1:=h_eq_frameG0_).
+    + specialize h_stk_mtch_CE_s_CE'_ with (1:=h_eq_CEframeG_id_CE0_).
       decomp h_stk_mtch_CE_s_CE'_.
       eapply updateG_ok_same_frameG;eauto.
   - functional inversion h_eq_transl_var_ /sng.
     subst.
     inversion h_storeUpd_;subst /sng.
     pose proof storeUpdate_id_ok_others _ _ _ _ _ _ h_storeUpd_ _ hneq_id /sng.
-    destruct (updateG_ok_same_orig _ _ _ _ heq_updateG_s_id_) /sng.
-    pose proof (updateG_ok_others_frameG _ _ _ _ heq_updateG_s_id_) /sng.
+    destruct (updateG_ok_same_orig _ _ _ _ h_eq_updateG_s_id_) /sng.
+    pose proof (updateG_ok_others_frameG _ _ _ _ h_eq_updateG_s_id_) /sng.
     specialize h_forall_id'_ with (1:=hneq_id).
     split;intros /sng.
     + assert (exists sto', frameG nme s = Some (lvl, sto')) /sng.
-      { pose proof (updateG_ok_others_frameG_orig _ _ _ _ heq_updateG_s_id_ _ _ _ hneq_id heq_frameG_).
+      { pose proof (updateG_ok_others_frameG_orig _ _ _ _ h_eq_updateG_s_id_ _ _ _ hneq_id h_eq_frameG_).
         assumption. }
       destruct h_ex_ /sng.
       rename x0 into sto'.
-      specialize h_forall_id'_ with (1:=heq_frameG0_).
+      specialize h_forall_id'_ with (1:=h_eq_frameG0_).
       eapply h_stk_mtch_CE_s_CE_;eauto. 
-    + specialize h_stk_mtch_CE_s_CE'_ with (1:=heq_CEframeG_nme_CE_).
+    + specialize h_stk_mtch_CE_s_CE'_ with (1:=h_eq_CEframeG_nme_CE_).
       destruct h_stk_mtch_CE_s_CE'_;eauto.
 Qed.
 
@@ -4252,7 +4280,7 @@ Proof.
     constructor.
     eapply storeUpdate_id_ok_same;eauto.
   - red in h_stk_cmpl_s_CE_.
-    destruct h_stk_cmpl_s_CE_ with (1:=heq_transl_variable0_) /sng.
+    destruct h_stk_cmpl_s_CE_ with (1:=h_eq_transl_variable0_) /sng.
     exists x.
     constructor.
     invclear h_eval_name_x_ /sng.
@@ -4283,20 +4311,20 @@ Proof.
   intros /sng.
   destruct h_match_env_ /sng.
   destruct h_safe_cm_CE_m_ /sng.
-  decomp (storev_inv _ _ _ _ _ heq_storev_e_v_t_m'_);subst.
-  functional inversion heq_transl_name0_;subst /sng.
-  generalize heq_transl_name_.
+  decomp (storev_inv _ _ _ _ _ h_eq_storev_e_v_t_m'_);subst.
+  functional inversion h_eq_transl_name0_;subst /sng.
+  generalize h_eq_transl_name_.
   intro h_transl_name_remember_.
   functional inversion h_transl_name_remember_.
   eapply wf_chain_load_var' with (m:=m) in h_CM_eval_expr_nme_t_.
   - eapply wf_chain_load_var' with (m:=m) in h_CM_eval_expr_nme'_t_.
-    + eapply h_separate_CE_m_ with (1:=heq_type_of_name_);eauto.
+    + eapply h_separate_CE_m_ with (1:=h_eq_type_of_name_);eauto.
     + apply h_inv_comp_CE_stbl_.
     + eassumption.
     + assumption.
     + eapply eval_build_loads_offset_non_null_var with (6:=h_CM_eval_expr_id_t_id_t_v_)
       ;eauto with spark.
-    + simpl in heq_transl_name0_.
+    + simpl in h_eq_transl_name0_.
       eauto.
   - apply h_inv_comp_CE_stbl_.
   - eassumption.
@@ -4357,8 +4385,8 @@ Proof.
   destruct (Nat.eq_dec id0 id) /sng.
   - subst.
     apply h_overf_e_v_.
-    erewrite storeUpdate_id_ok_same in heq_SfetchG_id0_s'_;eauto.
-    inversion heq_SfetchG_id0_s'_ /sng.
+    erewrite storeUpdate_id_ok_same in h_eq_SfetchG_id0_s'_;eauto.
+    inversion h_eq_SfetchG_id0_s'_ /sng.
     reflexivity.
   - red in h_safe_stack_s_.
     apply h_safe_stack_s_ with (id:=id0);eauto.
@@ -4507,16 +4535,16 @@ Proof.
   revert s' h.
   functional induction (ST.updateG s x v);try now(intros;discriminate) /sng.
   - intros /sng.
-    invclear heq_Some_ /sng.
+    invclear h_eq_Some_ /sng.
     eapply update_nodup;eauto.
   - intros /sng.
-    invclear heq_Some_ /sng.
+    invclear h_eq_Some_ /sng.
     specialize (h_forall_s'_ s'').
     assert (NoDup s') as h_nodup_s'_.
     { eapply stack_NoDup_cons; eauto. }
     assert (NoDup_G s') as h_nodupG_s'_.
     { eapply stack_NoDup_G_cons; eauto. }
-    specialize h_forall_s'_ with (1:=h_nodupG_s'_) (2:=heq_updateG_s'_x_) (3:=h_nodup_s'_).
+    specialize h_forall_s'_ with (1:=h_nodupG_s'_) (2:=h_eq_updateG_s'_x_) (3:=h_nodup_s'_).
     eapply nodup_cons with (1:=h_forall_s'_).
     apply stack_NoDup_prefix  with (CE1:=[f])(CE2:=s');eauto.
 Qed.
@@ -4532,7 +4560,7 @@ Proof.
   intros /sng.
   inversion h_storeUpd_ /sng.
   clear h_storeUpd_.
-  specialize updateG_spec_1 with (1:=heq_updateG_s_x0_).
+  specialize updateG_spec_1 with (1:=h_eq_updateG_s_x0_).
   intro h.
   decomp h.
   subst.
@@ -4548,7 +4576,7 @@ Proof.
   intros /sng.
   inversion h_storeUpd_ /sng.
   clear h_storeUpd_.
-  specialize updateG_spec_1 with (1:=heq_updateG_s_x0_).
+  specialize updateG_spec_1 with (1:=h_eq_updateG_s_x0_).
   intro h.
   decomp h.
   subst.
@@ -4580,7 +4608,7 @@ Lemma assignment_preserve_match_env_:
       match_env_ stbl s' CE (Values.Vptr spb ofs) locenv g m'.
 Proof.
   intros /sng.
-  generalize heq_transl_name_; unfold transl_name;intro /sng.
+  generalize h_eq_transl_name_; unfold transl_name;intro /sng.
   split;eauto with spark.
   - red.
     transitivity (Datatypes.length s).
@@ -4613,7 +4641,7 @@ Lemma match_env_cons_:
 Proof.
   unfold stack_match.
   intros /sng.
-  functional inversion heq_transl_name_;subst /sng.
+  functional inversion h_eq_transl_name_;subst /sng.
   functional inversion h_eq_transl_var_;subst.
   assert (evalName stbl s (Identifier astnum id) (OK v)).
   { admit. (* invariant_compile mplies that CE has no shadowing, thus  *)
@@ -4627,9 +4655,9 @@ Proof.
   revert dependent h_inv_comp_CE_stbl_.
   revert dependent hneq0.
   revert locenv g sp sp' v load_addr_nme.
-  functional inversion heq_transl_name_ /sng.
-  clear heq_transl_name_.
-  revert h_eq_transl_var_ heq_nme_. heq_nme0_.
+  functional inversion h_eq_transl_name_ /sng.
+  clear h_eq_transl_name_.
+  revert h_eq_transl_var_ h_eq_nme_. h_eq_nme0_.
   remember (tl CE) as CE'.
   revert CE HeqCE' nme_t nme nme0.
   functional induction transl_variable stbl CE' astnum id;simpl;!intros /sng.
@@ -4944,16 +4972,16 @@ Proof.
   (* to avoid duplicating In and In_Out The three following cases are identical, i.e. the parameter mode
        should not be case split but functional induction does and I don't
        want to make the induction by hand. *)
-  - specialize (h_forall_initparams_ _ h_exct_lvlG_CE_ h_nonul_ofs_CE_ h_no_overf_CE_ heq_store_params_).
+  - specialize (h_forall_initparams_ _ h_exct_lvlG_CE_ h_nonul_ofs_CE_ h_no_overf_CE_ h_eq_store_params_).
     invclear h_exec_stmt_initparams_Out_normal_; eq_same_clear /sng.
-    specialize h_forall_initparams_ with (astnum:=astnum)(1:=heq_length_)(4:=h_exec_stmt_x0_Out_normal_).
+    specialize h_forall_initparams_ with (astnum:=astnum)(1:=h_eq_length_)(4:=h_exec_stmt_x0_Out_normal_).
     rename m1 into m_mid.
     rename e1 into e_mid.
     assert ({parameter_mode prm = Out} + {parameter_mode prm <> Out}) as h /sng. {
       destruct (parameter_mode prm);auto.
       all:right;intro abs;discriminate. }
     destruct h /sng.
-    { rewrite heq_parameter_mode_ in *|-*.
+    { rewrite h_eq_parameter_mode_ in *|-*.
       simpl in *.
       inversion h_exec_stmt_ /sng.
       apply h_forall_initparams_;auto. }
@@ -4965,11 +4993,11 @@ Proof.
         reflexivity.
       - eauto. }
     decomp h_ex_.
-    rewrite heq_build_param_copyin_assign_ in h_exec_stmt_.
+    rewrite h_eq_build_param_copyin_assign_ in h_exec_stmt_.
     inversion h_exec_stmt_ /sng.
     assert (stack_localstack_aligned (Datatypes.length CE) e_mid g m_mid sp) /sng.
     { 
-      unfold Mem.storev in heq_storev_v_x1_v_m_mid_.
+      unfold Mem.storev in h_eq_storev_v_x1_v_m_mid_.
       destruct x1_v; try discriminate.
       eapply wf_chain_load_aligned;eauto.
       eapply eval_build_loads_offset_non_null_var;eauto. }
@@ -4993,23 +5021,23 @@ Proof.
         * red;intros /sng.
           red in h_invis_sp__m_sp_id_ofs_id_.
           specialize (h_invis_sp__m_sp_id_ofs_id_
-                        id id_t id_chk spb_id ofs_id0 h_eq_transl_var_ heq_compute_chnk_id_).
+                        id id_t id_chk spb_id ofs_id0 h_eq_transl_var_ h_eq_compute_chnk_id_).
           set (val_id_t:=(Values.Vptr spb_id ofs_id0)) in *;up_type.
           assert (Cminor.eval_expr g sp e_mid m id_t val_id_t) /sng.
-          { unfold Mem.storev in heq_storev_v_x1_v_m_mid_.
+          { unfold Mem.storev in h_eq_storev_v_x1_v_m_mid_.
             destruct x1_v; try discriminate.
             eapply eval_expr_transl_variable_inv_locenv with (locenv:=e_chain');eauto.
             eapply wf_chain_load_var'.
             - eassumption.
-            - cbn. eapply heq_storev_v_x1_v_m_mid_.
+            - cbn. eapply h_eq_storev_v_x1_v_m_mid_.
             - assumption.
             - eapply eval_build_loads_offset_non_null_var.
               + eassumption.
               + eassumption.
               + eassumption.
               + exact h_aligned_g_m_. (*xxx instantiate correctly. shelve.*)
-              + cbn in heq_transl_name_.
-                eapply heq_transl_name_.
+              + cbn in h_eq_transl_name_.
+                eapply h_eq_transl_name_.
               + eassumption.
             - eassumption.
             - eapply eval_expr_transl_variable_inv_locenv ; eauto. }
@@ -5020,7 +5048,7 @@ Proof.
           apply h_neg_free_blck_m_sp_id_ofs_id_.
           intros perm. 
           intro abs2.
-          unfold Mem.storev in heq_storev_v_x1_v_m_mid_.
+          unfold Mem.storev in h_eq_storev_v_x1_v_m_mid_.
           destruct x1_v; try discriminate.
           eapply Mem.perm_store_1 in abs2;eauto.
           eapply abs;eassumption.
@@ -5030,10 +5058,10 @@ Proof.
         * red;intros /sng.
           red in h_invis_sp__m_mid_sp_id_ofs_id_.
           specialize (h_invis_sp__m_mid_sp_id_ofs_id_
-                        id id_t id_chk spb_id ofs_id0 h_eq_transl_var_ heq_compute_chnk_id_).
+                        id id_t id_chk spb_id ofs_id0 h_eq_transl_var_ h_eq_compute_chnk_id_).
           set (val_id_t:=(Values.Vptr spb_id ofs_id0)) in *;up_type.
           assert (Cminor.eval_expr g sp e_mid m_mid id_t val_id_t) /sng.
-          { unfold Mem.storev in heq_storev_v_x1_v_m_mid_.
+          { unfold Mem.storev in h_eq_storev_v_x1_v_m_mid_.
             destruct x1_v; try discriminate.
             eapply eval_expr_transl_variable_inv_locenv with (locenv:=e_mid);eauto.
             eapply wf_chain_load_var.
@@ -5045,8 +5073,8 @@ Proof.
             + eassumption.
             + eassumption.
             + exact h_aligned_g_m_. (*xxx instantiate correctly. shelve.*)
-            + cbn in heq_transl_name_.
-              eapply heq_transl_name_.
+            + cbn in h_eq_transl_name_.
+              eapply h_eq_transl_name_.
             + eassumption. }
           specialize (h_invis_sp__m_mid_sp_id_ofs_id_ h_CM_eval_expr_id_t_val_id_t_).
           assumption.
@@ -5055,7 +5083,7 @@ Proof.
           apply h_neg_free_blck_m_mid_sp_id_ofs_id_.
           intros perm. 
           intro abs2.
-          unfold Mem.storev in heq_storev_v_x1_v_m_mid_.
+          unfold Mem.storev in h_eq_storev_v_x1_v_m_mid_.
           destruct x1_v; try discriminate.
           eapply Mem.perm_store_2 in abs2;eauto.
           eapply abs;eassumption. }
@@ -5080,16 +5108,16 @@ Proof.
   intros /sng.
   pose proof (exec_store_params_preserve_forbidden_subproof
                   _ _ _ _ h_exct_lvlG_CE_ h_nonul_ofs_CE_ h_no_overf_CE_
-                  heq_store_prms_lparams_initparams_
-                  astnum _ proc_t _ _ _ _ _ _ _ heq_length_ h_chain_m_lvl_sp_ h_aligned_g_m_
+                  h_eq_store_prms_lparams_initparams_
+                  astnum _ proc_t _ _ _ _ _ _ _ h_eq_length_ h_chain_m_lvl_sp_ h_aligned_g_m_
                   h_exec_stmt_initparams_Out_normal_) /sng.
   decomp h_and_.
-  revert initparams h_exct_lvlG_CE_ h_nonul_ofs_CE_ heq_store_prms_lparams_initparams_ astnum g proc_t
-         sp e_chain m t2 e_postchain m' lvl heq_length_ h_aligned_g_m_ h_exec_stmt_initparams_Out_normal_
+  revert initparams h_exct_lvlG_CE_ h_nonul_ofs_CE_ h_eq_store_prms_lparams_initparams_ astnum g proc_t
+         sp e_chain m t2 e_postchain m' lvl h_eq_length_ h_aligned_g_m_ h_exec_stmt_initparams_Out_normal_
          h_unch_forbid_m_m'_ h_chain_m_lvl_sp_ h_chain_m'_lvl_sp_.
   rew store_params_ok with functional induction function_utils.store_params st CE lparams;
     cbn;!intros;try discriminate /sng.
-  - invclear heq_OK_ /sng.
+  - invclear h_eq_OK_ /sng.
     inversion h_exec_stmt_initparams_Out_normal_;subst.
     apply Mem.unchanged_on_refl.
     (* The three following cases are identical, i.e. the parameter mode
@@ -5097,22 +5125,22 @@ Proof.
        want to make the induction by hand. *)
   - rename x0 into initparams'.
     rename x1 into prm_name_t.
-    invclear heq_OK_ /sng.
+    invclear h_eq_OK_ /sng.
     invclear h_exec_stmt_initparams_Out_normal_; eq_same_clear /sng.
     assert (stack_localstack_aligned (Datatypes.length CE) e1 g m1 sp) /sng.
     { destruct (parameter_mode prm);simpl in h_exec_stmt_.
       - inversion h_exec_stmt_ /sng.
-        destruct prm_name_t_v;try now (cbn in heq_storev_v_m1_; discriminate).
+        destruct prm_name_t_v;try now (cbn in h_eq_storev_v_m1_; discriminate).
         eapply wf_chain_load_aligned;eauto.
         eapply eval_build_loads_offset_non_null_var;eauto.
       - inversion h_exec_stmt_ /sng.
         assumption.
       - inversion h_exec_stmt_ /sng.
-        destruct prm_name_t_v;try now (cbn in heq_storev_v_m1_; discriminate).
+        destruct prm_name_t_v;try now (cbn in h_eq_storev_v_m1_; discriminate).
         eapply wf_chain_load_aligned;eauto.
         eapply eval_build_loads_offset_non_null_var;eauto. }
-    specialize (h_forall_initparams_ _ h_exct_lvlG_CE_ h_nonul_ofs_CE_ heq_store_params_ astnum
-                    _ _ _ _ _ _ _ _ _ heq_length_ h_aligned_g_m1_ h_exec_stmt_initparams'_Out_normal_).
+    specialize (h_forall_initparams_ _ h_exct_lvlG_CE_ h_nonul_ofs_CE_ h_eq_store_params_ astnum
+                    _ _ _ _ _ _ _ _ _ h_eq_length_ h_aligned_g_m1_ h_exec_stmt_initparams'_Out_normal_).
     rename m1 into m_mid.
     rename e1 into e_mid.
     (* invclear h_exec_stmt_ /sng. *)
@@ -5120,13 +5148,13 @@ Proof.
     assert (chained_stack_structure m_mid lvl sp) /sng.
     { destruct (parameter_mode prm);simpl in h_exec_stmt_.
       - invclear h_exec_stmt_ /sng.
-        destruct prm_name_t_v eqn:heqstorev;try now (cbn in heq_storev_v_m_mid_; discriminate).
+        destruct prm_name_t_v eqn:heqstorev;try now (cbn in h_eq_storev_v_m_mid_; discriminate).
         subst.
         eapply assignment_preserve_chained_stack_structure with (m:=m);eauto.
       - invclear h_exec_stmt_ /sng.
         assumption.
       - invclear h_exec_stmt_ /sng.
-        destruct prm_name_t_v eqn:heqstorev;try now (cbn in heq_storev_v_m_mid_; discriminate).
+        destruct prm_name_t_v eqn:heqstorev;try now (cbn in h_eq_storev_v_m_mid_; discriminate).
         subst.
         eapply assignment_preserve_chained_stack_structure with (m:=m);eauto. }
     assert (chained_stack_structure m' lvl sp ∧ unchange_forbidden st CE g astnum e_mid e_postchain sp m_mid m') /sng.
@@ -5149,15 +5177,15 @@ Proof.
     destruct (parameter_mode prm);simpl in h_exec_stmt_.
     { invclear h_exec_stmt_ /sng.
       apply trans_unchanged with m_mid;auto.
-      + unfold Mem.storev in heq_storev_v_m_mid_.
+      + unfold Mem.storev in h_eq_storev_v_m_mid_.
         destruct prm_name_t_v;try now discriminate.
         eapply Mem.store_unchanged_on;eauto;intros /sng.
         unfold forbidden.
         intros [abs1 abs2].
         red in abs1.
-        cbn in heq_transl_name_.
-        setoid_rewrite <- transl_variable_astnum with (a:=astnum) in heq_transl_name_;eauto.
-        specialize (abs1 (parameter_name prm) prm_name_t x b i heq_transl_name_ heq_compute_chnk_ h_CM_eval_expr_prm_name_t_prm_name_t_v_).
+        cbn in h_eq_transl_name_.
+        setoid_rewrite <- transl_variable_astnum with (a:=astnum) in h_eq_transl_name_;eauto.
+        specialize (abs1 (parameter_name prm) prm_name_t x b i h_eq_transl_name_ h_eq_compute_chnk_ h_CM_eval_expr_prm_name_t_prm_name_t_v_).
         destruct abs1; try lia /sng.
       + eapply unchanged_on_iff  ;eauto.
         red; red ; intros;subst /sng.
@@ -5166,15 +5194,15 @@ Proof.
       assumption. }
     { invclear h_exec_stmt_ /sng.
       apply trans_unchanged with m_mid;auto.
-      + unfold Mem.storev in heq_storev_v_m_mid_.
+      + unfold Mem.storev in h_eq_storev_v_m_mid_.
         destruct prm_name_t_v;try now discriminate.
         eapply Mem.store_unchanged_on;eauto;intros /sng.
         unfold forbidden.
         intros [abs1 abs2].
         red in abs1.
-        cbn in heq_transl_name_.
-        setoid_rewrite <- transl_variable_astnum with (a:=astnum) in heq_transl_name_;eauto.
-        specialize (abs1 (parameter_name prm) prm_name_t x b i heq_transl_name_ heq_compute_chnk_ h_CM_eval_expr_prm_name_t_prm_name_t_v_).
+        cbn in h_eq_transl_name_.
+        setoid_rewrite <- transl_variable_astnum with (a:=astnum) in h_eq_transl_name_;eauto.
+        specialize (abs1 (parameter_name prm) prm_name_t x b i h_eq_transl_name_ h_eq_compute_chnk_ h_CM_eval_expr_prm_name_t_prm_name_t_v_).
         destruct abs1; try lia /sng.
       + eapply unchanged_on_iff  ;eauto.
         red; red ; intros;subst /sng.
@@ -5216,7 +5244,7 @@ Proof.
       * red;intros /sng.
         red in h_neg_free_blck_m_sp_id_ofs_id_.
         specialize (fun spb_id ofs_id0 => h_invis_sp__m_sp_id_ofs_id_
-                                            _ _ _ spb_id ofs_id0 h_eq_transl_var_ heq_compute_chnk_id_).
+                                            _ _ _ spb_id ofs_id0 h_eq_transl_var_ h_eq_compute_chnk_id_).
         specialize (h_invis_sp__m_sp_id_ofs_id_ spb_id ofs_id0).
         assert (Cminor.eval_expr g sp e_chain m id_t (Values.Vptr spb_id ofs_id0)) /sng.
         { assert (Cminor.eval_expr g sp e_chain m' id_t (Values.Vptr spb_id ofs_id0)) /sng.
@@ -5224,25 +5252,25 @@ Proof.
           inversion h_exec_stmt_locvarinit_Out_normal_;subst /sng.
           destruct objname_t_v;try discriminate.
           eapply wf_chain_load_var';auto;eauto.
-          functional inversion heq_transl_name_;subst /sng.
-          functional inversion heq_transl_variable0_;subst /sng.
-          pose proof (h_nonul_ofs_CE_ _ _ heq_CEfetchG_) /sng.
+          functional inversion h_eq_transl_name_;subst /sng.
+          functional inversion h_eq_transl_variable0_;subst /sng.
+          pose proof (h_nonul_ofs_CE_ _ _ h_eq_CEfetchG_) /sng.
           assert (chained_stack_structure m (m'0 - m0) sp) /sng.
           { 
-            (*rewrite heq_lvloftop_CE_lvl_ in heq_lvloftop_CE_m'0_.*)
-(*             inversion heq_lvloftop_CE_m'0_;subst. *)
+            (*rewrite h_eq_lvloftop_CE_lvl_ in h_eq_lvloftop_CE_m'0_.*)
+(*             inversion h_eq_lvloftop_CE_m'0_;subst. *)
             eapply chained_stack_structure_le;eauto.
             assert (Datatypes.length CE = (S m'0)) by (eapply exact_level_top_lvl;eauto) /sng.
-            rewrite heq_length_.
+            rewrite h_eq_length_.
             lia. }
           red in h_no_overf_CE_.
-          specialize h_no_overf_CE_ with (1:= heq_CEfetchG_).
+          specialize h_no_overf_CE_ with (1:= h_eq_CEfetchG_).
           
           
           assert (n mod Int.modulus = n) /sng.
           { apply Z.mod_small.
             assumption. }
-          specialize chain_struct_build_loads_ofs with (1:=h_chain_m_) (2:=heq_modulo_)
+          specialize chain_struct_build_loads_ofs with (1:=h_chain_m_) (2:=h_eq_modulo_)
                                                        (3:=h_CM_eval_expr_objname_t_objname_t_v_);intro /sng.
           (* pose proof (chain_struct_build_loads_ofs _ _ _ h_chain_sp_ n _ _ _ _ h_CM_eval_expr_objname_t_objname_t_v_) . *)
 
@@ -5256,12 +5284,12 @@ Proof.
       * unfold is_free_block in *.
         inversion h_exec_stmt_locvarinit_Out_normal_ /sng.
         destruct objname_t_v;try discriminate.
-        unfold Mem.storev in heq_storev_e_t_v_m'_.
+        unfold Mem.storev in h_eq_storev_e_t_v_m'_.
         intro abs.
         apply h_neg_free_blck_m_sp_id_ofs_id_.
         intros perm. 
         intro abs2.
-        apply (Mem.perm_store_1 _ _ _ _ _ _ heq_storev_e_t_v_m'_) in abs2.
+        apply (Mem.perm_store_1 _ _ _ _ _ _ h_eq_storev_e_t_v_m'_) in abs2.
         specialize (abs perm);contradiction.
     + intros /sng.
       unfold forbidden.
@@ -5269,7 +5297,7 @@ Proof.
       split.
       * red;intros /sng.
         red in h_invis_sp__m'_sp_id_ofs_id_.
-        specialize (fun spb_id ofs_id0 => h_invis_sp__m'_sp_id_ofs_id_ _ _ _ spb_id ofs_id0 h_eq_transl_var_ heq_compute_chnk_id_).
+        specialize (fun spb_id ofs_id0 => h_invis_sp__m'_sp_id_ofs_id_ _ _ _ spb_id ofs_id0 h_eq_transl_var_ h_eq_compute_chnk_id_).
         specialize (h_invis_sp__m'_sp_id_ofs_id_ spb_id ofs_id0).
         assert (Cminor.eval_expr g sp e_chain' m' id_t (Values.Vptr spb_id ofs_id0)) /sng.
         { assert (Cminor.eval_expr g sp e_chain' m id_t (Values.Vptr spb_id ofs_id0)) /sng.
@@ -5277,20 +5305,20 @@ Proof.
           inversion h_exec_stmt_locvarinit_Out_normal_;subst /sng.
           destruct objname_t_v;try discriminate.
           assert (4 <= Ptrofs.unsigned i).
-          { functional inversion heq_transl_name_;subst /sng.
-            functional inversion heq_transl_variable0_;subst /sng.
-            pose proof (h_nonul_ofs_CE_ _ _ heq_CEfetchG_) /sng.
+          { functional inversion h_eq_transl_name_;subst /sng.
+            functional inversion h_eq_transl_variable0_;subst /sng.
+            pose proof (h_nonul_ofs_CE_ _ _ h_eq_CEfetchG_) /sng.
             assert (chained_stack_structure m (m'0 - m0) sp) /sng.
             { eapply chained_stack_structure_le;eauto.
               assert (Datatypes.length CE = (S m'0)) by (eapply exact_level_top_lvl;eauto) /sng.
-              rewrite heq_length_.
+              rewrite h_eq_length_.
               lia. }
           red in h_no_overf_CE_.
-          specialize h_no_overf_CE_ with (1:= heq_CEfetchG_).
+          specialize h_no_overf_CE_ with (1:= h_eq_CEfetchG_).
           assert (n mod Int.modulus = n) /sng.
           { apply Z.mod_small.
             assumption. }
-          specialize chain_struct_build_loads_ofs with (1:=h_chain_m_) (2:=heq_modulo_)
+          specialize chain_struct_build_loads_ofs with (1:=h_chain_m_) (2:=h_eq_modulo_)
                                                        (3:=h_CM_eval_expr_objname_t_objname_t_v_);intro /sng.
 
             subst.
@@ -5304,12 +5332,12 @@ Proof.
       * unfold is_free_block in *.
         inversion h_exec_stmt_locvarinit_Out_normal_ /sng.
         destruct objname_t_v;try discriminate.
-        unfold Mem.storev in heq_storev_e_t_v_m'_.
+        unfold Mem.storev in h_eq_storev_e_t_v_m'_.
         intro abs.
         apply h_neg_free_blck_m'_sp_id_ofs_id_.
         intros perm. 
         intro abs2.
-        apply (Mem.perm_store_2 _ _ _ _ _ _ heq_storev_e_t_v_m'_) in abs2.
+        apply (Mem.perm_store_2 _ _ _ _ _ _ h_eq_storev_e_t_v_m'_) in abs2.
         specialize (abs perm);contradiction.
   - inversion h_exec_stmt_locvarinit_Out_normal_ /sng.
     + eapply h_forall_locvarinit0_ with (m:=m1);eauto.
@@ -5349,38 +5377,38 @@ Proof.
   specialize exec_init_locals_preserve_forbidden_subproof
     with (astnum:=astnum)
       (1:=h_exct_lvlG_CE_) (2:=h_nonul_ofs_CE_) (3:=h_no_overf_CE_) 
-         (4:=heq_init_lcl_decl_locvarinit_)
-         (5:=heq_length_) (6:=h_chain_m_lvl_sp_) (7:=h_aligned_g_m_)
+         (4:=h_eq_init_lcl_decl_locvarinit_)
+         (5:=h_eq_length_) (6:=h_chain_m_lvl_sp_) (7:=h_aligned_g_m_)
          (8:=h_exec_stmt_locvarinit_Out_normal_).
   intro /sng.
   decomp h_and_.
-  revert locvarinit h_exct_lvlG_CE_ h_nonul_ofs_CE_ heq_init_lcl_decl_locvarinit_ astnum g proc_t sp
-         e_chain m t2 e_postchain m' h_aligned_g_m_ lvl heq_length_ h_exec_stmt_locvarinit_Out_normal_
+  revert locvarinit h_exct_lvlG_CE_ h_nonul_ofs_CE_ h_eq_init_lcl_decl_locvarinit_ astnum g proc_t sp
+         e_chain m t2 e_postchain m' h_aligned_g_m_ lvl h_eq_length_ h_exec_stmt_locvarinit_Out_normal_
          h_unch_forbid_m_m'_ h_chain_m_lvl_sp_ h_chain_m'_lvl_sp_.
   rew init_locals_ok with
     functional induction function_utils.init_locals st CE decl;cbn;!intros;try discriminate /sng.
-  - invclear heq_OK_; inversion h_exec_stmt_locvarinit_Out_normal_;subst /sng. apply Mem.unchanged_on_refl.
-  - invclear heq_OK_; inversion h_exec_stmt_locvarinit_Out_normal_;subst; apply Mem.unchanged_on_refl /sng.
+  - invclear h_eq_OK_; inversion h_exec_stmt_locvarinit_Out_normal_;subst /sng. apply Mem.unchanged_on_refl.
+  - invclear h_eq_OK_; inversion h_exec_stmt_locvarinit_Out_normal_;subst; apply Mem.unchanged_on_refl /sng.
   - rename x1 into objname_t.
     rename x into chk_objdecl.
-    invclear heq_OK_ /sng.
+    invclear h_eq_OK_ /sng.
     invclear h_exec_stmt_locvarinit_Out_normal_; eq_same_clear;up_type /sng.
-    unfold Mem.storev in heq_storev_e_t_v_m'_.
+    unfold Mem.storev in h_eq_storev_e_t_v_m'_.
     destruct objname_t_v ;try now discriminate.
     eapply Mem.store_unchanged_on;eauto;intros /sng.
     unfold forbidden.
     intros [abs1 abs2].
     red in abs1.
-    cbn in heq_transl_name_.
-    setoid_rewrite <- transl_variable_astnum with (a:=astnum) in heq_transl_name_;eauto.
-    specialize (abs1 (object_name objdecl) objname_t chk_objdecl b i heq_transl_name_ heq_compute_chnk_ h_CM_eval_expr_objname_t_objname_t_v_).
+    cbn in h_eq_transl_name_.
+    setoid_rewrite <- transl_variable_astnum with (a:=astnum) in h_eq_transl_name_;eauto.
+    specialize (abs1 (object_name objdecl) objname_t chk_objdecl b i h_eq_transl_name_ h_eq_compute_chnk_ h_CM_eval_expr_objname_t_objname_t_v_).
     destruct abs1;try lia /sng.
-  - invclear heq_OK_; inversion h_exec_stmt_locvarinit_Out_normal_;subst; apply Mem.unchanged_on_refl /sng.
+  - invclear h_eq_OK_; inversion h_exec_stmt_locvarinit_Out_normal_;subst; apply Mem.unchanged_on_refl /sng.
   - invclear h_exec_stmt_locvarinit_Out_normal_; eq_same_clear;up_type /sng.
     apply Mem.unchanged_on_refl.    
   - rename x into stmt1.
     rename x0 into stmt2.
-    invclear heq_OK_ /sng.
+    invclear h_eq_OK_ /sng.
     invclear h_exec_stmt_locvarinit_Out_normal_; eq_same_clear;up_type /sng.
     rename m1 into m_mid.
     rename e1 into e_mid.
@@ -5454,7 +5482,7 @@ Lemma build_compilenv_exact_lvl:
     CompilEnv.exact_levelG CE'.
 Proof.
   intros /sng.
-  rew build_compilenv_ok with functional inversion heq_build_compilenv_.
+  rew build_compilenv_ok with functional inversion h_eq_build_compilenv_.
   unfold stoszchainparam in *.
   simpl in *.
   constructor;auto.
@@ -5465,7 +5493,7 @@ Qed.
 Lemma compute_size_pos : forall st subtyp_mrk x, spark2Cminor.compute_size st subtyp_mrk =: x -> (x>0).
 Proof.
   intros /sng.
-  rew compute_size_ok with functional inversion heq_cmpt_size_subtyp_mrk_ /sng.
+  rew compute_size_ok with functional inversion h_eq_cmpt_size_subtyp_mrk_ /sng.
   apply size_chunk_pos.
 Qed.
 
@@ -5475,7 +5503,7 @@ Proof.
   unfold compute_size in *.
   (* functional inbversion would be better *)
   destruct (compute_chnk_of_type stbl t); cbv in  *;try discriminate.
-  destruct m;cbv in *;try inversion heq_cmpt_size_t_;auto.
+  destruct m;cbv in *;try inversion h_eq_cmpt_size_t_;auto.
 Qed.
  *)
 
@@ -5498,14 +5526,14 @@ Lemma build_frame_lparams_mon: forall st stosz lparams sto' sz',
 Proof.
   intros until lparams /sng.
   functional induction (function_utils.build_frame_lparams st stosz lparams);cbn;!intros;subst /sng.
-  - invclear heq_OK_ /sng.
+  - invclear h_eq_OK_ /sng.
     split;intros /sng.
     + cbn. reflexivity.
-    + inversion heq_pair_;subst;eauto 5.
-  - rewrite heq_add_to_fr_nme_ in heq_bind_.
+    + inversion h_eq_pair_;subst;eauto 5.
+  - rewrite h_eq_add_to_fr_nme_ in h_eq_bind_.
     cbn [bind] in *.
-    specialize (h_forall_sto'_ _ _ heq_bind_).
-    rew function_utils.add_to_frame_ok with functional inversion heq_add_to_fr_nme_;subst;cbn /sng.
+    specialize (h_forall_sto'_ _ _ h_eq_bind_).
+    rew function_utils.add_to_frame_ok with functional inversion h_eq_add_to_fr_nme_;subst;cbn /sng.
     cbn in h_forall_sto'_.
     destruct h_forall_sto'_ as [IHr1 IHr3].
     subst new_size.
@@ -5514,21 +5542,21 @@ Proof.
     + assert (x0>0) by (eapply compute_size_pos;eauto) /sng.
       lia.
     + intros /sng.
-      inversion heq_pair_;subst.
+      inversion h_eq_pair_;subst.
       specialize (IHr3 ((nme, sz0) :: stoszchainparam) (sz0 + x0) eq_refl k).
       apply IHr3 with (nme:=nme0);auto.
       * intros /sng.
-        cbn in heq_CEfetches_nme1_.
+        cbn in h_eq_CEfetches_nme1_.
         destruct (nme1 =? nme)%nat.
-        -- invclear heq_CEfetches_nme1_;auto /sng.
-        -- inversion heq_pair_;subst;eauto.
+        -- invclear h_eq_CEfetches_nme1_;auto /sng.
+        -- inversion h_eq_pair_;subst;eauto.
       * assert (x0>0) by (eapply compute_size_pos;eauto) /sng.
         split; try lia.
-        rewrite Z.geb_leb in heq_geb_.
+        rewrite Z.geb_leb in h_eq_geb_.
         apply Z.leb_gt.
         assumption.
-  - rewrite heq_add_to_fr_ERR_nme_ in heq_bind_.
-    cbn in heq_bind_.
+  - rewrite h_eq_add_to_fr_ERR_nme_ in h_eq_bind_.
+    cbn in h_eq_bind_.
     discriminate.
 Qed.
 
@@ -5539,22 +5567,22 @@ Lemma build_frame_lparams_mon'': forall st stosz lparams sto' sz',
 Proof.
   intros until lparams /sng.
   functional induction (function_utils.build_frame_lparams st stosz lparams);cbn;!intros;subst /sng.
-  - invclear heq_OK_ /sng.
+  - invclear h_eq_OK_ /sng.
     cbn in *.
     assumption.
-  - rewrite heq_add_to_fr_nme_ in heq_bind_.
+  - rewrite h_eq_add_to_fr_nme_ in h_eq_bind_.
     cbn [bind] in *.
-    specialize (h_forall_sto'_ _ _ heq_bind_).
-    rew function_utils.add_to_frame_ok with functional inversion heq_add_to_fr_nme_;subst;cbn /sng.
+    specialize (h_forall_sto'_ _ _ h_eq_bind_).
+    rew function_utils.add_to_frame_ok with functional inversion h_eq_add_to_fr_nme_;subst;cbn /sng.
     subst new_size.
     subst new_cenv.
     cbn in h_forall_sto'_.
     apply h_forall_sto'_.
-    rewrite Z.geb_leb in heq_geb_.
-    apply Z.leb_gt in heq_geb_.
+    rewrite Z.geb_leb in h_eq_geb_.
+    apply Z.leb_gt in h_eq_geb_.
     lia.
-  - rewrite heq_add_to_fr_ERR_nme_ in heq_bind_.
-    cbn in heq_bind_.
+  - rewrite h_eq_add_to_fr_ERR_nme_ in h_eq_bind_.
+    cbn in h_eq_bind_.
     discriminate.
 Qed.
 (* build_frame_lparams return a non overflowed store, but the size may = to Int.modulus.
@@ -5576,22 +5604,22 @@ Lemma build_frame_lparams_mon': forall st stosz lparams sto' sz',
 Proof.
   intros until lparams /sng.
   functional induction (function_utils.build_frame_lparams st stosz lparams);cbn;!intros;subst /sng.
-  - invclear heq_OK_ /sng.
+  - invclear h_eq_OK_ /sng.
     split;[split|intros] /sng.
     + cbn. reflexivity.
     + cbn in *.
       assumption.
-    + inversion heq_pair_;subst;eauto 5.
-  - rewrite heq_add_to_fr_nme_ in heq_bind_.
+    + inversion h_eq_pair_;subst;eauto 5.
+  - rewrite h_eq_add_to_fr_nme_ in h_eq_bind_.
     cbn [bind] in *.
-    specialize (h_forall_sto'_ _ _ heq_bind_).
-    rew function_utils.add_to_frame_ok with functional inversion heq_add_to_fr_nme_;subst;cbn /sng.
+    specialize (h_forall_sto'_ _ _ h_eq_bind_).
+    rew function_utils.add_to_frame_ok with functional inversion h_eq_add_to_fr_nme_;subst;cbn /sng.
     assert (x0 >0) /sng.
     { eapply compute_size_pos;eauto. }
     cbn in h_forall_sto'_.
     assert (new_size <= Ptrofs.modulus) /sng.
-    { rewrite Z.geb_leb in heq_geb_.
-      apply Z.leb_gt in heq_geb_.
+    { rewrite Z.geb_leb in h_eq_geb_.
+      apply Z.leb_gt in h_eq_geb_.
       lia. }
     specialize (h_forall_sto'_ h_le_new_size_modulus_).
     destruct h_forall_sto'_ as [[IHr1IHr2] IHr3].
@@ -5600,21 +5628,21 @@ Proof.
     split;[split|intros] /sng.
     + lia.
     + assumption.
-    + inversion heq_pair_;subst.
+    + inversion h_eq_pair_;subst.
       specialize (IHr3 ((nme, sz0) :: stoszchainparam) (sz0 + x0) eq_refl k).
       apply IHr3 with (nme:=nme0);auto.
       * intros /sng.
-        cbn in heq_CEfetches_nme1_.
+        cbn in h_eq_CEfetches_nme1_.
         destruct (nme1 =? nme)%nat.
-        -- invclear heq_CEfetches_nme1_;split;auto /sng.
+        -- invclear h_eq_CEfetches_nme1_;split;auto /sng.
            lia.
-        -- specialize (h_forall_nme_ nme1 x heq_CEfetches_nme1_).
+        -- specialize (h_forall_nme_ nme1 x h_eq_CEfetches_nme1_).
            destruct h_forall_nme_;auto /sng.
            split;auto.
            lia.
       * lia.
-  - rewrite heq_add_to_fr_ERR_nme_ in heq_bind_.
-    cbn in heq_bind_.
+  - rewrite h_eq_add_to_fr_ERR_nme_ in h_eq_bind_.
+    cbn in h_eq_bind_.
     discriminate.
 Qed.
 
@@ -5625,13 +5653,13 @@ Proof.
   intros until stosz /sng.
   rew build_frame_decl_ok
   with functional induction (function_utils.build_frame_decl st stosz decl);!!intros ;try discriminate /sng.
-  - inversion heq_OK_;reflexivity.
-  - invclear heq_OK_ /sng.
+  - inversion h_eq_OK_;reflexivity.
+  - invclear h_eq_OK_ /sng.
     cbn.
-    pose proof compute_size_pos _ _ _ heq_cmpt_size_ /sng.
+    pose proof compute_size_pos _ _ _ h_eq_cmpt_size_ /sng.
     lia.
-  - specialize (h_forall_stosz'0_ _ heq_build_frame_decl0_).
-    specialize (h_forall_stosz'_ _ heq_build_frame_decl_).
+  - specialize (h_forall_stosz'0_ _ h_eq_build_frame_decl0_).
+    specialize (h_forall_stosz'_ _ h_eq_build_frame_decl_).
     etransitivity;eauto.
 Qed.
 
@@ -5654,32 +5682,32 @@ Proof.
   rew build_frame_decl_ok
   with functional induction (function_utils.build_frame_decl st stosz lparams);!!intros ;try discriminate /sng.
   - split;[split|].
-    + inversion heq_OK_;reflexivity.
-    + inversion heq_OK_;cbn in *;lia.
-    + invclear heq_OK_;subst;cbn in * /sng.
+    + inversion h_eq_OK_;reflexivity.
+    + inversion h_eq_OK_;cbn in *;lia.
+    + invclear h_eq_OK_;subst;cbn in * /sng.
       intros /sng.
-      invclear heq_pair_ /sng.
+      invclear h_eq_pair_ /sng.
       eauto.
-  - pose proof compute_size_pos _ _ _ heq_cmpt_size_ /sng.
+  - pose proof compute_size_pos _ _ _ h_eq_cmpt_size_ /sng.
     split;[split|].
-    + invclear heq_OK_ /sng.
+    + invclear h_eq_OK_ /sng.
       cbn.
       lia.
-    + invclear heq_OK_;cbn in * /sng.
+    + invclear h_eq_OK_;cbn in * /sng.
       destruct (Z.geb_spec (sz + x) Ptrofs.modulus);try discriminate;lia.
-    + invclear heq_OK_;subst;cbn in * /sng.
+    + invclear h_eq_OK_;subst;cbn in * /sng.
       intros /sng.
-      invclear heq_pair_ /sng.
+      invclear h_eq_pair_ /sng.
       destruct (Nat.eqb_spec nme (object_name objdecl));subst /sng.
-      * invclear heq_Some_ /sng.
+      * invclear h_eq_Some_ /sng.
         lia.
-      * specialize (h_forall_nme_ _ _ heq_Some_).
+      * specialize (h_forall_nme_ _ _ h_eq_Some_).
         lia.
   - destruct x.
-    specialize (h_forall_sto'_ _ _ heq_build_frame_decl_ h_le_).
+    specialize (h_forall_sto'_ _ _ h_eq_build_frame_decl_ h_le_).
     decomp h_forall_sto'_.
     rename h_forall_stoszchainparam_ into IHr_3.
-    specialize (h_forall_sto'0_ _ _ heq_build_frame_decl0_ h_le_z_modulus_).
+    specialize (h_forall_sto'0_ _ _ h_eq_build_frame_decl0_ h_le_z_modulus_).
     decomp h_forall_sto'0_.
     rename h_forall_stoszchainparam_ into IHr0_3.
     split;[split|].
@@ -5687,12 +5715,12 @@ Proof.
     + assumption.
     + intros /sng.
       rename h_forall_nme_ into h_lelt_.
-      invclear heq_pair_;subst /sng.
+      invclear h_eq_pair_;subst /sng.
       cbn in*.
       specialize (IHr_3 _ _ eq_refl _ h_lelt_ h_le_k_sz0_).
       rename z into sz.
       assert (k<=sz) by lia /sng.
-      specialize (IHr0_3 _ _ eq_refl k IHr_3 h_le_k_sz_ _ _ heq_CEfetches_nme_sto'_).
+      specialize (IHr0_3 _ _ eq_refl k IHr_3 h_le_k_sz_ _ _ h_eq_CEfetches_nme_sto'_).
       assumption.
 Qed.
 
@@ -5710,65 +5738,65 @@ Proof.
   intros /sng.
   functional inversion h_eq_transl_var_;clear h_eq_transl_var_ /sng.
   red in h_no_overf_.
-  specialize h_no_overf_ with (1:=heq_CEfetchG_nme_) as h'.
+  specialize h_no_overf_ with (1:=h_eq_CEfetchG_nme_) as h'.
   decomp h'.
   assert (Int.Z_mod_modulus δ_nme = Int.Z_mod_modulus δ_id) /sng.
   { (* convertible even if unfolding problem *)
     exact heq.  }
   clear heq.    
-  rewrite Int.Z_mod_modulus_eq in heq_Z_mod_modulus_.
-  rewrite Int.Z_mod_modulus_eq in heq_Z_mod_modulus_.
-  rewrite Zmod_small in heq_Z_mod_modulus_;auto.
-  rewrite Zmod_small in heq_Z_mod_modulus_;auto.
+  rewrite Int.Z_mod_modulus_eq in h_eq_Z_mod_modulus_.
+  rewrite Int.Z_mod_modulus_eq in h_eq_Z_mod_modulus_.
+  rewrite Zmod_small in h_eq_Z_mod_modulus_;auto.
+  rewrite Zmod_small in h_eq_Z_mod_modulus_;auto.
   subst.
   clear h_lt_δ_nme_modulus_ h_le_Z0_δ_nme_.
-  functional inversion heq_CEfetchG_nme_; clear heq_CEfetchG_nme_;subst /sng.
-  - unfold CompilEnv.fetch in heq_CEfetch_nme_.
-    simpl in heq_CEfetch_nme_.
+  functional inversion h_eq_CEfetchG_nme_; clear h_eq_CEfetchG_nme_;subst /sng.
+  - unfold CompilEnv.fetch in h_eq_CEfetch_nme_.
+    simpl in h_eq_CEfetch_nme_.
     left.
     unfold transl_variable.
     cbn.
-    rewrite heq_CEfetch_nme_.
+    rewrite h_eq_CEfetch_nme_.
     erewrite CompilEnv.fetches_ok;eauto.
-    cbn in heq_lvloftop_m'_.
-    inversion heq_lvloftop_m'_;subst;clear heq_lvloftop_m'_.
-    cbn in heq_CEframeG_nme_.
-    erewrite CompilEnv.fetches_ok in heq_CEframeG_nme_;eauto.
-    inversion heq_CEframeG_nme_;subst;clear heq_CEframeG_nme_.
-    specialize build_loads__inj with (1:=heq_build_loads_);intro /sng.
+    cbn in h_eq_lvloftop_m'_.
+    inversion h_eq_lvloftop_m'_;subst;clear h_eq_lvloftop_m'_.
+    cbn in h_eq_CEframeG_nme_.
+    erewrite CompilEnv.fetches_ok in h_eq_CEframeG_nme_;eauto.
+    inversion h_eq_CEframeG_nme_;subst;clear h_eq_CEframeG_nme_.
+    specialize build_loads__inj with (1:=h_eq_build_loads_);intro /sng.
     subst.
     split;auto with arith.
-  - unfold CompilEnv.fetch in heq_CEfetch_nme_.
-    simpl in heq_CEfetch_nme_.
+  - unfold CompilEnv.fetch in h_eq_CEfetch_nme_.
+    simpl in h_eq_CEfetch_nme_.
     right.
     unfold transl_variable.
     cbn.
-    rewrite heq_CEfetchG_nme_CE_.
-    functional inversion heq_CEframeG_nme_ /sng.
+    rewrite h_eq_CEfetchG_nme_CE_.
+    functional inversion h_eq_CEframeG_nme_ /sng.
     + exfalso.
       subst.
-      unfold CompilEnv.reside in heq_reside_.
-      apply CompilEnv.fetches_ok_none_1 in heq_CEfetch_nme_.
-      cbn in heq_reside_.
-      rewrite heq_CEfetch_nme_ in heq_reside_.
+      unfold CompilEnv.reside in h_eq_reside_.
+      apply CompilEnv.fetches_ok_none_1 in h_eq_CEfetch_nme_.
+      cbn in h_eq_reside_.
+      rewrite h_eq_CEfetch_nme_ in h_eq_reside_.
       discriminate.
     + subst.
-      rewrite heq_CEframeG_nme_CE_.
+      rewrite h_eq_CEframeG_nme_CE_.
       assert (CompilEnv.exact_levelG CE) /sng.
       { eapply CompilEnv.exact_levelG_sublist;eauto. }
-      specialize CompilEnv.exact_lvl_lvl_of_top  with (1:=h_exct_lvlG_) (2:=heq_lvloftop_m'_);intro h_top_.
+      specialize CompilEnv.exact_lvl_lvl_of_top  with (1:=h_exct_lvlG_) (2:=h_eq_lvloftop_m'_);intro h_top_.
       cbn in h_top_.
       inversion h_top_ /sng.
       destruct CE.
       -- discriminate.
       -- cbn. destruct p.
-         specialize build_loads__inj with (1:=heq_build_loads_);intro;subst /sng.
+         specialize build_loads__inj with (1:=h_eq_build_loads_);intro;subst /sng.
          erewrite exact_level_top_lvl;auto.
          all: swap 2 1.
          ++ cbn.
             reflexivity.
          ++ assert (s - lvl_nme = S s - lvl_nme - 1)%nat by lia /sng.
-            rewrite heq_sub_;reflexivity.
+            rewrite h_eq_sub_;reflexivity.
 Qed.
 
 (* Too much hyps. *)
@@ -5786,32 +5814,32 @@ Proof.
   intros /sng.
   functional inversion h_eq_transl_var_;clear h_eq_transl_var_ /sng.
   red in h_no_overf_.
-  specialize h_no_overf_ with (1:=heq_CEfetchG_nme_) as h'.
+  specialize h_no_overf_ with (1:=h_eq_CEfetchG_nme_) as h'.
   decomp h'.
   assert (Int.Z_mod_modulus δ_nme = Int.Z_mod_modulus δ_id) /sng.
   { (* convertible even if unfolding problem *)
     exact heq.  }
   clear heq.    
-  rewrite Int.Z_mod_modulus_eq in heq_Z_mod_modulus_.
-  rewrite Int.Z_mod_modulus_eq in heq_Z_mod_modulus_.
-  rewrite Zmod_small in heq_Z_mod_modulus_;auto.
-  (* rewrite Zmod_small in heq_Z_mod_modulus_;auto. *)
+  rewrite Int.Z_mod_modulus_eq in h_eq_Z_mod_modulus_.
+  rewrite Int.Z_mod_modulus_eq in h_eq_Z_mod_modulus_.
+  rewrite Zmod_small in h_eq_Z_mod_modulus_;auto.
+  (* rewrite Zmod_small in h_eq_Z_mod_modulus_;auto. *)
   subst.
   clear h_lt_δ_nme_modulus_ h_le_Z0_δ_nme_.
-  functional inversion heq_CEfetchG_nme_; clear heq_CEfetchG_nme_;subst /sng.
-  - unfold CompilEnv.fetch in heq_CEfetch_nme_.
-    simpl in heq_CEfetch_nme_.
+  functional inversion h_eq_CEfetchG_nme_; clear h_eq_CEfetchG_nme_;subst /sng.
+  - unfold CompilEnv.fetch in h_eq_CEfetch_nme_.
+    simpl in h_eq_CEfetch_nme_.
     (* left. *)
     unfold transl_variable.
     cbn.
-    rewrite heq_CEfetch_nme_.
+    rewrite h_eq_CEfetch_nme_.
     erewrite CompilEnv.fetches_ok;eauto.
-    cbn in heq_lvloftop_m'_.
-    inversion heq_lvloftop_m'_;subst;clear heq_lvloftop_m'_.
-    cbn in heq_CEframeG_nme_.
-    erewrite CompilEnv.fetches_ok in heq_CEframeG_nme_;eauto.
-    inversion heq_CEframeG_nme_;subst;clear heq_CEframeG_nme_.
-    specialize build_loads__inj with (1:=heq_build_loads_);intro /sng.
+    cbn in h_eq_lvloftop_m'_.
+    inversion h_eq_lvloftop_m'_;subst;clear h_eq_lvloftop_m'_.
+    cbn in h_eq_CEframeG_nme_.
+    erewrite CompilEnv.fetches_ok in h_eq_CEframeG_nme_;eauto.
+    inversion h_eq_CEframeG_nme_;subst;clear h_eq_CEframeG_nme_.
+    specialize build_loads__inj with (1:=h_eq_build_loads_);intro /sng.
     subst.
     exists (δ_id mod Int.modulus).
     split.
@@ -5820,31 +5848,31 @@ Proof.
     + left;split.
       * reflexivity.
       * auto with arith.
-  - unfold CompilEnv.fetch in heq_CEfetch_nme_.
-    simpl in heq_CEfetch_nme_.
+  - unfold CompilEnv.fetch in h_eq_CEfetch_nme_.
+    simpl in h_eq_CEfetch_nme_.
     (* right. *)
     unfold transl_variable.
     cbn.
-    rewrite heq_CEfetchG_nme_CE_.
-    functional inversion heq_CEframeG_nme_ /sng.
+    rewrite h_eq_CEfetchG_nme_CE_.
+    functional inversion h_eq_CEframeG_nme_ /sng.
     + exfalso.
       subst.
-      unfold CompilEnv.reside in heq_reside_.
-      apply CompilEnv.fetches_ok_none_1 in heq_CEfetch_nme_.
-      cbn in heq_reside_.
-      rewrite heq_CEfetch_nme_ in heq_reside_.
+      unfold CompilEnv.reside in h_eq_reside_.
+      apply CompilEnv.fetches_ok_none_1 in h_eq_CEfetch_nme_.
+      cbn in h_eq_reside_.
+      rewrite h_eq_CEfetch_nme_ in h_eq_reside_.
       discriminate.
     + subst.
-      rewrite heq_CEframeG_nme_CE_.
+      rewrite h_eq_CEframeG_nme_CE_.
       assert (CompilEnv.exact_levelG CE) /sng.
       { eapply CompilEnv.exact_levelG_sublist;eauto. }
-      specialize CompilEnv.exact_lvl_lvl_of_top with (1:=h_exct_lvlG_) (2:=heq_lvloftop_m'_);intro h_top_.
+      specialize CompilEnv.exact_lvl_lvl_of_top with (1:=h_exct_lvlG_) (2:=h_eq_lvloftop_m'_);intro h_top_.
       cbn in h_top_.
       inversion h_top_ /sng.
       destruct CE.
       -- discriminate.
       -- cbn. destruct p.
-         specialize build_loads__inj with (1:=heq_build_loads_);intro;subst /sng.
+         specialize build_loads__inj with (1:=h_eq_build_loads_);intro;subst /sng.
          erewrite exact_level_top_lvl;auto.
          all: swap 2 1.
          ++ cbn.
@@ -5854,7 +5882,7 @@ Proof.
             ** symmetry.
                apply Zmod_eqm.
             ** right.
-               rewrite heq_sub_;reflexivity.
+               rewrite h_eq_sub_;reflexivity.
 Qed.
 
 Lemma build_frame_lparams_no_null_offset:
@@ -5874,24 +5902,24 @@ Proof.
   rew build_frame_lparams_ok with
     functional induction function_utils.build_frame_lparams stbl stosz lparams;try discriminate;
     simpl;!!intros;subst /sng.
-  - inversion heq_OK_;subst.
+  - inversion h_eq_OK_;subst.
     eauto.
   - rew add_to_frame_ok with
-      functional inversion heq_add_to_fr_nme_ /sng.
-    clear heq_add_to_fr_nme_.
+      functional inversion h_eq_add_to_fr_nme_ /sng.
+    clear h_eq_add_to_fr_nme_.
     subst new_size.
     subst new_cenv.
-    specialize h_forall_sto_ with (1:=heq_build_frame_lparams_)(2:=eq_refl)
-                        (5:=heq_CEfetches_nme0_sto'_)(n:=n).
+    specialize h_forall_sto_ with (1:=h_eq_build_frame_lparams_)(2:=eq_refl)
+                        (5:=h_eq_CEfetches_nme0_sto'_)(n:=n).
     eapply h_forall_sto_;clear h_forall_sto_.
     assert (x0>0).
     { eapply compute_size_pos;eauto. }
     lia.
     intros /sng.
-    cbn in heq_CEfetches_nme1_.
+    cbn in h_eq_CEfetches_nme1_.
     up_type.
     destruct ((nme1 =? nme)%nat) /sng.
-    + invclear heq_CEfetches_nme1_ /sng.
+    + invclear h_eq_CEfetches_nme1_ /sng.
       lia.
     + eauto.
 Qed.
@@ -5916,21 +5944,21 @@ Proof.
     functional induction function_utils.build_frame_decl stbl
     stosz decl;try discriminate;
     try rewrite <- build_frame_decl_ok in * ;simpl;!intros;subst /sng.
-  - inversion heq_OK_;subst.
-    inversion heq_pair_;subst.
+  - inversion h_eq_OK_;subst.
+    inversion h_eq_pair_;subst.
     eauto.
-  - invclear heq_OK_ /sng.
-    invclear heq_pair_ /sng.
-    functional inversion heq_CEfetches_nme_sto'_;subst /sng.
+  - invclear h_eq_OK_ /sng.
+    invclear h_eq_pair_ /sng.
+    functional inversion h_eq_CEfetches_nme_sto'_;subst /sng.
     + lia.
     + eapply h_forall_nme_;eauto.
-  - invclear heq_pair_ /sng.
+  - invclear h_eq_pair_ /sng.
     destruct x.
-    specialize h_forall_sto_ with (1:=heq_build_frame_decl_) (2:=eq_refl)(3:=eq_refl) (4:=h_ge_sz0_n_)(5:=h_forall_nme_).
-    specialize h_forall_sto0_ with (1:=heq_build_frame_decl0_)(2:=eq_refl)(3:=eq_refl)(5:=h_forall_sto_).
+    specialize h_forall_sto_ with (1:=h_eq_build_frame_decl_) (2:=eq_refl)(3:=eq_refl) (4:=h_ge_sz0_n_)(5:=h_forall_nme_).
+    specialize h_forall_sto0_ with (1:=h_eq_build_frame_decl0_)(2:=eq_refl)(3:=eq_refl)(5:=h_forall_sto_).
     eapply h_forall_sto0_;eauto.
     apply Zge_trans with sz0;auto.          
-    specialize build_frame_decl_mon_sz with (1:=heq_build_frame_decl_).
+    specialize build_frame_decl_mon_sz with (1:=h_eq_build_frame_decl_).
     cbn.
     lia.
 Qed.
@@ -5944,13 +5972,13 @@ Lemma build_compilenv_no_null_offset:
 Proof.
   intros /sng.
   rew build_compilenv_ok with
-    functional inversion heq_build_compilenv_ /sng.
+    functional inversion h_eq_build_compilenv_ /sng.
   subst stoszchainparam.
   up_type.
-  clear heq_build_compilenv_.
+  clear h_eq_build_compilenv_.
   destruct x.
-  eapply build_frame_decl_no_null_offset with (1:=heq_build_frame_decl_);eauto.
-  - specialize build_frame_lparams_mon with (1:=heq_bld_frm_lparams_).
+  eapply build_frame_decl_no_null_offset with (1:=h_eq_build_frame_decl_);eauto.
+  - specialize build_frame_lparams_mon with (1:=h_eq_bld_frm_lparams_).
     intro /sng.
     decomp h_and_.
     cbn in h_le_.
@@ -5959,7 +5987,7 @@ Proof.
     eapply build_frame_lparams_no_null_offset;eauto.
     + lia.
     + intros /sng.
-      functional inversion heq_CEfetches_nme1_.
+      functional inversion h_eq_CEfetches_nme1_.
 Qed.
 
 (* Too much hyps. *)
@@ -5976,61 +6004,61 @@ Proof.
   intros /sng.
   functional inversion h_eq_transl_var_;clear h_eq_transl_var_ /sng.
   red in h_no_overf_.
-  specialize h_no_overf_ with (1:=heq_CEfetchG_nme_) as h'.
+  specialize h_no_overf_ with (1:=h_eq_CEfetchG_nme_) as h'.
   decomp h'.
   assert (Int.Z_mod_modulus δ_nme = Int.Z_mod_modulus δ_id) /sng.
   { (* convertible even if unfolding problem *)
     exact heq.  }
   clear heq.    
-  rewrite Int.Z_mod_modulus_eq in heq_Z_mod_modulus_.
-  rewrite Int.Z_mod_modulus_eq in heq_Z_mod_modulus_.
-  rewrite Zmod_small in heq_Z_mod_modulus_;auto.
-  (* rewrite Zmod_small in heq_Z_mod_modulus_;auto. *)
+  rewrite Int.Z_mod_modulus_eq in h_eq_Z_mod_modulus_.
+  rewrite Int.Z_mod_modulus_eq in h_eq_Z_mod_modulus_.
+  rewrite Zmod_small in h_eq_Z_mod_modulus_;auto.
+  (* rewrite Zmod_small in h_eq_Z_mod_modulus_;auto. *)
   subst.
   clear h_lt_δ_nme_modulus_ h_le_Z0_δ_nme_.
-  functional inversion heq_CEfetchG_nme_; clear heq_CEfetchG_nme_;subst /sng.
-  - unfold CompilEnv.fetch in heq_CEfetch_nme_.
-    simpl in heq_CEfetch_nme_.
+  functional inversion h_eq_CEfetchG_nme_; clear h_eq_CEfetchG_nme_;subst /sng.
+  - unfold CompilEnv.fetch in h_eq_CEfetch_nme_.
+    simpl in h_eq_CEfetch_nme_.
     (* left. *)
     unfold transl_variable.
     cbn.
-    rewrite heq_CEfetch_nme_.
+    rewrite h_eq_CEfetch_nme_.
     erewrite CompilEnv.fetches_ok;eauto.
-    cbn in heq_lvloftop_m'_.
-    inversion heq_lvloftop_m'_;subst;clear heq_lvloftop_m'_.
-    cbn in heq_CEframeG_nme_.
-    erewrite CompilEnv.fetches_ok in heq_CEframeG_nme_;eauto.
-    inversion heq_CEframeG_nme_;subst;clear heq_CEframeG_nme_.
-    specialize build_loads__inj with (1:=heq_build_loads_);intro /sng.
+    cbn in h_eq_lvloftop_m'_.
+    inversion h_eq_lvloftop_m'_;subst;clear h_eq_lvloftop_m'_.
+    cbn in h_eq_CEframeG_nme_.
+    erewrite CompilEnv.fetches_ok in h_eq_CEframeG_nme_;eauto.
+    inversion h_eq_CEframeG_nme_;subst;clear h_eq_CEframeG_nme_.
+    specialize build_loads__inj with (1:=h_eq_build_loads_);intro /sng.
     subst.
     left;split.
     * reflexivity.
     * auto with arith.
-  - unfold CompilEnv.fetch in heq_CEfetch_nme_.
-    simpl in heq_CEfetch_nme_.
+  - unfold CompilEnv.fetch in h_eq_CEfetch_nme_.
+    simpl in h_eq_CEfetch_nme_.
     (* right. *)
     unfold transl_variable.
     cbn.
-    rewrite heq_CEfetchG_nme_CE_.
-    functional inversion heq_CEframeG_nme_ /sng.
+    rewrite h_eq_CEfetchG_nme_CE_.
+    functional inversion h_eq_CEframeG_nme_ /sng.
     + exfalso.
       subst.
-      unfold CompilEnv.reside in heq_reside_.
-      apply CompilEnv.fetches_ok_none_1 in heq_CEfetch_nme_.
-      cbn in heq_reside_.
-      rewrite heq_CEfetch_nme_ in heq_reside_.
+      unfold CompilEnv.reside in h_eq_reside_.
+      apply CompilEnv.fetches_ok_none_1 in h_eq_CEfetch_nme_.
+      cbn in h_eq_reside_.
+      rewrite h_eq_CEfetch_nme_ in h_eq_reside_.
       discriminate.
     + subst.
-      rewrite heq_CEframeG_nme_CE_.
+      rewrite h_eq_CEframeG_nme_CE_.
       assert (CompilEnv.exact_levelG CE) /sng.
       { eapply CompilEnv.exact_levelG_sublist;eauto. }
-      specialize CompilEnv.exact_lvl_lvl_of_top with (1:=h_exct_lvlG_) (2:=heq_lvloftop_m'_);intro h_top_.
+      specialize CompilEnv.exact_lvl_lvl_of_top with (1:=h_exct_lvlG_) (2:=h_eq_lvloftop_m'_);intro h_top_.
       cbn in h_top_.
       inversion h_top_ /sng.
       destruct CE.
       -- discriminate.
       -- cbn. destruct p.
-         specialize build_loads__inj with (1:=heq_build_loads_);intro;subst /sng.
+         specialize build_loads__inj with (1:=h_eq_build_loads_);intro;subst /sng.
          erewrite exact_level_top_lvl;auto.
          all: swap 2 1.
          ++ cbn.
@@ -6040,7 +6068,7 @@ Proof.
             ** symmetry.
                apply Zmod_eqm.
             ** right.
-               rewrite heq_sub_;reflexivity.
+               rewrite h_eq_sub_;reflexivity.
 Qed.
 *)
 Lemma build_compilenv_stack_no_null_offset:
@@ -6054,7 +6082,7 @@ Lemma build_compilenv_stack_no_null_offset:
 Proof.
   intros /sng.
   rew build_compilenv_ok with
-    functional inversion heq_build_compilenv_; rewrite build_compilenv_ok in * /sng.
+    functional inversion h_eq_build_compilenv_; rewrite build_compilenv_ok in * /sng.
   destruct x /sng.
   subst stoszchainparam.
   red;red;intros /sng.
@@ -6077,14 +6105,14 @@ Proof.
   - (* nme is in CE, applying hyp. *)
     (* specialize transl_variable_cons'' with (1:=h_no_overf_CE_). *)
     assert (CompilEnv.fetchG nme CE = Some δ_nme) /sng.
-    { cbn in heq_CEfetchG_nme_.
-      rewrite h1 in heq_CEfetchG_nme_.
+    { cbn in h_eq_CEfetchG_nme_.
+      rewrite h1 in h_eq_CEfetchG_nme_.
       assumption. }
     eapply h_nonul_ofs_CE_ ;eauto.
   - (* nme is in the new top frame *)
-    cbn in heq_CEfetchG_nme_.
-    rewrite h1 in heq_CEfetchG_nme_.    
-    inversion heq_CEfetchG_nme_;subst.
+    cbn in h_eq_CEfetchG_nme_.
+    rewrite h1 in h_eq_CEfetchG_nme_.    
+    inversion h_eq_CEfetchG_nme_;subst.
     eapply build_compilenv_no_null_offset;eauto.
 Qed.
 
@@ -6109,7 +6137,7 @@ Proof.
   subst_det_addrstack_zero.
   invclear h_CM_eval_expr_v2_ /sng.
   cbn in *.
-  rewrite heq_ptr64_.
+  rewrite h_eq_ptr64_.
   invclear h_eval_constant_ /sng.
   eauto.
 Qed.
@@ -6152,9 +6180,9 @@ Proof.
   intros /sng.
   red.
   intros /sng.
-  cbn in heq_CEfetchG_id_.
+  cbn in h_eq_CEfetchG_id_.
   destruct (CompilEnv.fetch id sto) eqn:? /sng.
-  - invclear heq_CEfetchG_id_ /sng.
+  - invclear h_eq_CEfetchG_id_ /sng.
     eauto.
   - eauto.
 Qed.
@@ -6172,26 +6200,26 @@ Proof.
   revert l sz HeqlocfrmZ .
   rew build_frame_lparams_ok with
     (functional induction (function_utils.build_frame_lparams st locfrmZ prmprof);!intros;try discriminate) /sng.
-  - invclear heq_OK_ /sng.
+  - invclear h_eq_OK_ /sng.
     split;assumption.
   - rew function_utils.add_to_frame_ok with
-      functional inversion heq_add_to_fr_nme_ /sng.
+      functional inversion h_eq_add_to_fr_nme_ /sng.
     assert (x0 > 0).
-    { unfold compute_size in heq_cmpt_size_subtyp_mrk_.
+    { unfold compute_size in h_eq_cmpt_size_subtyp_mrk_.
       destruct compute_chnk_of_type;try discriminate.
-      cbn in heq_cmpt_size_subtyp_mrk_.
-      inversion heq_cmpt_size_subtyp_mrk_.
+      cbn in h_eq_cmpt_size_subtyp_mrk_.
+      inversion h_eq_cmpt_size_subtyp_mrk_.
       apply size_chunk_pos;assumption. }
     unfold new_size, new_cenv in *.
     eapply h_forall_l_;eauto;try lia.
     red.
     intros /sng.
-    cbn in heq_CEfetch_id_.
+    cbn in h_eq_CEfetch_id_.
     destruct (id =? nme)%nat /sng.
-    + invclear heq_CEfetch_id_ /sng.
+    + invclear h_eq_CEfetch_id_ /sng.
       generalize (Zge_cases (δ + x0)  Ptrofs.modulus).
       intro h_ge_.
-      rewrite heq_geb_ in h_ge_.
+      rewrite h_eq_geb_ in h_ge_.
       split.
       * lia.
       * lia.
@@ -6233,32 +6261,32 @@ Proof.
     functional induction (function_utils.build_frame_decl st locfrmZ decl);!intros;subst ;try discriminate;
       try rewrite <- build_frame_decl_ok in * /sng.
   - split.
-    + invclear heq_OK_ /sng.
-      invclear heq_pair_ /sng.
+    + invclear h_eq_OK_ /sng.
+      invclear h_eq_pair_ /sng.
       assumption.
-    + invclear heq_OK_ /sng.
-      invclear heq_pair_ /sng.
+    + invclear h_eq_OK_ /sng.
+      invclear h_eq_pair_ /sng.
       assumption.
   - rename x into size.
-    invclear heq_OK_ /sng.
-    invclear heq_pair_ /sng.
+    invclear h_eq_OK_ /sng.
+    invclear h_eq_pair_ /sng.
     assert (size > 0).
-    { unfold compute_size in heq_cmpt_size_.
+    { unfold compute_size in h_eq_cmpt_size_.
       destruct compute_chnk_of_type;try discriminate.
-      cbn in heq_cmpt_size_.
-      inversion heq_cmpt_size_.
+      cbn in h_eq_cmpt_size_.
+      inversion h_eq_cmpt_size_.
       apply size_chunk_pos;assumption. }
 
     split.
     + unfold all_addr_no_overflow_localframe.
       intros /sng.
-      cbn in heq_CEfetch_id_.
+      cbn in h_eq_CEfetch_id_.
       
       destruct (id =? (object_name objdecl))%nat /sng.
-      * invclear heq_CEfetch_id_ /sng.
+      * invclear h_eq_CEfetch_id_ /sng.
         generalize (Zge_cases (δ + size)  Ptrofs.modulus).
         intro h_ge_.
-        rewrite heq_geb_ in h_ge_.
+        rewrite h_eq_geb_ in h_ge_.
         split.
         -- lia.
         -- lia.
@@ -6268,9 +6296,9 @@ Proof.
     + lia.
   - rename x into size.
     up_type.
-    invclear heq_pair_ /sng.
+    invclear h_eq_pair_ /sng.
     destruct size.
-    specialize (h_forall_l_ _ _ eq_refl lvl s z h_ge_sz0_Z0_ heq_build_frame_decl_ h_no_overf_localf_).
+    specialize (h_forall_l_ _ _ eq_refl lvl s z h_ge_sz0_Z0_ h_eq_build_frame_decl_ h_no_overf_localf_).
     split.
     + destruct h_forall_l_ as [IHr1 IHr2].
       eapply h_forall_l0_;eauto.
@@ -6316,9 +6344,9 @@ Lemma all_addr_nooverflow_localeframe_nil : forall lvl, all_addr_no_overflow_loc
 Proof.
   intros /sng.
   red. intros /sng.
-  unfold CompilEnv.fetch in heq_CEfetch_id_.
-  simpl in heq_CEfetch_id_.
-  inversion heq_CEfetch_id_.
+  unfold CompilEnv.fetch in h_eq_CEfetch_id_.
+  simpl in h_eq_CEfetch_id_.
+  inversion h_eq_CEfetch_id_.
 Qed.
 
 Lemma build_compilenv_stack_no_overf:
@@ -6331,7 +6359,7 @@ Lemma build_compilenv_stack_no_overf:
     → all_addr_no_overflow CE'.
 Proof.
   intros /sng.
-  rew build_compilenv_ok with functional inversion heq_build_compilenv_ /sng.
+  rew build_compilenv_ok with functional inversion h_eq_build_compilenv_ /sng.
   red.
   intros /sng.
   destruct x.
@@ -6365,15 +6393,15 @@ Proof.
   rew build_frame_lparams_ok
   with (functional induction (function_utils.build_frame_lparams st initz prmprof);
          !intros;try discriminate) /sng.
-  - inversion heq_OK_;subst;auto.
-  - rew add_to_frame_ok with functional inversion heq_add_to_fr_nme_;subst /sng.
+  - inversion h_eq_OK_;subst;auto.
+  - rew add_to_frame_ok with functional inversion h_eq_add_to_fr_nme_;subst /sng.
     unfold new_cenv,new_size in *.
     clear new_cenv new_size.
     specialize (h_forall_init_ _ _ eq_refl).
     apply h_forall_init_.
     + assumption.
     + assert (x0>0) /sng.
-      { destruct subtyp_mrk;cbn in heq_cmpt_size_subtyp_mrk_;inversion heq_cmpt_size_subtyp_mrk_;lia.  }
+      { destruct subtyp_mrk;cbn in h_eq_cmpt_size_subtyp_mrk_;inversion h_eq_cmpt_size_subtyp_mrk_;lia.  }
       constructor;auto.
       * unfold gt_x_snd_y;cbn;lia.
       * eapply Forall_impl with (P:= gt_x_snd_y z);auto.
@@ -6397,10 +6425,10 @@ Proof.
   revert init z Heqinitz lvl fr.
   rew build_frame_decl_ok with
     functional induction (function_utils.build_frame_decl st initz decl);!intros;subst;try discriminate /sng.
-  - inversion heq_OK_;subst;auto.
-    inversion heq_pair_;subst;auto.
-  - invclear heq_OK_;subst /sng.
-    invclear heq_pair_;subst /sng.
+  - inversion h_eq_OK_;subst;auto.
+    inversion h_eq_pair_;subst;auto.
+  - invclear h_eq_OK_;subst /sng.
+    invclear h_eq_pair_;subst /sng.
     split.
     + constructor.
       * assumption.
@@ -6410,7 +6438,7 @@ Proof.
         assumption.
     + constructor.
       * unfold gt_snd;cbn.
-        assert (h:=compute_size_pos _ _ _ heq_cmpt_size_).
+        assert (h:=compute_size_pos _ _ _ h_eq_cmpt_size_).
         red. simpl.
         lia.
       * apply Forall_forall.
@@ -6418,11 +6446,11 @@ Proof.
         eapply Forall_forall in h_lst_forall_init_;eauto.
         red;simpl.
         red in h_lst_forall_init_;simpl in *.
-        assert (h:=compute_size_pos _ _ _ heq_cmpt_size_).
+        assert (h:=compute_size_pos _ _ _ h_eq_cmpt_size_).
         lia.        
   - destruct x.
-    destruct (h_forall_init_ init z heq_pair_ _ _ heq_build_frame_decl_ h_lst_forall_init_ h_incr_order_init_); clear h_forall_init_ /sng.
-    destruct (h_forall_init0_ s z0 eq_refl _ _ heq_build_frame_decl0_ h_lst_forall_s_ h_incr_order_s_) /sng.
+    destruct (h_forall_init_ init z h_eq_pair_ _ _ h_eq_build_frame_decl_ h_lst_forall_init_ h_incr_order_init_); clear h_forall_init_ /sng.
+    destruct (h_forall_init0_ s z0 eq_refl _ _ h_eq_build_frame_decl0_ h_lst_forall_s_ h_incr_order_s_) /sng.
     split;assumption.
 Qed.
 
@@ -6434,11 +6462,11 @@ Proof.
   intros until stosz /sng.
   rew build_frame_lparams_ok with
     functional induction (function_utils.build_frame_lparams st stosz params);!intros /sng.
-  - inversion heq_OK_.
+  - inversion h_eq_OK_.
     reflexivity.
-  - specialize (h_forall_stosz'_ stosz' heq_build_frame_lparams_).
-    rew add_to_frame_ok with functional inversion heq_add_to_fr_nme_;subst;cbn in * /sng.
-    pose proof compute_size_pos _ _ _ heq_cmpt_size_subtyp_mrk_.
+  - specialize (h_forall_stosz'_ stosz' h_eq_build_frame_lparams_).
+    rew add_to_frame_ok with functional inversion h_eq_add_to_fr_nme_;subst;cbn in * /sng.
+    pose proof compute_size_pos _ _ _ h_eq_cmpt_size_subtyp_mrk_.
     unfold new_size in *.
     lia.
   - discriminate.
@@ -6455,7 +6483,7 @@ Lemma build_compilenv_preserve_invariant_compile:
 Proof.
   (intros until 1) /sng.
   rew build_compilenv_ok with
-    (functional inversion heq_build_compilenv_;subst;intro;clear heq_build_compilenv_) /sng.
+    (functional inversion h_eq_build_compilenv_;subst;intro;clear h_eq_build_compilenv_) /sng.
   split;eauto with spark.
   + constructor.
     eauto with spark.
@@ -6463,10 +6491,10 @@ Proof.
     * red.
       cbn.
       destruct x.
-      destruct (build_frame_decl_preserve_increasing_order _ _ _ _ _ _ heq_build_frame_decl_);auto.
-      -- destruct (build_frame_lparams_preserve_increasing_order _ _ _ _ _ _ heq_bld_frm_prmprof_);auto.
+      destruct (build_frame_decl_preserve_increasing_order _ _ _ _ _ _ h_eq_build_frame_decl_);auto.
+      -- destruct (build_frame_lparams_preserve_increasing_order _ _ _ _ _ _ h_eq_bld_frm_prmprof_);auto.
          constructor;cbn in *;auto.
-      -- destruct (build_frame_lparams_preserve_increasing_order _ _ _ _ _ _ heq_bld_frm_prmprof_);auto.
+      -- destruct (build_frame_lparams_preserve_increasing_order _ _ _ _ _ _ h_eq_bld_frm_prmprof_);auto.
          constructor;cbn in *;auto.
     * eapply (ci_increasing_ids h_inv_comp_CE_st_).
   + apply all_addr_no_overflow_fetch_OK_;eauto with spark.
@@ -6483,7 +6511,7 @@ Proof.
     intros /sng.
     cbn in h_lst_in_.
     destruct h_lst_in_ /sng.
-    * invclear heq_pair_;subst /sng.
+    * invclear h_eq_pair_;subst /sng.
       admit. (* spark typing, no name collision intra frame *)
     * pose proof (ce_nodup_CE h_inv_comp_CE_st_) /sng.
       red in h_CEnodup_CE_.
@@ -6502,13 +6530,13 @@ Lemma add_to_frame_sz: forall stbl fram_sz parname parsubtype p sz,
 Proof.
   intros until 1 /sng.
   rew add_to_frame_ok
-  with functional inversion heq_add_to_fr_parname_
+  with functional inversion h_eq_add_to_fr_parname_
        ;!intros /sng.
   subst new_size.
   subst new_cenv.
   cbn in *.
-  rewrite heq_cmpt_size_parsubtype0_ in heq_cmpt_size_parsubtype_.
-  inversion heq_cmpt_size_parsubtype_.
+  rewrite h_eq_cmpt_size_parsubtype0_ in h_eq_cmpt_size_parsubtype_.
+  inversion h_eq_cmpt_size_parsubtype_.
   reflexivity.
 Qed.
 
@@ -6520,7 +6548,7 @@ Lemma add_to_frame_correct: forall stbl fram_sz parname parsubtype p othername,
 Proof.
   intros until 1 /sng.
   rew add_to_frame_ok with
-    functional inversion heq_add_to_fr_parname_ ;!intros /sng.
+    functional inversion h_eq_add_to_fr_parname_ ;!intros /sng.
   subst new_size.
   subst new_cenv.
   simpl.
@@ -6533,7 +6561,7 @@ Lemma add_to_frame_correct2: forall stbl fram_sz parname parsubtype p,
 Proof.
   intros until 1 /sng.
   rew add_to_frame_ok with
-    functional inversion heq_add_to_fr_parname_
+    functional inversion h_eq_add_to_fr_parname_
     ;!intros /sng.
   subst new_size.
   subst new_cenv.
@@ -6548,14 +6576,14 @@ Lemma add_to_frame_correct_rev: forall stbl fram_sz parname parsubtype new_fram_
 Proof.
   intros until 1 /sng.
   rew add_to_frame_ok with
-    functional inversion heq_add_to_fr_parname_ ;!intros /sng.
+    functional inversion h_eq_add_to_fr_parname_ ;!intros /sng.
   subst new_size.
   subst new_cenv.
   simpl.
   decomp h_and_.
-  simpl in heq_resides_.
+  simpl in h_eq_resides_.
   rewrite <- Nat.eqb_neq in hneq_othername.
-  rewrite hneq_othername in heq_resides_.
+  rewrite hneq_othername in h_eq_resides_.
   assumption.
 Qed.
 
@@ -6571,7 +6599,7 @@ Proof.
   - destruct h_or_ /sng.
     + inversion h_lst_in_x_.
     + simpl in *.
-      invclear heq_OK_ /sng.
+      invclear h_eq_OK_ /sng.
       assumption.
   - remember {| parameter_astnum := _x; parameter_name := nme; parameter_subtype_mark := subtyp_mrk; parameter_mode := _x0 |}  as p.
     decomp h_or_.
@@ -6596,11 +6624,11 @@ Proof.
   intros until fram_sz /sng.
   rew function_utils.build_frame_lparams_ok with
     (functional induction (function_utils.build_frame_lparams stbl fram_sz lparam); try discriminate;intros) /sng.
-  - inversion heq_OK_. 
+  - inversion h_eq_OK_. 
     right;assumption.
   - up_type.
     remember {| parameter_astnum := _x; parameter_name := nme; parameter_subtype_mark := subtyp_mrk; parameter_mode := _x0 |}  as p.
-    specialize (h_forall_res_ _ heq_build_frame_lparams_ _  heq_resides_).
+    specialize (h_forall_res_ _ h_eq_build_frame_lparams_ _  h_eq_resides_).
     decompose [ex or and] h_forall_res_ /sng.
     + left.
       exists x0;split;auto.
@@ -6626,14 +6654,14 @@ Lemma add_to_frame_correct3: forall stbl fram_sz parname parsubtype new_fr new_s
 Proof.
   intros /sng.
   rew add_to_frame_ok 
-  with functional inversion heq_add_to_fr_parname_
+  with functional inversion h_eq_add_to_fr_parname_
        ;subst;intros /sng.
   subst.
   simpl.
   destruct (othername =? parname)%nat eqn:heq'.
   - apply beq_nat_true in heq'.
     subst.
-    rewrite heq_CEfetches_parname_ in heq_CEfetches_othername_;discriminate.
+    rewrite h_eq_CEfetches_parname_ in h_eq_CEfetches_othername_;discriminate.
   - assumption.
 Qed.
 
@@ -6646,7 +6674,7 @@ Lemma add_to_frame_correct4: forall stbl fram_sz parname parsubtype new_fram_sz,
 Proof.
   intros /sng.
   rew add_to_frame_ok with
-    functional inversion heq_add_to_fr_parname_;!intros /sng.
+    functional inversion h_eq_add_to_fr_parname_;!intros /sng.
   subst new_size.
   subst new_cenv.
   simpl.
@@ -6672,9 +6700,9 @@ Proof.
   - intros nme nme_ofs ?;simpl in * /sng.
     assert (x>0) by (unshelve eapply compute_size_pos;eauto) /sng.
     destruct (nme =? parname)%nat /sng.
-    * inversion heq_CEfetches_nme_;subst.
+    * inversion h_eq_CEfetches_nme_;subst.
       lia.
-    * specialize (h_upb_ _ _ heq_CEfetches_nme_).
+    * specialize (h_upb_ _ _ h_eq_CEfetches_nme_).
       lia.
   - now rewrite <- beq_nat_refl.
 Qed.
@@ -6687,7 +6715,7 @@ Lemma add_to_frame_correct_none: forall stbl fram_sz parname parsubtype new_fr n
 Proof.
   intros /sng.
   rew add_to_frame_ok with
-    (functional inversion heq_add_to_fr_parname_
+    (functional inversion h_eq_add_to_fr_parname_
        ;subst;intros) /sng.
   simpl.
   destruct (othername =? parname)%nat eqn:heq'.
@@ -6704,13 +6732,13 @@ Lemma add_to_frame_correct_rev2: forall stbl fram_sz parameter_name parsubtype n
 Proof.
   intros /sng.
   rew add_to_frame_ok with
-    (functional inversion heq_add_to_fr_parameter_name_ ;intros) /sng.
+    (functional inversion h_eq_add_to_fr_parameter_name_ ;intros) /sng.
   simpl.
   subst.
   decomp h_and_.
-  simpl in heq_CEfetches_othername_.
+  simpl in h_eq_CEfetches_othername_.
   rewrite <- Nat.eqb_neq in hneq_othername.
-  rewrite hneq_othername in heq_CEfetches_othername_.
+  rewrite hneq_othername in h_eq_CEfetches_othername_.
   assumption.  
 Qed.
 
@@ -6721,10 +6749,10 @@ Lemma add_to_frame_correct_none_rev: forall stbl fram_sz parameter_name parsubty
 Proof.
   intros /sng.
   rew add_to_frame_ok with
-    functional inversion heq_add_to_fr_parameter_name_;!intros /sng.
+    functional inversion h_eq_add_to_fr_parameter_name_;!intros /sng.
   simpl.
   subst.
-  functional inversion heq_CEfetches_othername_new_fr_.
+  functional inversion h_eq_CEfetches_othername_new_fr_.
   assumption.
 Qed.
 
@@ -6760,7 +6788,7 @@ Proof.
   remember (parameter_name prm) as prn_nme.
   rew add_to_frame_ok with
     (functional induction (function_utils.add_to_frame stbl fram_sz prn_nme subtyp_mrk);intros;try discriminate) /sng.
-  invclear heq_OK_ /sng.
+  invclear h_eq_OK_ /sng.
   red. apply Forall_forall.
   intros prm0 ? /sng.
   assert (parameter_name prm0 <> parameter_name prm) /sng.
@@ -6796,7 +6824,7 @@ Proof.
   rew build_frame_lparams_ok with
     functional induction (function_utils.build_frame_lparams stbl fram_sz lparam);simpl;!intros;
       try discriminate /sng.
-  - invclear heq_OK_ /sng.
+  - invclear h_eq_OK_ /sng.
     assumption.
   - apply h_forall_res_.
     + assert (h:=build_frame_lparams_preserve_increasing_order stbl (fst x) lparam' (snd res) (fst res) (snd x));auto.      
@@ -6816,7 +6844,7 @@ Proof.
       eapply add_to_frame_fresh;eauto.
     + eapply add_to_frame_correct4;eauto.
     + assumption.
-    + replace x with (fst x,snd x) in heq_add_to_fr_nme_.
+    + replace x with (fst x,snd x) in h_eq_add_to_fr_nme_.
       * eapply add_to_frame_nodup;eauto.
         red in h_fresh_prms_.
         rewrite Forall_forall in h_fresh_prms_.
@@ -6836,7 +6864,7 @@ Lemma fetch_In_ : forall a id st,
     List.In (id,st) (CompilEnv.store_of a).
 Proof.
   intros /sng.
-  unfold CompilEnv.fetch in heq_CEfetch_id_a_.
+  unfold CompilEnv.fetch in h_eq_CEfetch_id_a_.
   apply fetches_In.
   assumption.
 Qed.
@@ -6854,8 +6882,8 @@ Proof.
       constructor 1.
       red.
       simpl.
-      unfold transl_paramid, transl_num in heq_transl_paramid_.
-      apply SuccNat2Pos.inj in heq_transl_paramid_;try lia.
+      unfold transl_paramid, transl_num in h_eq_transl_paramid_.
+      apply SuccNat2Pos.inj in h_eq_transl_paramid_;try lia.
     + constructor 2.
       apply h_forall_x_.
       assumption.
@@ -6889,8 +6917,8 @@ Proof.
   - intro; auto.
   - intro abs.
     decomp abs.
-    + unfold transl_paramid, transl_num,chaining_param in heq_transl_paramid_.
-      specialize (SuccNat2Pos.inj (parameter_name a + 80)%nat 0%nat heq_transl_paramid_) as ? /sng.
+    + unfold transl_paramid, transl_num,chaining_param in h_eq_transl_paramid_.
+      specialize (SuccNat2Pos.inj (parameter_name a + 80)%nat 0%nat h_eq_transl_paramid_) as ? /sng.
       lia.
     + apply h_neg_lst_in_chaining_param_;auto.
 Qed.
@@ -6933,7 +6961,7 @@ Proof.
   replace (@pair CompilEnv.store Z (@fst (list (prod idnum OffsetEntry.T)) Z fram_sz)
                    (@snd (list (prod idnum OffsetEntry.T)) Z fram_sz)) with fram_sz in *;[|destruct fram_sz;auto].
   replace (pair (fst res) (snd res)) with res in *;[|destruct res;auto].
-  specialize (h heq_bld_frm_lparam_).
+  specialize (h h_eq_bld_frm_lparam_).
   assert (increasing_order (fst res) ∧ Forall (gt_x_snd_y (snd res)) (fst res)) /sng.
   { assert (NoDupA (λ x1 y : idnum * CompilEnv.V, fst x1 = fst y) (fst res)) /sng.
     { eapply build_frame_lparams_nodup;eauto. }
@@ -6949,21 +6977,21 @@ Proof.
       destruct x0;simpl;auto. }
   clear h.
   decomp h_and_.
-  revert h_incr_order_ h_fresh_prms_lparam_ res heq_bld_frm_lparam_ e x heq_CEfetches_x_ h_incr_order0_  h_lst_forall_ h_upb_.
+  revert h_incr_order_ h_fresh_prms_lparam_ res h_eq_bld_frm_lparam_ e x h_eq_CEfetches_x_ h_incr_order0_  h_lst_forall_ h_upb_.
   rew function_utils.build_frame_lparams_ok with
   (functional induction (function_utils.build_frame_lparams stbl fram_sz lparam); try discriminate;
      intros;up_type) /sng.
   - simpl in *.
-    invclear heq_OK_ /sng.
+    invclear h_eq_OK_ /sng.
     assumption.
   - rename x into nme_fram_sz.
     invclear h_lst_forall0_ /sng.
     simpl in *.
     destruct nme_fram_sz as [new_fram new_sz].
-    assert (h_correct4_:= add_to_frame_correct4 stbl fram_sz nme subtyp_mrk (new_fram,new_sz) h_incr_order_ h_upb_ heq_add_to_fr_nme_).
+    assert (h_correct4_:= add_to_frame_correct4 stbl fram_sz nme subtyp_mrk (new_fram,new_sz) h_incr_order_ h_upb_ h_eq_add_to_fr_nme_).
     decomp h_correct4_.
     assert (h_correct3_:= λ typename, add_to_frame_correct3 stbl fram_sz nme subtyp_mrk new_fram new_sz
-                                                           typename e h_incr_order_ h_upb_ heq_CEfetches_none_).
+                                                           typename e h_incr_order_ h_upb_ h_eq_CEfetches_none_).
     eapply h_impl_impl_impl_impl_forall_res_;auto.
     + inversion h_NoDupA_lparam_.
       assumption.
@@ -7153,7 +7181,7 @@ Proof.
   - subst.
     rew transl_paramexprlist_ok with
     functional inversion htrans_prmexprl; idtac /sng.
-    inversion heq_OK_;subst;clear heq_OK_.
+    inversion h_eq_OK_;subst;clear h_eq_OK_.
     exists  (@nil Values.val).
     constructor.
   - rew transl_paramexprlist_ok with
@@ -7163,7 +7191,7 @@ Proof.
       end /sng.
     edestruct h_forall_spb_;clear h_forall_spb_;eauto /sng.
     + unfold push;simpl. reflexivity.
-    + assert (h_transl_:=transl_expr_ok _ _ _ _ heq_tr_expr_e_ _ _ _ _ _ _ h_eval_expr_e_e_v_ h_match_env_).
+    + assert (h_transl_:=transl_expr_ok _ _ _ _ h_eq_tr_expr_e_ _ _ _ _ _ _ h_eval_expr_e_e_v_ h_match_env_).
       destruct h_transl_ as [v_t [? ?]] /sng.
       exists (e_t_v::x);repeat split;eauto.
       econstructor;eauto.
@@ -7174,7 +7202,7 @@ Proof.
       end /sng.
     edestruct h_forall_spb_;clear h_forall_spb_;eauto /sng.
     + unfold push;simpl. reflexivity.
-    + assert (h_transl_:=transl_expr_ok _ _ _ _ heq_tr_expr_e_ _ _ _ _ _ _ h_eval_expr_e_ h_match_env_).
+    + assert (h_transl_:=transl_expr_ok _ _ _ _ h_eq_tr_expr_e_ _ _ _ _ _ _ h_eval_expr_e_ h_match_env_).
       destruct h_transl_ as [v_t [? ?]] /sng.
       exists (e_t_v::x);repeat split;eauto.
       econstructor;eauto.
@@ -7211,15 +7239,15 @@ Proof.
       red in h_stack_mtch_.
       destruct h_ex_ /sng.
       specialize h_stack_mtch_ with 
-          (1:=heq_transl_name_)
+          (1:=h_eq_transl_name_)
           (2:=h_CM_eval_expr_nm_t_nm_t_v_)
-          (3:=h_eval_name_nm_v_)(4:=heq_transl_type_)
-          (5:=heq_type_of_name_) (6:=heq_make_load_). 
+          (3:=h_eval_name_nm_v_)(4:=h_eq_transl_type_)
+          (5:=h_eq_type_of_name_) (6:=h_eq_make_load_). 
 
       destruct h_stack_mtch_ as [v_t [htrsl h_eval_]] /sng.
       up_type.
       (* Currently we only have by_value loads (but with arrays this may change) *)
-      functional inversion heq_make_load_ /sng.
+      functional inversion h_eq_make_load_ /sng.
       subst.
       (* From [Cminor.eval_expr (Eload chunk x) v_t] we can deduce that [x] itself can be evaluated to a value. *)
       inversion h_CM_eval_expr_load_addr_nme_load_addr_nme_v_;subst /sng.
@@ -7258,15 +7286,15 @@ Proof.
       red in h_stack_mtch_.
       destruct h_ex_ /sng.
       specialize h_stack_mtch_ with 
-          (1:=heq_transl_name_)
+          (1:=h_eq_transl_name_)
           (2:=h_CM_eval_expr_nm_t_nm_t_v_)
-          (3:=h_eval_name_nm_)(4:=heq_transl_type_)
-          (5:=heq_type_of_name_) (6:=heq_make_load_). 
+          (3:=h_eval_name_nm_)(4:=h_eq_transl_type_)
+          (5:=h_eq_type_of_name_) (6:=h_eq_make_load_). 
 
       destruct h_stack_mtch_ as [v_t [htrsl h_eval_]] /sng.
       up_type.
       (* Currently we only have by_value loads (but with arrays this may change) *)
-      functional inversion heq_make_load_.
+      functional inversion h_eq_make_load_.
       subst.
       (* From [Cminor.eval_expr (Eload chunk x) v_t] we can deduce that [x] itself can be evaluated to a value. *)
       inversion h_CM_eval_expr_load_addr_nme_load_addr_nme_v_;subst /sng.
@@ -7358,8 +7386,8 @@ Lemma compilenv_inv:
                                          /\ build_frame_lparams stbl init_sto_sz lparams = Errors.OK fr_prm
                                          /\ build_frame_decl stbl fr_prm decl = Errors.OK (sto, sz).
 Proof.
-  intros stbl enclosingCE lvl lparams decl res heq_bldCE_.
-  rew build_compilenv_ok with functional inversion heq_bldCE_ /sng.
+  intros stbl enclosingCE lvl lparams decl res h_eq_bldCE_.
+  rew build_compilenv_ok with functional inversion h_eq_bldCE_ /sng.
   eauto 10.
 Qed.
 
@@ -7477,7 +7505,7 @@ Lemma transl_procsig_match_env_succeeds_:
         → i ≠ chaining_param.
 Proof.
   intros /sng.
-  unfold transl_procsig in heq_transl_procsig_pnum_.
+  unfold transl_procsig in h_eq_transl_procsig_pnum_.
   assert (stack_match_functions_ st sp CE e g m) by eauto with spark /sng.
   red in h_stk_mtch_fun_.
   unfold symboltable.fetch_proc_ in h_stk_mtch_fun_.
@@ -7490,15 +7518,15 @@ Proof.
 destruct 
   (transl_lparameter_specification_to_procsig
      st l (procedure_parameter_profile p)) eqn:?;try discriminate /sng.
-simpl in heq_transl_procsig_pnum_.
-invclear heq_transl_procsig_pnum_ /sng.
+simpl in h_eq_transl_procsig_pnum_.
+invclear h_eq_transl_procsig_pnum_ /sng.
 exists p, pnum0, lglobdef.
 split;[ | split;[ | split]].
 + assumption.
 + reflexivity.
 + subst_det_addrstack_zero.
-  rewrite heq_find_func_proc_addr_ in heq_find_func_paddr_fction_.
-  invclear heq_find_func_paddr_fction_ /sng.
+  rewrite h_eq_find_func_proc_addr_ in h_eq_find_func_paddr_fction_.
+  invclear h_eq_find_func_paddr_fction_ /sng.
   assumption.
 + eapply h_wf_st_st_;eauto.
 Qed.
@@ -7536,15 +7564,15 @@ Proof.
   (* Store => unchanged on forbidden *)
   - destruct addr_v;try discriminate. 
     up_type.
-    simpl in heq_storev_a_v_m'_.
+    simpl in h_eq_storev_a_v_m'_.
     eapply Mem.store_unchanged_on;eauto.
     intros /sng.
     intros [abs1 abs2].
     red in abs1.
-    functional inversion heq_transl_name_;subst /sng.
-    simpl in heq_compute_chnk_nme_.
+    functional inversion h_eq_transl_name_;subst /sng.
+    simpl in h_eq_compute_chnk_nme_.
     rewrite <- transl_variable_astnum with (a:=astnum) (1:=h_eq_transl_var_) in h_eq_transl_var_.
-    specialize (abs1 id addr chunk b i h_eq_transl_var_ heq_compute_chnk_nme_ h_CM_eval_expr_addr_addr_v_). 
+    specialize (abs1 id addr chunk b i h_eq_transl_var_ h_eq_compute_chnk_nme_ h_CM_eval_expr_addr_addr_v_). 
     destruct abs1.
     + apply H. reflexivity.
     + lia.
@@ -7567,11 +7595,11 @@ Proof.
     rename y into proc_lvl.
     inversion h_evalfuncall_fd_vargs_vres_;subst /sng.
     + (* internal function *)
-      specialize transl_procsig_match_env_succeeds_ with (1:=h_wf_st_st_) (2:=h_match_env_) (3:=heq_transl_procsig_pnum_) (4:=h_CM_eval_expr_a_a_v_) (5:=heq_find_func_a_v_fd_) as ? /sng.
+      specialize transl_procsig_match_env_succeeds_ with (1:=h_wf_st_st_) (2:=h_match_env_) (3:=h_eq_transl_procsig_pnum_) (4:=h_CM_eval_expr_a_a_v_) (5:=h_eq_find_func_a_v_fd_) as ? /sng.
       decomp h_ex_;up_type.
       rename h_forall_i_ into h_pbdy_chainarg_noclash_.
       rew transl_procedure_ok with
-        functional inversion heq_transl_proc_pbdy_;up_type /sng.
+        functional inversion h_eq_transl_proc_pbdy_;up_type /sng.
       rename x3 into initparams.
       rename x2 into locvarinit.
       rename x1 into bdy.
@@ -7597,7 +7625,7 @@ Proof.
 
       (* thus CE_sufx preserves the invariant. *)
       assert (invariant_compile CE_proc st) /sng.
-      { rew build_compilenv_ok with functional inversion heq_build_compilenv_ /sng.
+      { rew build_compilenv_ok with functional inversion h_eq_build_compilenv_ /sng.
         eapply build_compilenv_preserve_invariant_compile;eauto.
         eapply invariant_compile_sublist.
         erewrite CompilEnv.cut_until_spec1;eauto. }
@@ -7674,8 +7702,8 @@ Proof.
                  (n':=(Datatypes.length CE - Datatypes.length CE_sufx)%nat).
           - lia.
           - assumption. }
-        assert (Datatypes.length CE_proc = S (Datatypes.length CE_sufx)) as heq_lgth_CE_proc_.
-        { rew build_compilenv_ok with functional inversion heq_build_compilenv_.
+        assert (Datatypes.length CE_proc = S (Datatypes.length CE_sufx)) as h_eq_lgth_CE_proc_.
+        { rew build_compilenv_ok with functional inversion h_eq_build_compilenv_.
           reflexivity. }
         (* Since the chaining param is not the translation of a spark
            variable, we stay in callers environment, that is: from
@@ -7684,9 +7712,9 @@ Proof.
         assert (Mem.unchanged_on (forbidden st CE g astnum e sp m m_chain) m_pre_chain m_chain) /sng.
         { unfold chain_param in h_exec_stmt_chain_param_Out_normal_.
           inversion h_exec_stmt_chain_param_Out_normal_ /sng.
-          unfold Mem.storev in heq_storev_v_m_chain_.
+          unfold Mem.storev in h_eq_storev_v_m_chain_.
           destruct vaddr;try discriminate.
-          apply Mem.store_unchanged_on with (1:=heq_storev_v_m_chain_).
+          apply Mem.store_unchanged_on with (1:=h_eq_storev_v_m_chain_).
           intros /sng.
           unfold sp_proc in h_CM_eval_expr_vaddr_.
           destruct h_and_ /sng.
@@ -7709,8 +7737,8 @@ Proof.
         { eapply malloc_preserves_chained_structure;eauto. }
 
         assert(chained_stack_structure m_chain (Datatypes.length CE_sufx) (Values.Vptr b' Ptrofs.zero)) /sng.
-        { inversion heq_lgth_CE_proc_;clear heq_lgth_CE_proc_ /sng.
-(*           rewrite <- heq_all_args_t_ in h_CM_eval_exprl_bl_vargs_. *)
+        { inversion h_eq_lgth_CE_proc_;clear h_eq_lgth_CE_proc_ /sng.
+(*           rewrite <- h_eq_all_args_t_ in h_CM_eval_exprl_bl_vargs_. *)
           inversion h_CM_eval_exprl_bl_vargs_ /sng.
           unfold chain_param in h_exec_stmt_chain_param_Out_normal_.
           inversion h_exec_stmt_chain_param_Out_normal_ /sng.
@@ -7727,18 +7755,18 @@ Proof.
           + eassumption. }
           
         assert (chained_stack_structure m_chain (S (Datatypes.length CE_sufx)) sp_proc) /sng.
-        { inversion heq_lgth_CE_proc_;clear heq_lgth_CE_proc_ /sng.
-(*           rewrite <- heq_all_args_t_ in h_CM_eval_exprl_bl_vargs_. *)
+        { inversion h_eq_lgth_CE_proc_;clear h_eq_lgth_CE_proc_ /sng.
+(*           rewrite <- h_eq_all_args_t_ in h_CM_eval_exprl_bl_vargs_. *)
           inversion h_CM_eval_exprl_bl_vargs_ /sng.
           unfold chain_param in h_exec_stmt_chain_param_Out_normal_.
           inversion h_exec_stmt_chain_param_Out_normal_ /sng.
           inversion h_CM_eval_expr_v_ /sng.
-          cbn [set_params] in heq_mget_chaining_param_v_.          
-          rewrite map_get_set_same_nodup in heq_mget_chaining_param_v_;auto.
+          cbn [set_params] in h_eq_mget_chaining_param_v_.          
+          rewrite map_get_set_same_nodup in h_eq_mget_chaining_param_v_;auto.
           assert (chained_stack_structure m (Datatypes.length CE - Datatypes.length CE_sufx) sp) /sng.
           { eapply chained_stack_structure_le;eauto;lia. }
           pose proof chain_repeat_loadv_1 _ _ _ h_chain_m0_ _ g e h_repeat_loadv_.
-          rewrite heq_length_.
+          rewrite h_eq_length_.
           apply chained_S with (b':=b').
           - pose proof chained_stack_struct_inv_sp_zero _ _ _ h_chain_m0_ /sng.
             decomp h_ex_.
@@ -7757,9 +7785,9 @@ Proof.
           (* malloc + store didnt change chaingin struct. *)
           - unfold sp_proc in *.
             repeat  subst_det_addrstack_zero.
-            cbn in heq_storev_v_m_chain_ |- * .
-            rewrite (Mem.load_store_same _ _ _ _ _ _ heq_storev_v_m_chain_).
-            inversion heq_mget_chaining_param_v_.
+            cbn in h_eq_storev_v_m_chain_ |- * .
+            rewrite (Mem.load_store_same _ _ _ _ _ _ h_eq_storev_v_m_chain_).
+            inversion h_eq_mget_chaining_param_v_.
             reflexivity. }
 
         (* This is from m_chain only. *)
@@ -7801,14 +7829,14 @@ Proof.
               red in h_aligned_g_m_.
               assert (δ_lvl ≤ Datatypes.length CE_sufx) /sng.
               { rew build_compilenv_ok with
-                  functional inversion heq_build_compilenv_.
+                  functional inversion h_eq_build_compilenv_.
                 cbn in h_le_δ_lvl_.
                 lia. }
               specialize (h_aligned_g_m_ _ h_le_δ_lvl0_).
               decomp h_aligned_g_m_.
 (*               unfold chaining_arg in *. *)
 (*               inversion heq;clear heq /sng. *)
-(*               rewrite <- heq_all_args_t_ in h_CM_eval_exprl_bl_vargs_. *)
+(*               rewrite <- h_eq_all_args_t_ in h_CM_eval_exprl_bl_vargs_. *)
               inversion h_CM_eval_exprl_bl_vargs_ /sng.
               unfold initlocenv,chain_param in h_CM_eval_expr_addr_enclosing_frame_addr_enclosing_frame_v_.
               inversion h_exec_stmt_chain_param_Out_normal_ /sng.
@@ -7842,7 +7870,7 @@ Proof.
                 decomp h_ex_.
                 subst sp'' .
                 inversion h_CM_eval_expr_v_ /sng.
-                unfold initlocenv in heq_mget_chaining_param_initlocenv_v_.
+                unfold initlocenv in h_eq_mget_chaining_param_initlocenv_v_.
                 assert ( Maps.PTree.get chaining_param
                                          (set_locals (transl_decl_to_lident st decl0) (Maps.PTree.set chaining_param addr_enclosing_frame_v (set_params vl tlparams)))
                           = Some addr_enclosing_frame_v) /sng.
@@ -7853,9 +7881,9 @@ Proof.
                   assumption. }
                 subst chain_param.
                 (* subst chaining_arg. *)
-                cbn [set_params] in heq_mget_chaining_param_initlocenv_v_.
-                rewrite heq_mget_chaining_param_initlocenv_v_ in heq_mget_chaining_param_addr_enclosing_frame_v_.
-                invclear heq_mget_chaining_param_addr_enclosing_frame_v_ /sng.
+                cbn [set_params] in h_eq_mget_chaining_param_initlocenv_v_.
+                rewrite h_eq_mget_chaining_param_initlocenv_v_ in h_eq_mget_chaining_param_addr_enclosing_frame_v_.
+                invclear h_eq_mget_chaining_param_addr_enclosing_frame_v_ /sng.
                 assert (chained_stack_structure m (Datatypes.length CE - Datatypes.length CE_sufx) sp) /sng.
                 { eapply chained_stack_structure_le;eauto;lia. }
                 specialize chain_repeat_loadv_1 with (1:=h_chain_m0_) (2:=h_repeat_loadv_) as h.
@@ -7881,35 +7909,35 @@ Proof.
                   assert ((Values.Vptr b' Ptrofs.zero) = addr_enclosing_frame_v).
                   { eapply det_eval_expr ;eauto. }
                   subst.
-                  cbn in heq_storev_v_m_chain_ |-* .
-                  rewrite (Mem.load_store_same _ _ _ _ _ _ heq_storev_v_m_chain_).
+                  cbn in h_eq_storev_v_m_chain_ |-* .
+                  rewrite (Mem.load_store_same _ _ _ _ _ _ h_eq_storev_v_m_chain_).
                   reflexivity. }
               eapply chained_stack_structure_decomp_S_2' with (sp':=sp'').
               * assumption.
               * econstructor;  (* one load goes to sp'' *) 
                   auto.
                 -- eapply cm_eval_addrstack_zero_chain;eauto.
-                -- cbn in heq_storev_v_m_chain_ |- *.
+                -- cbn in h_eq_storev_v_m_chain_ |- *.
                    assert (v = sp'') /sng.
                    { 
                      transitivity addr_enclosing_frame_v.
                      - subst sp_proc.
                        inversion h_CM_eval_expr_v_ /sng.
 (*                        unfold initlocenv in heq0. *)
-                       unfold initlocenv in heq_mget_chaining_param_initlocenv_v_.
-                       rewrite map_get_set_locals_diff in heq_mget_chaining_param_initlocenv_v_.
+                       unfold initlocenv in h_eq_mget_chaining_param_initlocenv_v_.
+                       rewrite map_get_set_locals_diff in h_eq_mget_chaining_param_initlocenv_v_.
                        2: admit. (* chaingin_param not in decl *)
-                       cbn [set_params] in heq_mget_chaining_param_initlocenv_v_.
-                       rewrite Maps.PTree.gss in heq_mget_chaining_param_initlocenv_v_.
-                       inversion heq_mget_chaining_param_initlocenv_v_.
+                       cbn [set_params] in h_eq_mget_chaining_param_initlocenv_v_.
+                       rewrite Maps.PTree.gss in h_eq_mget_chaining_param_initlocenv_v_.
+                       inversion h_eq_mget_chaining_param_initlocenv_v_.
                        reflexivity.
                      - apply chain_repeat_loadv with (g:=g)(e:=e) in h_repeat_loadv_.
                        + subst_det_addrstack_zero.
                          reflexivity.
                        + eapply chained_stack_structure_le;eauto;lia. }
                    subst.
-                   apply Mem.load_store_same in heq_storev_v_m_chain_.
-                   unfold Values.Val.load_result in heq_storev_v_m_chain_.
+                   apply Mem.load_store_same in h_eq_storev_v_m_chain_.
+                   unfold Values.Val.load_result in h_eq_storev_v_m_chain_.
                    specialize match_env_sp_zero_ with (1:=h_match_env_) as ? /sng.
                    decomp h_ex_.
                    subst sp''.
@@ -7953,7 +7981,7 @@ Proof.
                     lia. }
                   eapply h_b'_sp0_;eauto.
                 -- assumption.
-                -- unfold sp_proc in heq_storev_v_m_chain_. eassumption.
+                -- unfold sp_proc in h_eq_storev_v_m_chain_. eassumption.
                 -- auto with arith.
                 -- (* This is true for m, and malloc does not change it so it is also true for m_pre_chain *) 
                   eapply malloc_preserves_chaining_loads with (1:=h_malloc_m_m1_);eauto. }
@@ -7979,7 +8007,7 @@ Proof.
           inversion h_exec_stmt_chain_param_Out_normal_ /sng.
           unfold sp_proc in h_CM_eval_expr_vaddr_.
           subst_det_addrstack_zero.
-          unfold Mem.storev in heq_storev_v_m_chain_.
+          unfold Mem.storev in h_eq_storev_v_m_chain_.
           eapply Mem.perm_store_1 with (m1:=m_pre_chain);eauto. }
         clear h_unchanged_on_m_chain_m_init_params_.
         autorename h_unchanged_on_m_chain_m_init_params0_.
@@ -7990,16 +8018,16 @@ Proof.
         { inversion h_exec_stmt_locvarinit_;eq_same_clear /sng.
           inversion h_exec_stmt_Sskip_Out_normal_ /sng.
           eapply init_locals_preserves_structure.
-          - eapply build_compilenv_exact_lvl with (2:=heq_build_compilenv_) ;eauto.
+          - eapply build_compilenv_exact_lvl with (2:=h_eq_build_compilenv_) ;eauto.
             eapply exact_lvlG_cut_until with (CE:=CE);eauto with spark.
-          - eapply build_compilenv_stack_no_null_offset with (4:=heq_build_compilenv_);eauto.
+          - eapply build_compilenv_stack_no_null_offset with (4:=h_eq_build_compilenv_);eauto.
             + eapply exact_lvlG_cut_until with (CE:=CE);eauto with spark.
             + eapply no_overflow_NoDup_G_cut with (CE:=CE);eauto with spark.
             + eapply no_null_offset_NoDup_G_cut with (CE:=CE);eauto with spark.
           - apply h_inv_comp_CE_proc_st_.
           - eassumption.
           - assumption.
-          - rewrite <- heq_lgth_CE_proc_. assumption.
+          - rewrite <- h_eq_lgth_CE_proc_. assumption.
           - eapply chain_aligned.
             + eassumption.
             + lia.
@@ -8028,12 +8056,12 @@ Proof.
     + eapply h_forall_st_;eauto.
   - specialize h_forall_st_
       with (1:=h_wf_st_st_) (2:=eq_refl _) (3:=h_match_env_)
-           (4:=h_chain_m_lvl_sp_) (5:=h_inv_comp_CE_st_) (6:=heq_transl_stmt0_).
+           (4:=h_chain_m_lvl_sp_) (5:=h_inv_comp_CE_st_) (6:=h_eq_transl_stmt0_).
     destruct h_forall_st_ as [ ? h_unch_on1_] /sng.
     (* Needing match_env_ preserved here. *)
     specialize h_forall_st0_
       with (1:=h_wf_st_st_) (2:=eq_refl _)
-           (4:=h_chain_m1_) (5:=h_inv_comp_CE_st_) (6:=heq_transl_stmt_).
+           (4:=h_chain_m1_) (5:=h_inv_comp_CE_st_) (6:=h_eq_transl_stmt_).
     (* assert (match_env_ st s CE sp e1 g m1). *)
     admit.
   (* specialize (h_forall_st2_ _ _ _ _ ?  heq0). *)
@@ -8099,7 +8127,7 @@ Proof.
   intros /sng.
   functional inversion h_eq_transl_var_;subst /sng.
   cbn in *.
-  invclear heq_lvloftop_m'_ /sng.
+  invclear h_eq_lvloftop_m'_ /sng.
   assert (lvl_nme < m')%nat /sng. {
     inversion h_exct_lvlG_ /sng.
     eapply CompilEnv.exact_levelG_frameG_lt_lgth;eauto. }
@@ -8109,15 +8137,15 @@ Proof.
   - f_equal.
     lia.
   - unfold transl_variable.
-    rewrite heq_CEfetchG_nme_,heq_CEframeG_nme_.
+    rewrite h_eq_CEfetchG_nme_,h_eq_CEframeG_nme_.
     assert (CompilEnv.level_of_top CE_sufx = Some (Datatypes.length CE_sufx - 1))%nat /sng. {
       eapply foo.
       - intro abs.
         subst.
-        simpl in heq_CEfetchG_nme_.
+        simpl in h_eq_CEfetchG_nme_.
         discriminate.
       - inversion h_exct_lvlG_;auto. }
-    rewrite heq_lvloftop_CE_sufx_.
+    rewrite h_eq_lvloftop_CE_sufx_.
     assert (m' = Datatypes.length CE_sufx) /sng. {
       inversion h_exct_lvlG_;subst;auto. }
     subst.
@@ -8133,7 +8161,7 @@ Lemma exact_lvl_transl_name_empty_top: forall st pb_lvl CE_sufx nme nme_t,
                    ∧ (transl_name st CE_sufx nme =: build_loads δ n).
 Proof.
   intros /sng.
-  functional inversion heq_transl_name_;subst /sng.
+  functional inversion h_eq_transl_name_;subst /sng.
   eapply exact_lvl_transl_variable_empty_top;eauto.
 Qed.
 
@@ -8151,7 +8179,7 @@ Proof.
   revert l lvl sto Heqx Heqx'.
   autorename h_copy_in_.
   induction h_copy_in_x_x'_;!intros;subst;unfold ST.push in *; simpl in *; try discriminate /sng.
-  - invclear heq_OK_ /sng.
+  - invclear h_eq_OK_ /sng.
     exists nil;split;[|split];auto.
     intros /sng.
     simpl.
@@ -8163,7 +8191,7 @@ Proof.
     rewrite <- app_assoc;simpl.
     split;[|split].
     + reflexivity.
-    + rewrite heq_length_.
+    + rewrite h_eq_length_.
       rewrite app_length;simpl.
       rewrite Nat.add_1_r;auto.
     + intros /sng.
@@ -8178,7 +8206,7 @@ Proof.
     rewrite <- app_assoc;simpl.
     split;[|split].
     + reflexivity.
-    + rewrite heq_length_.
+    + rewrite h_eq_length_.
       rewrite app_length;simpl.
       rewrite Nat.add_1_r;auto.
     + intros /sng.
@@ -8193,7 +8221,7 @@ Proof.
     rewrite <- app_assoc;simpl.
     split;[|split].
     + reflexivity.
-    + rewrite heq_length_.
+    + rewrite h_eq_length_.
       rewrite app_length;simpl.
       rewrite Nat.add_1_r;auto.
     + intros /sng.
@@ -8208,7 +8236,7 @@ Proof.
     rewrite <- app_assoc;simpl.
     split;[|split].
     + reflexivity.
-    + rewrite heq_length_.
+    + rewrite h_eq_length_.
       rewrite app_length;simpl.
       rewrite Nat.add_1_r;auto.
     + intros /sng.
@@ -8223,7 +8251,7 @@ Proof.
     rewrite <- app_assoc;simpl.
     split;[|split].
     + reflexivity.
-    + rewrite heq_length_.
+    + rewrite h_eq_length_.
       rewrite app_length;simpl.
       rewrite Nat.add_1_r;auto.
     + intros /sng.
@@ -8264,15 +8292,15 @@ Proof.
   - inversion h_for3_ /sng.
     assert (l0 = l ∧ x0 = x) as ? /sng. {
       assert (Datatypes.length (l0 ++ [x0]) = Datatypes.length (l ++ [x])) /sng. {
-        rewrite heq_app_.
+        rewrite h_eq_app_.
         reflexivity. }
-      setoid_rewrite app_length in heq_length_.
-      simpl in heq_length_.
+      setoid_rewrite app_length in h_eq_length_.
+      simpl in h_eq_length_.
       assert (Datatypes.length l0 = Datatypes.length l) /sng. {
         lia. }
-      specialize app_same_length_eq_ with (1:=heq_length0_)(2:=heq_app_) as ? /sng.
+      specialize app_same_length_eq_ with (1:=h_eq_length0_)(2:=h_eq_app_) as ? /sng.
       decomp h_and_.
-      inversion heq_cons_.
+      inversion h_eq_cons_.
       split;auto. }
     decomp h_and_.
     subst.
@@ -8301,7 +8329,7 @@ Lemma copyIn_init:
 Proof.
   intros until 1 /sng.
   induction h_copy_in_x_y_;!intros;try discriminate;subst /sng.
-  - inversion heq_OK_ /sng.
+  - inversion h_eq_OK_ /sng.
     exists nil.
     split;[|split].
     + auto.
@@ -8323,7 +8351,7 @@ Proof.
       lia.
     + constructor.
       * intros /sng.
-        rewrite heq_parameter_mode_.
+        rewrite h_eq_parameter_mode_.
         assumption.
       * assumption.
   - unfold ST.push in h_forall_lvl_.
@@ -8342,7 +8370,7 @@ Proof.
       lia.
     + constructor.
       * intros /sng.
-        rewrite heq_parameter_mode_.
+        rewrite h_eq_parameter_mode_.
         assumption.
       * assumption.
   - unfold ST.push in h_forall_lvl_.
@@ -8361,7 +8389,7 @@ Proof.
       lia.
     + constructor.
       * intros /sng.
-        rewrite heq_parameter_mode_.
+        rewrite h_eq_parameter_mode_.
         constructor.
         assumption.
       * assumption.
@@ -8381,7 +8409,7 @@ Proof.
       lia.
     + constructor.
       * intros /sng.
-        rewrite heq_parameter_mode_.
+        rewrite h_eq_parameter_mode_.
         constructor.
         assumption.
       * assumption.
@@ -8401,7 +8429,7 @@ Proof.
       lia.
     + constructor.
       * intros /sng.
-        rewrite heq_parameter_mode_.
+        rewrite h_eq_parameter_mode_.
         reflexivity.
       * assumption.
 Qed.
@@ -8410,20 +8438,20 @@ Lemma set_params_in : ∀ l vl k v,
     List.In k l.
 Proof.
   induction l;simpl;intros /sng.
-  - rewrite Maps.PTree.gempty in heq_mget_k_v_.
-    inversion heq_mget_k_v_.
+  - rewrite Maps.PTree.gempty in h_eq_mget_k_v_.
+    inversion h_eq_mget_k_v_.
   - destruct vl;simpl in *.
     + destruct (Pos.eq_dec a k).
       * left;auto.
       * right.
-        rewrite Maps.PTree.gso in heq_mget_k_v_.
+        rewrite Maps.PTree.gso in h_eq_mget_k_v_.
         -- eapply IHl;eauto.
         -- symmetry.
            assumption.
     + destruct (Pos.eq_dec a k).
       * left;auto.
       * right.
-        rewrite Maps.PTree.gso in heq_mget_k_v_.
+        rewrite Maps.PTree.gso in h_eq_mget_k_v_.
         -- eapply IHl;eauto.
         -- symmetry.
            assumption.
@@ -8513,14 +8541,14 @@ Proof.
   rew store_params_ok
     with functional induction function_utils.store_params st CE proc_param_prof;
     !intros;(try now discriminate);up_type /sng.
-  - inversion heq_OK_;subst.
+  - inversion h_eq_OK_;subst.
     exists m1.
     inversion h_exec_stmt_s_parms_Out_normal_ /sng.
     econstructor 1.
   - decomp h_ex_.
     rename x0 into s_parms'.
-    invclear heq_OK_;subst /sng.
-    specialize h_forall_s_parms_ with (1:=heq_store_prms_lparams'_x0_).
+    invclear h_eq_OK_;subst /sng.
+    specialize h_forall_s_parms_ with (1:=h_eq_store_prms_lparams'_x0_).
     inversion h_exec_stmt_s_parms_Out_normal_;
       try match goal with
           | H:?X<>?X |- _ => exfalso;apply H;reflexivity
@@ -8531,11 +8559,11 @@ Proof.
                          (build_param_copyin_assign (parameter_mode prm) x1 x
                                                     (transl_paramid (parameter_name prm)))
                          t1 e1 m2' Out_normal). {
-      specialize Mem.store_valid_access_3 with (1:=heq_store_v_m1_) as  ? /sng.
-      specialize Mem.store_valid_access_1 with (1:=heq_store_v_m1_)
+      specialize Mem.store_valid_access_3 with (1:=h_eq_store_v_m1_) as  ? /sng.
+      specialize Mem.store_valid_access_1 with (1:=h_eq_store_v_m1_)
                                                 (2:=h_valid_access_x2_b_) as ? /sng.
-      simpl in heq_transl_name_.
-      functional inversion heq_transl_name_ /sng.
+      simpl in h_eq_transl_name_.
+      functional inversion h_eq_transl_name_ /sng.
       (* unfold build_param_copyin_assign in h_exec_stmt_. *)
       destruct (parameter_mode prm) eqn:heq; simpl in *;up_type.
       all:swap 1 2.
@@ -8545,15 +8573,15 @@ Proof.
       + (* In *)
         inversion h_exec_stmt_ /sng.
         clear h_exec_stmt_.
-        unfold Mem.storev in heq_storev_v0_m2_.
+        unfold Mem.storev in h_eq_storev_v0_m2_.
         destruct vaddr; try discriminate.
-        specialize Mem.store_valid_access_3 with (1:=heq_storev_v0_m2_) as  ? /sng.
-        specialize Mem.store_valid_access_1 with (1:=heq_storev_v0_m2_)
+        specialize Mem.store_valid_access_3 with (1:=h_eq_storev_v0_m2_) as  ? /sng.
+        specialize Mem.store_valid_access_1 with (1:=h_eq_storev_v0_m2_)
                                                   (2:=h_valid_access_b_) as ? /sng.
         assert (exists m2', Mem.storev x m1 (Values.Vptr b i) v0 = Some m2') /sng. {
           simpl.
           specialize Mem.store_valid_access_1
-            with (1:=heq_store_v_m1_) (2:=h_valid_access_b_) as ? /sng.
+            with (1:=h_eq_store_v_m1_) (2:=h_valid_access_b_) as ? /sng.
           edestruct Mem.valid_access_store with (1:=h_valid_access_b1_) /sng.
           exists x0;eauto. }
         decomp h_ex_.
@@ -8568,8 +8596,8 @@ Proof.
                    eassumption.
              ++ specialize CompilEnv.exact_lvl_lvl_of_top
                   with (1:=h_exct_lvlG_CE_)
-                       (2:=heq_lvloftop_CE_m'0_) as ? /sng.
-                rewrite <- heq_S_.
+                       (2:=h_eq_lvloftop_CE_m'0_) as ? /sng.
+                rewrite <- h_eq_S_.
                 lia.
           -- lia. (* NoDup in args names. *)
         * (* TODO: lemma *)
@@ -8578,15 +8606,15 @@ Proof.
       + (* In_Out *)
         inversion h_exec_stmt_ /sng.
         clear h_exec_stmt_.
-        unfold Mem.storev in heq_storev_v0_m2_.
+        unfold Mem.storev in h_eq_storev_v0_m2_.
         destruct vaddr; try discriminate.
-        specialize Mem.store_valid_access_3 with (1:=heq_storev_v0_m2_) as  ? /sng.
-        specialize Mem.store_valid_access_1 with (1:=heq_storev_v0_m2_)
+        specialize Mem.store_valid_access_3 with (1:=h_eq_storev_v0_m2_) as  ? /sng.
+        specialize Mem.store_valid_access_1 with (1:=h_eq_storev_v0_m2_)
                                                   (2:=h_valid_access_b_) as ? /sng.
         assert (exists m2', Mem.storev x m1  (Values.Vptr b i) v0 = Some m2') /sng. {
           simpl.
           specialize Mem.store_valid_access_1
-            with (1:=heq_store_v_m1_) (2:=h_valid_access_b_) as ? /sng.
+            with (1:=h_eq_store_v_m1_) (2:=h_valid_access_b_) as ? /sng.
           edestruct Mem.valid_access_store with (1:=h_valid_access_b1_) /sng.
           exists x0;eauto. }
         decomp h_ex_.
@@ -8600,8 +8628,8 @@ Proof.
                 eassumption.
           ++ specialize CompilEnv.exact_lvl_lvl_of_top
                with (1:=h_exct_lvlG_CE_)
-                    (2:=heq_lvloftop_CE_m'0_) as ? /sng.
-             rewrite <- heq_S_.
+                    (2:=h_eq_lvloftop_CE_m'0_) as ? /sng.
+             rewrite <- h_eq_S_.
              lia. }
         assert (4 <= Ptrofs.unsigned x2_ofs) /sng. {
           lia. }
@@ -8612,7 +8640,7 @@ Proof.
         specialize wf_chain_load' as ? /sng.
         lazy zeta in h_forall_lvl_.
         specialize h_forall_lvl_ with
-            (1:=heq_store_v_m1_)
+            (1:=h_eq_store_v_m1_)
             (2:=h_aligned_g_m1_)
             (3:=h_le_)
             (4:=h_le0_)
@@ -8637,7 +8665,7 @@ Proof.
             assert (transl_name st CE ((Identifier O (parameter_name prm)))=:build_loads (m'0 - m0) n) /sng. {
               simpl.
               assumption. }
-            edestruct h_subset_CE_st_CE_st_ with (1:=heq_transl_name0_) /sng.
+            edestruct h_subset_CE_st_CE_st_ with (1:=h_eq_transl_name0_) /sng.
             exists x0.
             eexists.
             repeat split;eauto.
@@ -8703,7 +8731,7 @@ Proof.
        rew transl_stmt_ok with functional inversion h);
   subst ; eq_same_clear;
   !specialize chained_stack_struct_inv_sp_zero with (1:=h_chain_m_lvl_stkptr_) as h_ex_;decomp h_ex_;
-    try match type of heq_stkptr_ with
+    try match type of h_eq_stkptr_ with
         | _ = ?x => subst stkptr; (set (stkptr:=x) in * )
         end /sng.
   all: swap 6 7. (* putting fun call at the end. *)
@@ -8722,22 +8750,22 @@ Proof.
     rename_all_hyps.
     exists Events.E0.
     exists locenv.
-    decomp (transl_name_OK_inv _ _ _ _ heq_transl_name_);subst.
+    decomp (transl_name_OK_inv _ _ _ _ h_eq_transl_name_);subst.
     (*  (edestruct (me_stack_complete h_match_env_);eauto) /sng. *)
-    decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e_ _ _ _ _ _ _
+    decomp (transl_expr_ok _ _ _ _ h_eq_tr_expr_e_ _ _ _ _ _ _
                            h_eval_expr_e_e_v_ h_match_env_).
     (* transl_type never fails *)
     assert (hex:exists nme_type_t, transl_type stbl nme_type =: nme_type_t).
     { simpl in *.
       assert (type_of_name stbl (Identifier astnum id) = Errors.OK nme_type).
       { simpl.
-        rewrite heq_fetch_exp_type_.
+        rewrite h_eq_fetch_exp_type_.
         reflexivity. }
       rename_all_hyps.
       eapply (ci_stbl_var_types_ok h_inv_comp_CE_stbl_);eauto. }
     decomp hex.
     (* make_load does not fail on a translated variable coming from CE *)
-    decomp (make_load_no_fail _ _ nme_t _ heq_transl_type_).
+    decomp (make_load_no_fail _ _ nme_t _ h_eq_transl_type_).
     (* Cminor.eval_expr does not fail on a translated variable (invariant) *)
     specialize h_match_env_ /sng.(me_safe_cm_env).(me_stack_match_addresses) as ?.
     red in h_stk_mtch_addr_stkptr_m_.
@@ -8783,7 +8811,7 @@ Proof.
     * eapply assignment_preserve_chained_stack_structure_aux with (m:=m);eauto.
       subst.
       functional inversion h_eq_transl_var_ /sng.
-      functional inversion heq_make_load_ /sng.
+      functional inversion h_eq_make_load_ /sng.
       specialize chain_struct_build_loads_ofs with (3:=h_CM_eval_expr_nme_t_nme_t_v_) as h.
       rewrite h.
       rewrite Ptrofs.unsigned_repr.
@@ -8796,19 +8824,19 @@ Proof.
          ++ specialize (ci_no_overflow h_inv_comp_CE_stbl_).
             intro /sng.
             red in h_no_overf_CE_.
-            specialize h_no_overf_CE_ with (1:=heq_CEfetchG_id_CE_).
+            specialize h_no_overf_CE_ with (1:=h_eq_CEfetchG_id_CE_).
             decomp h_no_overf_CE_.
             unfold Ptrofs.max_unsigned.
             lia.
       -- eapply chained_stack_structure_le;eauto.
-         specialize CompilEnv.exact_lvl_lvl_of_top with (2:=heq_lvloftop_CE_m'0_);intros;eauto /sng.
+         specialize CompilEnv.exact_lvl_lvl_of_top with (2:=h_eq_lvloftop_CE_m'0_);intros;eauto /sng.
          rewrite <- h_impl_eq_S_.
          ++ lia.
          ++ apply h_inv_comp_CE_stbl_.
       -- specialize (ci_no_overflow h_inv_comp_CE_stbl_).
          intro /sng.
          red in h_no_overf_CE_.
-         specialize h_no_overf_CE_ with (1:=heq_CEfetchG_id_CE_).
+         specialize h_no_overf_CE_ with (1:=h_eq_CEfetchG_id_CE_).
          apply Z.mod_small.
          assumption.
     * eapply store_preserves_structure;eauto.
@@ -8819,11 +8847,11 @@ Proof.
       intros /sng.
       intros [abs1 abs2].
       red in abs1.
-      functional inversion heq_transl_name_;subst /sng.
-      simpl in heq_compute_chnk_nme_.
+      functional inversion h_eq_transl_name_;subst /sng.
+      simpl in h_eq_compute_chnk_nme_.
       rewrite <- transl_variable_astnum with (a:=astnum0) (1:=h_eq_transl_var_) in h_eq_transl_var_.
-      specialize (abs1 id _ nme_chk b i h_eq_transl_var_ heq_compute_chnk_nme_ h_CM_eval_expr_nme_t_nme_t_v_). 
-      inversion heq_nme_t_v_;subst.
+      specialize (abs1 id _ nme_chk b i h_eq_transl_var_ h_eq_compute_chnk_nme_ h_CM_eval_expr_nme_t_nme_t_v_). 
+      inversion h_eq_nme_t_v_;subst.
       decomp abs1;auto;try lia.
   (* Assignment with satisifed range constraint (Range l u) *)
   - rename x into nme.
@@ -8831,18 +8859,18 @@ Proof.
     rename_all_hyps.
     exists Events.E0.
     exists locenv.
-    decomp (transl_name_OK_inv _ _ _ _ heq_transl_name_);subst.
-    decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e_ _ _ _ _ _ _ h_eval_expr_e_ h_match_env_).
+    decomp (transl_name_OK_inv _ _ _ _ h_eq_transl_name_);subst.
+    decomp (transl_expr_ok _ _ _ _ h_eq_tr_expr_e_ _ _ _ _ _ _ h_eval_expr_e_ h_match_env_).
       (* transl_type never fails *)
       assert (hex:exists nme_type_t, transl_type stbl nme_type =: nme_type_t).
       { simpl in *.
         assert (type_of_name stbl (Identifier astnum id) =: nme_type).
         { simpl.
-          rewrite heq_fetch_exp_type_.
+          rewrite h_eq_fetch_exp_type_.
           reflexivity. }
         eapply (ci_stbl_var_types_ok h_inv_comp_CE_stbl_);eauto. }
       decomp hex.
-      decomp (make_load_no_fail stbl nme_type nme_t nme_type_t heq_transl_type_).
+      decomp (make_load_no_fail stbl nme_type nme_t nme_type_t h_eq_transl_type_).
 
 
       assert (hex: exists vaddr,
@@ -8883,7 +8911,7 @@ Proof.
         subst e_t_v0.
         eapply assignment_preserve_match_env_;eauto.
         intros /sng.
-        invclear heq_Int_ /sng.
+        invclear h_eq_Int_ /sng.
         eapply eval_expr_overf;eauto.
       * subst;eapply assignment_preserve_chained_stack_structure;eauto.
       * eapply store_preserves_structure;eauto.
@@ -8893,11 +8921,11 @@ Proof.
         intros /sng.
         intros [abs1 abs2].
         red in abs1.
-        (* functional inversion heq_transl_name_;subst /sng. *)
-        simpl in heq_compute_chnk_nme_.
+        (* functional inversion h_eq_transl_name_;subst /sng. *)
+        simpl in h_eq_compute_chnk_nme_.
         rewrite <- transl_variable_astnum with (a:=astnum0) (1:=h_eq_transl_var_) in h_eq_transl_var_.
         subst.
-        specialize abs1 with (1:= h_eq_transl_var_) (2:=heq_compute_chnk_nme_)
+        specialize abs1 with (1:= h_eq_transl_var_) (2:=h_eq_compute_chnk_nme_)
                              (3:=h_CM_eval_expr_nme_t_nme_t_v_).
         destruct abs1 /sng.
         -- apply hneq_nme_block. reflexivity.
@@ -8906,11 +8934,11 @@ Proof.
   - rename x0 into b_then.
     rename x1 into b_else.
     rename_all_hyps.
-    + decomp (transl_expr_ok _ _ _ e_t heq_tr_expr_e_ locenv g m _ _
+    + decomp (transl_expr_ok _ _ _ e_t h_eq_tr_expr_e_ locenv g m _ _
                              stkptr h_eval_expr_e_ h_match_env_).
       specialize h_forall_s'_ with (1:=eq_refl)(2:=h_wf_st_st_)
                                     (3:=h_inv_comp_CE_st_)
-                                    (4:=heq_transl_stmt_stmt_b_then_)
+                                    (4:=h_eq_transl_stmt_stmt_b_then_)
                                     (5:=eq_refl)
                                     (6:=h_chain_m_)
                                     (7:=h_match_env_)
@@ -8919,7 +8947,7 @@ Proof.
       exists tr.
       exists locenv'.
       exists m'.
-      specialize transl_expr_ok with (1:=heq_tr_expr_e_)(2:=h_eval_expr_e_)
+      specialize transl_expr_ok with (1:=h_eq_tr_expr_e_)(2:=h_eval_expr_e_)
                                      (3:=h_match_env_) as h.
       decomp h.
       assert (exec_stmt g f stkptr locenv m
@@ -8947,12 +8975,12 @@ Proof.
   - rename x0 into b_then.
     rename x1 into b_else.
     rename_all_hyps.
-    + decomp (transl_expr_ok _ _ _ e_t heq_tr_expr_e_ locenv g m _ _
+    + decomp (transl_expr_ok _ _ _ e_t h_eq_tr_expr_e_ locenv g m _ _
                              stkptr h_eval_expr_e_ h_match_env_).
 
       specialize h_forall_s'_ with (1:=eq_refl)(2:=h_wf_st_st_)
                                     (3:=h_inv_comp_CE_st_)
-                                    (4:=heq_transl_stmt_stmt_b_else_)
+                                    (4:=h_eq_transl_stmt_stmt_b_else_)
                                     (5:=eq_refl)
                                     (6:=h_chain_m_)
                                     (7:=h_match_env_)
@@ -8961,7 +8989,7 @@ Proof.
       exists tr.
       exists locenv'.
       exists m'.
-      decomp (transl_expr_ok _ _ _ _ heq_tr_expr_e_ locenv g m s _ stkptr h_eval_expr_e_ h_match_env_).
+      decomp (transl_expr_ok _ _ _ _ h_eq_tr_expr_e_ locenv g m s _ stkptr h_eval_expr_e_ h_match_env_).
       assert (exec_stmt g f stkptr locenv m
                         (Sifthenelse (Ebinop (Ocmp Cne) e_t (Econst (Ointconst Int.zero)))
                                      b_then b_else) tr locenv' m' Out_normal).
@@ -8986,13 +9014,13 @@ Proof.
       * apply h_forall_astnum_.
   - (* Sequence *)
     simpl in *.
-    specialize h_forall_s'_ with (1:=eq_refl) (2:=h_wf_st_st_) (3:=h_inv_comp_CE_st_) (4:=heq_transl_stmt0_)
+    specialize h_forall_s'_ with (1:=eq_refl) (2:=h_wf_st_st_) (3:=h_inv_comp_CE_st_) (4:=h_eq_transl_stmt0_)
                                    (5:=eq_refl) (6:=h_chain_m_lvl_stkptr_) (7:=h_match_env_) (f:=f).
     decomp h_forall_s'_.
     match goal with
     | H:forall _, _ ∧ _ |- _ => let nme := fresh "h_unchange_" in rename H into nme
     end.
-    specialize h_forall_s'0_ with (m:=m') (1:=eq_refl)(2:=h_wf_st_st_)(3:=h_inv_comp_CE_st_) (4:=heq_transl_stmt_)
+    specialize h_forall_s'0_ with (m:=m') (1:=eq_refl)(2:=h_wf_st_st_)(3:=h_inv_comp_CE_st_) (4:=h_eq_transl_stmt_)
                                    (5:=eq_refl) (6:=h_chain_m'_) (7:=h_match_env0_)(f:=f).
 
     decomp h_forall_s'0_.
@@ -9052,7 +9080,7 @@ Proof.
        translate to an address containing the translated code.  *)
     pose proof (me_stack_match_functions_ h_match_env_ /sng.(me_safe_cm_env)).
     red in h_stk_mtch_fun_.
-    specialize (h_stk_mtch_fun_ _ _ _ heq_fetch_proc_p_).
+    specialize (h_stk_mtch_fun_ _ _ _ h_eq_fetch_proc_p_).
     destruct h_stk_mtch_fun_ as [CE_prefx [CE_sufx [paddr [pnum [fction [lglobdef [? [? [? ?]]]]]] ]]] /sng.
     up_type.
 
@@ -9060,17 +9088,17 @@ Proof.
        the pieces of code built by transl_procedure (in h_tr_proc_). *)
     (* ideally functional inversion here would be great but it fails, bug(s) reported *)
     (* rewrite transl_procedure_ok in h_tr_proc_. *)
-    (* functional inversion h_tr_proc_ /sng. ;subst;eq_same_clear; clear heq_transl_stmt_stm'_. *)
+    (* functional inversion h_tr_proc_ /sng. ;subst;eq_same_clear; clear h_eq_transl_stmt_stm'_. *)
     (* ************** emulating functional inversion ********************** *)
-    destruct pb eqn:heq_pb_;eq_same_clear.
-    rewrite <- ?heq_pb_ in heq_fetch_proc_p_. (* to re-fold pb where it didn't reduce. *)
+    destruct pb eqn:h_eq_pb_;eq_same_clear.
+    rewrite <- ?h_eq_pb_ in h_eq_fetch_proc_p_. (* to re-fold pb where it didn't reduce. *)
     simpl in *.
-    rename heq_transl_proc_pb_ into h_tr_proc_. (* displays better with a short name. *)
+    rename h_eq_transl_proc_pb_ into h_tr_proc_. (* displays better with a short name. *)
 
     destruct  (build_compilenv st CE_sufx pb_lvl procedure_parameter_profile
-                 procedure_declarative_part)  as  [ [CE''_bld stcksize]|] eqn:heq_bldCE_; simpl in h_tr_proc_; try discriminate.
+                 procedure_declarative_part)  as  [ [CE''_bld stcksize]|] eqn:h_eq_bldCE_; simpl in h_tr_proc_; try discriminate.
     repeat match type of h_tr_proc_ with
-           | (bind2 ?x _) = _  => destruct x as  [ [CE''_bld stcksize]|] eqn:heq_bldCE_
+           | (bind2 ?x _) = _  => destruct x as  [ [CE''_bld stcksize]|] eqn:h_eq_bldCE_
                                  ; simpl in h_tr_proc_; try discriminate
            | context [ ?x <=? ?y ]  =>
              let heqq := fresh "heq" in destruct (Z.leb x y) eqn:heqq; try discriminate
@@ -9092,7 +9120,7 @@ Proof.
     up_type.
     inversion h_tr_proc_;clear h_tr_proc_ /sng.
     (* invclear heq /sng. *)
-    match type of heq_find_func_paddr_fction_ with
+    match type of h_eq_find_func_paddr_fction_ with
     | (_ = Some (AST.Internal ?f)) => set (the_proc := f) in *
     end.
     up_type.
@@ -9101,7 +9129,7 @@ Proof.
     (* CE' is the new CE built from CE and the called procedure parameters and local variables *)
 
     specialize (h_forall_s'_ CE''_bld).
-    rewrite heq_transl_stmt_procedure_statements_s_pbdy_ in h_forall_s'_.
+    rewrite h_eq_transl_stmt_procedure_statements_s_pbdy_ in h_forall_s'_.
     specialize (h_forall_s'_ s_pbdy).
     assert (h_inv_CE''_bld_:invariant_compile CE''_bld st).
     { eapply build_compilenv_preserve_invariant_compile;eauto.
@@ -9112,27 +9140,27 @@ Proof.
         assumption. }
     specialize (h_forall_s'_ h_wf_st_st_ h_inv_CE''_bld_ eq_refl).
 
-    unfold transl_params in heq_transl_params_p_x_.
-    unfold symboltable.fetch_proc_ in heq_fetch_proc_p_.
-    rewrite heq_fetch_proc_p_ in heq_transl_params_p_x_.
-    rewrite heq_pb_ in heq_transl_params_p_x_.
-    simpl in heq_transl_params_p_x_.
+    unfold transl_params in h_eq_transl_params_p_x_.
+    unfold symboltable.fetch_proc_ in h_eq_fetch_proc_p_.
+    rewrite h_eq_fetch_proc_p_ in h_eq_transl_params_p_x_.
+    rewrite h_eq_pb_ in h_eq_transl_params_p_x_.
+    simpl in h_eq_transl_params_p_x_.
 
-    assert (heq_bldCE'_: build_compilenv st CE_sufx pb_lvl procedure_parameter_profile procedure_declarative_part =: (CE''_bld, stcksize))
+    assert (h_eq_bldCE'_: build_compilenv st CE_sufx pb_lvl procedure_parameter_profile procedure_declarative_part =: (CE''_bld, stcksize))
       by assumption.
-    apply compilenv_inv in heq_bldCE'_.
-    destruct heq_bldCE'_ as [sto [sto_sz [init_sto_sz [fr_prm heq_bldCE'_]]]].
-    decompose [and] heq_bldCE'_; clear heq_bldCE'_ /sng.
+    apply compilenv_inv in h_eq_bldCE'_.
+    destruct h_eq_bldCE'_ as [sto [sto_sz [init_sto_sz [fr_prm h_eq_bldCE'_]]]].
+    decompose [and] h_eq_bldCE'_; clear h_eq_bldCE'_ /sng.
     
     assert (hfrsh:fresh_params_ procedure_parameter_profile sto) by admit. (* spark typing *)
     assert (hnodup_arg:NoDupA eq_param_name procedure_parameter_profile) by admit. (* spark typing *)
     assert (hnodup_decl:NoDupA eq (decl_to_lident st procedure_declarative_part)) by admit. (* spark typing *)
-    assert (heq_lgth_CE_sufx_:Datatypes.length CE_sufx = pb_lvl).
+    assert (h_eq_lgth_CE_sufx_:Datatypes.length CE_sufx = pb_lvl).
     {
       erewrite (CompilEnv.cut_until_exact_levelG _ _ _ _ _ _ h_CEcut_CE_pb_lvl_).
       reflexivity. }
-    rewrite heq_lgth_CE_sufx_ in heq_pair_.
-    invclear heq_pair_ /sng.
+    rewrite h_eq_lgth_CE_sufx_ in h_eq_pair_.
+    invclear h_eq_pair_ /sng.
     
     unfold newFrame in h_copy_in_.
     destruct f /sng.
@@ -9141,7 +9169,7 @@ Proof.
 
     assert (chained_stack_structure m (Datatypes.length CE - 1) stkptr) /sng.
     { eapply chained_stack_structure_le;eauto;lia. }
-    specialize copy_in_spec with (1:=h_chain_m_) (2:=h_inv_comp_CE_st_)(3:=h_match_env_)(4:=heq_transl_params_p_x_) (5:=h_copy_in_) as h.
+    specialize copy_in_spec with (1:=h_chain_m_) (2:=h_inv_comp_CE_st_)(3:=h_match_env_)(4:=h_eq_transl_params_p_x_) (5:=h_copy_in_) as h.
     destruct h as [args_t_v ?] /sng.
     assert (h_ex_:exists chaining_expr_from_caller_v,Cminor.eval_expr g stkptr locenv m addr_enclosing_frame chaining_expr_from_caller_v).
     { admit. (* invariant to add: The chaining parameter is always evaluable to a value (an address). *) }
@@ -9199,12 +9227,12 @@ Proof.
         + econstructor;eauto.
         + cbn.
           unfold transl_procsig in *.        
-          rewrite  heq_fetch_proc_p_ in heq_transl_procsig_p_.
-          rewrite heq_pb_ in heq_transl_procsig_p_.
-          cbn in heq_transl_procsig_p_.
-          rewrite heq_transl_lprm_spec_procedure_parameter_profile_p_sig_ in heq_transl_procsig_p_.
-          cbn in heq_transl_procsig_p_.
-          inversion heq_transl_procsig_p_.
+          rewrite  h_eq_fetch_proc_p_ in h_eq_transl_procsig_p_.
+          rewrite h_eq_pb_ in h_eq_transl_procsig_p_.
+          cbn in h_eq_transl_procsig_p_.
+          rewrite h_eq_transl_lprm_spec_procedure_parameter_profile_p_sig_ in h_eq_transl_procsig_p_.
+          cbn in h_eq_transl_procsig_p_.
+          inversion h_eq_transl_procsig_p_.
           reflexivity.
       - assumption.
       - assumption.
@@ -9236,10 +9264,10 @@ Proof.
         - auto with zarith.
         - simpl.
           transitivity (snd fr_prm).
-          + eapply build_frame_lparams_mon_sz in heq_bld_frm_procedure_parameter_profile_.
-            simpl in heq_bld_frm_procedure_parameter_profile_.
+          + eapply build_frame_lparams_mon_sz in h_eq_bld_frm_procedure_parameter_profile_.
+            simpl in h_eq_bld_frm_procedure_parameter_profile_.
             assumption.
-          + eapply build_frame_decl_mon_sz in heq_build_frame_decl_.
+          + eapply build_frame_decl_mon_sz in h_eq_build_frame_decl_.
             assumption. }
       assert (Mem.storev AST.Mint32 m_proc_pre_init (Values.Vptr spb_proc Ptrofs.zero)
                           chaining_expr_from_caller_v = Some m_postchainarg) /sng.
@@ -9264,29 +9292,29 @@ Proof.
             intro abs.
             specialize transl_procsig_match_env_succeeds_
               with (pnum:=p) (proc_lvl:=lvl_p) (1:=h_wf_st_st_) (2:=h_match_env_)
-                   (5:=heq_find_func_paddr_fction_)
+                   (5:=h_eq_find_func_paddr_fction_)
               as h.
             assert (p_sign=funsig (AST.Internal the_proc)) /sng.
             { simpl.
               assert (Errors.OK p_sign = Errors.OK p_sig) /sng.
-              { rewrite <- heq_transl_lprm_spec_procedure_parameter_profile_p_sig_.
+              { rewrite <- h_eq_transl_lprm_spec_procedure_parameter_profile_p_sig_.
                 rew transl_procsig_ok with
-                  functional inversion heq_transl_procsig_p_ /sng.
-                rewrite <- heq_transl_lprm_spec_.
-                rewrite heq_fetch_proc_ in heq_fetch_proc_p_.
-                inversion heq_fetch_proc_p_.
+                  functional inversion h_eq_transl_procsig_p_ /sng.
+                rewrite <- h_eq_transl_lprm_spec_.
+                rewrite h_eq_fetch_proc_ in h_eq_fetch_proc_p_.
+                inversion h_eq_fetch_proc_p_.
                 reflexivity. }
-              inversion heq_OK_.
+              inversion h_eq_OK_.
               reflexivity. }
             subst.
-            specialize h with (1:=heq_transl_procsig_p_) (2:=h_CM_eval_expr_paddr_).
+            specialize h with (1:=h_eq_transl_procsig_p_) (2:=h_CM_eval_expr_paddr_).
             decomp h.
             eelim (h_forall_i_ chaining_param);eauto.
             rew transl_procsig_ok with
-              functional inversion heq_transl_procsig_p_ /sng.
+              functional inversion h_eq_transl_procsig_p_ /sng.
             subst.
-            rewrite heq_fetch_proc_ in *.
-            inversion heq_fetch_proc_p_.
+            rewrite h_eq_fetch_proc_ in *.
+            inversion h_eq_fetch_proc_p_.
             subst.
             simpl.
             assumption.
@@ -9303,21 +9331,21 @@ Proof.
         { erewrite <- CompilEnv.cut_until_spec1 at 1;eauto.
           rewrite app_length.
           auto with arith. }
-        rewrite heq_length0_ in h_chain_m_lvl_stkptr_.
+        rewrite h_eq_length0_ in h_chain_m_lvl_stkptr_.
         specialize chain_structure_cut with (1:=h_chain_m_lvl_stkptr_) (g:=g) (e:=locenv) as h.
         decomp h.
-        assert (heq_lgth_CE_sufx_:Datatypes.length CE_sufx = lvl_p).
-        { rew transl_procsig_ok with functional inversion heq_transl_procsig_p_ /sng.
+        assert (h_eq_lgth_CE_sufx_:Datatypes.length CE_sufx = lvl_p).
+        { rew transl_procsig_ok with functional inversion h_eq_transl_procsig_p_ /sng.
           subst.
-          rewrite heq_fetch_proc_ in *.
-          inversion heq_fetch_proc_p_;auto. }
+          rewrite h_eq_fetch_proc_ in *.
+          inversion h_eq_fetch_proc_p_;auto. }
         subst lvl_p.
         assert (sp' = chaining_expr_from_caller_v) /sng.
         { unfold addr_enclosing_frame in h_chaining_expr_from_caller_v_.
           eapply det_eval_expr;eauto.
           assert (Datatypes.length CE_prefx = Datatypes.length CE - Datatypes.length CE_sufx)%nat /sng.
           { lia. }
-          rewrite heq_length1_;auto. }
+          rewrite h_eq_length1_;auto. }
         subst sp'.  
         assert (exists cm_addr_enclosing_frame,
                    chaining_expr_from_caller_v = Values.Vptr cm_addr_enclosing_frame Ptrofs.zero) /sng.
@@ -9346,12 +9374,12 @@ Proof.
               rewrite Ptrofs.add_zero_l.
               reflexivity.
             + 
-              unfold Mem.storev in heq_storev_chaining_expr_from_caller_v_m_postchainarg_.
+              unfold Mem.storev in h_eq_storev_chaining_expr_from_caller_v_m_postchainarg_.
               unfold Mem.loadv.
               erewrite Mem.load_store_same;eauto.
               simpl.
               reflexivity. (* This uses Archi.ptr64 = false *)
-          - eapply storev_outside_struct_chain_preserves_chaining with (3:=heq_storev_chaining_expr_from_caller_v_m_postchainarg_).
+          - eapply storev_outside_struct_chain_preserves_chaining with (3:=h_eq_storev_chaining_expr_from_caller_v_m_postchainarg_).
             all:swap 1 2.
             all:swap 2 3.
             + eassumption.
@@ -9412,7 +9440,7 @@ Proof.
       assert (chained_stack_structure m_postchainarg (Datatypes.length CE_prefx + δlvl)%nat stkptr) /sng.
       { eapply chained_stack_structure_le;eauto.
         lia. }
-      rewrite heq_length0_ in h_chain_m_lvl_stkptr_.
+      rewrite h_eq_length0_ in h_chain_m_lvl_stkptr_.
       assert ((δlvl < S (Datatypes.length CE_sufx))%nat) by lia /sng.
       unfold build_loads in h_CM_eval_expr_id_v_.
       Opaque build_loads_.
@@ -9459,8 +9487,8 @@ Proof.
           intro /sng.
           fold stkptr_proc in h_CM_eval_expr_.
           rewrite det_eval_expr with (1:=h_CM_eval_expr_vaddr_)(2:=h_CM_eval_expr_)
-            in heq_storev_v_m_postchainarg_.
-          eapply storev_outside_struct_chain_preserves_chaining2 with (3:=heq_storev_v_m_postchainarg_).
+            in h_eq_storev_v_m_postchainarg_.
+          eapply storev_outside_struct_chain_preserves_chaining2 with (3:=h_eq_storev_v_m_postchainarg_).
           all: cycle 1.
           + eassumption.
           + apply Nat.lt_le_incl.
@@ -9473,8 +9501,8 @@ Proof.
         intro /sng.
         fold stkptr_proc in h_CM_eval_expr_.
         rewrite det_eval_expr with (1:=h_CM_eval_expr_vaddr_)(2:=h_CM_eval_expr_)
-          in heq_storev_v_m_postchainarg_.
-        eapply storev_outside_struct_chain_preserves_chaining with (3:=heq_storev_v_m_postchainarg_).
+          in h_eq_storev_v_m_postchainarg_.
+        eapply storev_outside_struct_chain_preserves_chaining with (3:=h_eq_storev_v_m_postchainarg_).
         - intros /sng.
           eapply malloc_distinct_from_chaining_loads_2 with (2:=h_alloc_) (4:=h_CM_eval_expr0_)(lvl:=Datatypes.length CE);auto.
           + eassumption.
@@ -9511,7 +9539,7 @@ Proof.
           specialize CompilEnv.exact_lvl_lvl_of_top with (l:=CE) as ? /sng.
           erewrite <- h_impl_forall_n_.
           all:swap 3 1.
-          -- eapply heq_lvloftop_CE_m'_.
+          -- eapply h_eq_lvloftop_CE_m'_.
           -- eapply h_inv_comp_CE_st_.
           -- lia. }
         specialize chain_structure_spec with (1:=h_chain_m0_) (g:=g)(e:=locenv) as ? /sng.
@@ -9533,7 +9561,7 @@ Proof.
           * eapply h_CM_eval_expr_.
           * simpl.
             assert (Archi.ptr64=false) by reflexivity /sng.
-            rewrite heq_ptr64_.
+            rewrite h_eq_ptr64_.
             rewrite Ptrofs.add_zero_l.
             specialize eval_build_loads_offset with (4:=h_CM_eval_expr_id_t_) as  ? /sng.
             erewrite h_forall_lvl_;eauto.
@@ -9544,10 +9572,10 @@ Proof.
                { specialize CompilEnv.exact_lvl_lvl_of_top with (l:=CE) as ? /sng.
                  erewrite <- h_impl_forall_n_.
                  all:swap 3 1.
-                 - eapply heq_lvloftop_CE_m'_.
+                 - eapply h_eq_lvloftop_CE_m'_.
                  - eapply h_inv_comp_CE_st_.
                  - lia. }
-            -- move h_CM_eval_expr_id_t_ after heq_ptr64_.
+            -- move h_CM_eval_expr_id_t_ after h_eq_ptr64_.
                unfold build_loads in h_CM_eval_expr_id_t_.
                inversion h_CM_eval_expr_id_t_ /sng.
                move h_CM_eval_expr_ after h_CM_eval_expr_v1_.
@@ -9561,7 +9589,7 @@ Proof.
                subst.
                simpl in h_eval_binop_Oadd_v1_v2_.
                destruct v2; try discriminate /sng.
-               rewrite heq_ptr64_ in h_eval_binop_Oadd_v1_v2_.
+               rewrite h_eq_ptr64_ in h_eval_binop_Oadd_v1_v2_.
                inversion h_eval_binop_Oadd_v1_v2_ /sng.
                f_equal.
                f_equal.
@@ -9572,7 +9600,7 @@ Proof.
                rewrite modulus_ok.
                specialize h_inv_comp_CE_st_ /sng.(ci_no_overflow) as ?.
                red in h_no_overf_CE_.
-               specialize h_no_overf_CE_ with (1:=heq_CEfetchG_id_CE_).
+               specialize h_no_overf_CE_ with (1:=h_eq_CEfetchG_id_CE_).
                rewrite Ptrofs.modulus_eq32 in h_no_overf_CE_;eauto.
                lia.
     }
@@ -9604,20 +9632,20 @@ Proof.
         eapply Mem.perm_store_1.
         all:swap 1 2.
          + eapply Mem.perm_alloc_1;eauto.
-         + simpl in heq_storev_v_m_postchainarg_.
-           eapply heq_storev_v_m_postchainarg_.
+         + simpl in h_eq_storev_v_m_postchainarg_.
+           eapply h_eq_storev_v_m_postchainarg_.
       - unfold invisible_cminor_addr.
         intros /sng.
         functional inversion h_eq_transl_var_ /sng.
-        cbn in heq_lvloftop_m'_.
-        invclear heq_lvloftop_m'_ /sng.
+        cbn in h_eq_lvloftop_m'_.
+        invclear h_eq_lvloftop_m'_ /sng.
         subst m'.
         subst id_t.
         (* either the variable is local to the new frame and it was
            "not invisible" from enclosing one because it was free,
            either it is from a deeper frame and it was visible from
            enclosing frame. *)
-        functional inversion heq_CEframeG_id_;subst /sng.
+        functional inversion h_eq_CEframeG_id_;subst /sng.
         + rewrite Nat.sub_diag in *. (* the variable is local *)
           unfold build_loads in h_CM_eval_expr_id_t_.
           simpl in h_CM_eval_expr_id_t_.
@@ -9633,7 +9661,7 @@ Proof.
           simpl in h_eval_binop_Oadd_v1_v2_.
           destruct v2;try discriminate.
           assert (Archi.ptr64 = false) by reflexivity /sng.
-          rewrite heq_ptr64_ in h_eval_binop_Oadd_v1_v2_.
+          rewrite h_eq_ptr64_ in h_eval_binop_Oadd_v1_v2_.
           inversion h_eval_binop_Oadd_v1_v2_ /sng.
           left.
           eapply is_free_block_disj;eauto.
@@ -9644,7 +9672,7 @@ Proof.
           { exists ((Datatypes.length CE_sufx - lvl_id) - 1)%nat.
             lia. }
           decomp h_ex_.
-          rewrite heq_sub_ in h_eq_transl_var_ , h_CM_eval_expr_id_t_.
+          rewrite h_eq_sub_ in h_eq_transl_var_ , h_CM_eval_expr_id_t_.
           specialize h_reachable_enclosing_variables_ with (1:=h_eq_transl_var_).
           specialize h_reachable_enclosing_variables_ with (1:=h_CM_eval_expr_id_t_).
           (* intermediate state where chained_stack do not hold. But
@@ -9658,13 +9686,13 @@ Proof.
             inversion h_eval_constant_.
             subst.
             eapply storev_outside_struct_chain_preserves_var_addresses2
-              with (3:=heq_storev_v_m_postchainarg_)
+              with (3:=h_eq_storev_v_m_postchainarg_)
                    (lvl:=(Datatypes.length CE_prefx + Datatypes.length CE_sufx)%nat).
             all:cycle 1.
             - assert (Datatypes.length CE = (Datatypes.length CE_prefx + Datatypes.length CE_sufx)%nat) /sng.
               { erewrite <- CompilEnv.cut_until_spec1 with (s:=CE);eauto.
                 apply app_length. }
-              rewrite <- heq_length0_.
+              rewrite <- h_eq_length0_.
               assumption.
             - lia.
             - eapply eval_expr_build_load_inv_locenv;eauto.
@@ -9703,7 +9731,7 @@ Proof.
             unfold transl_variable.
             assert (CE = CE_prefx++CE_sufx) /sng. {
               erewrite CompilEnv.cut_until_spec1;eauto. }
-            rewrite heq_CE_.            
+            rewrite h_eq_CE_.            
             erewrite CompilEnv.nodupG_fetchG_app;eauto.
             - erewrite CompilEnv.nodupG_frameG_app;eauto.
               + cbn.
@@ -9716,23 +9744,23 @@ Proof.
                   apply app_eq_nil in abs.
                   decomp abs.
                   subst.
-                  cbn in heq_sub_.
-                  inversion heq_sub_.
-                * rewrite <- heq_CE_.
+                  cbn in h_eq_sub_.
+                  inversion h_eq_sub_.
+                * rewrite <- h_eq_CE_.
                   eapply h_inv_comp_CE_st_.
-              + rewrite <- heq_CE_.
+              + rewrite <- h_eq_CE_.
                 eapply h_inv_comp_CE_st_.
-            - rewrite <- heq_CE_.
+            - rewrite <- h_eq_CE_.
               eapply h_inv_comp_CE_st_.
-            - functional inversion heq_CEfetchG_id_;subst /sng.
+            - functional inversion h_eq_CEfetchG_id_;subst /sng.
               + exfalso.
-                rewrite CompilEnv.reside_false_fetch_none_ in heq_reside_.
-                rewrite heq_reside_ in heq_CEfetch_id_.
-                discriminate heq_CEfetch_id_.
+                rewrite CompilEnv.reside_false_fetch_none_ in h_eq_reside_.
+                rewrite h_eq_reside_ in h_eq_CEfetch_id_.
+                discriminate h_eq_CEfetch_id_.
               + assumption. }
           unfold invisible_cminor_addr in h_invis_stkptr__m_addr_ofs_.
           specialize h_invis_stkptr__m_addr_ofs_
-            with (1:=heq_transl_variable0_) (2:=heq_compute_chnk_id_)
+            with (1:=h_eq_transl_variable0_) (2:=h_eq_compute_chnk_id_)
                  (3:= h_reachable_enclosing_variables_in_m_).
           assumption. }
     
@@ -9747,8 +9775,8 @@ Proof.
           simpl in h_eval_constant_.
           inversion h_eval_constant_.
           subst.
-          simpl Mem.storev in heq_storev_v_m_postchainarg_.
-          erewrite Mem.nextblock_store with (1:=heq_storev_v_m_postchainarg_).
+          simpl Mem.storev in h_eq_storev_v_m_postchainarg_.
+          erewrite Mem.nextblock_store with (1:=h_eq_storev_v_m_postchainarg_).
           apply Coqlib.Ple_refl.
       - intros /sng.
         inversion h_exec_stmt_ /sng.
@@ -9756,7 +9784,7 @@ Proof.
         simpl in h_eval_constant_.
         inversion h_eval_constant_.
         subst.
-        simpl Mem.storev in heq_storev_v_m_postchainarg_.
+        simpl Mem.storev in h_eq_storev_v_m_postchainarg_.
         transitivity (Mem.perm m_proc_pre_init b ofs k p0);split /sng.
         + intro hperm.
           eapply Mem.perm_alloc_1;eauto.
@@ -9775,8 +9803,8 @@ Proof.
         simpl in h_eval_constant_.
         inversion h_eval_constant_.
         subst.
-        simpl Mem.storev in heq_storev_v_m_postchainarg_.
-        rewrite Mem.store_mem_contents with (1:=heq_storev_v_m_postchainarg_).
+        simpl Mem.storev in h_eq_storev_v_m_postchainarg_.
+        rewrite Mem.store_mem_contents with (1:=h_eq_storev_v_m_postchainarg_).
         transitivity (Maps.ZMap.get ofs (Maps.PMap.get b (Mem.mem_contents m_proc_pre_init))).
         + red in h_forbid_m_m_b_ofs_.
           decomp h_forbid_m_m_b_ofs_.
@@ -9812,7 +9840,7 @@ Proof.
         { erewrite <- CompilEnv.cut_until_spec1 with (s:=CE);eauto.
           apply app_length. }
         lia. }
-      rewrite heq_sub_ in h_impl_forall_g_.
+      rewrite h_eq_sub_ in h_impl_forall_g_.
       assert (chained_stack_structure m_postchainarg (Datatypes.length CE_prefx) stkptr) /sng. {
         eapply chained_stack_structure_le;eauto.
         assert (Datatypes.length CE = (Datatypes.length CE_prefx + Datatypes.length CE_sufx)%nat) /sng.
@@ -9831,7 +9859,7 @@ Proof.
       reflexivity. }
     
     assert (h_exact_lvlG_:forall x, exact_levelG ((pb_lvl, x) :: suffix_s)). {
-      rewrite heq_pb_lvl_.
+      rewrite h_eq_pb_lvl_.
       econstructor.
       apply h_match_env0_. }
 
@@ -9853,15 +9881,15 @@ Proof.
       all:swap 7 8.
       - red.
         intros /sng.
-        functional inversion heq_transl_name_;subst /sng.
+        functional inversion h_eq_transl_name_;subst /sng.
         functional inversion h_eq_transl_var_;subst /sng.
-        functional inversion heq_CEframeG_id_;subst /sng.
+        functional inversion h_eq_CEframeG_id_;subst /sng.
         + exfalso.
-          cbn in heq_reside_.
+          cbn in h_eq_reside_.
           discriminate.
         + assert (m'>lvl_id)%nat /sng. {
-            cbn in heq_lvloftop_m'_.
-            inversion heq_lvloftop_m'_.
+            cbn in h_eq_lvloftop_m'_.
+            inversion h_eq_lvloftop_m'_.
             unfold pb_lvl.
             eapply CompilEnv.exact_levelG_frameG_lt_lgth.
             * assumption.
@@ -9870,41 +9898,41 @@ Proof.
             exists (m' - lvl_id - 1)%nat.
             lia. }
           decomp h_ex_.
-          rewrite heq_sub_ in *.
+          rewrite h_eq_sub_ in *.
           specialize (h_match_env0_ /sng.(me_stack_match)) as ?.
           red in h_stk_mtch_suffix_s_m_postchainarg_.
-          unfold build_loads in heq_make_load_.
+          unfold build_loads in h_eq_make_load_.
           
-          functional inversion heq_make_load_ /sng.
+          functional inversion h_eq_make_load_ /sng.
           specialize h_stk_mtch_suffix_s_m_postchainarg_
             with (cm_typ_nme:=cm_typ_nme)(typ_nme:=typ_nme)(nme:=(Identifier astnum id))
                  (vaddr:=nme_t_v)(v:=v)(addr_nme:=(build_loads lvl δ_id))
                  (load_addr_nme:=(Eload chunk (build_loads lvl δ_id))).
           edestruct h_stk_mtch_suffix_s_m_postchainarg_;auto /sng.
-          * cbn in heq_CEframeG_id_,heq_CEfetchG_id_,heq_lvloftop_m'_.
+          * cbn in h_eq_CEframeG_id_,h_eq_CEfetchG_id_,h_eq_lvloftop_m'_.
             unfold transl_name,transl_variable.
-            rewrite heq_CEfetchG_id_,heq_CEframeG_id_.
-            invclear heq_lvloftop_m'_ /sng.
+            rewrite h_eq_CEfetchG_id_,h_eq_CEframeG_id_.
+            invclear h_eq_lvloftop_m'_ /sng.
             assert (CompilEnv.level_of_top CE_sufx = Some (Datatypes.length CE_sufx - 1)%nat) /sng. {
               rewrite foo with (CE:=CE_sufx);auto.
               - intro abs.
                 subst .
                 simpl in h_gt_m'_lvl_id_.
                 lia. }
-            rewrite heq_lvloftop_CE_sufx_.
+            rewrite h_eq_lvloftop_CE_sufx_.
             do 2 f_equal.
             lia.
           * unfold build_loads in h_CM_eval_expr_nme_t_nme_t_v_.
             Opaque build_loads_.
             inversion h_CM_eval_expr_nme_t_nme_t_v_;subst /sng.
             Transparent build_loads_.
-            cbn in heq_lvloftop_m'_.
-            invclear heq_lvloftop_m'_ /sng.
+            cbn in h_eq_lvloftop_m'_.
+            invclear h_eq_lvloftop_m'_ /sng.
             assert (chained_stack_structure m_postchainarg (Datatypes.length CE_sufx - lvl_id) stkptr_proc) /sng. {
               apply chained_stack_structure_le  with (1:=h_chain_m_postchainarg_).
               lia. }
             subst m'.
-            rewrite heq_sub_ in h_chain_m_postchainarg1_.
+            rewrite h_eq_sub_ in h_chain_m_postchainarg1_.
             specialize chained_stack_structure_decomp_S_2
               with (2:=h_CM_eval_expr_v1_)(1:=h_chain_m_postchainarg1_) as ? /sng.
             decomp h_ex_.
@@ -9914,7 +9942,7 @@ Proof.
             inversion h_CM_eval_expr_v2_.
             econstructor;eauto.
           * inversion h_eval_name_nme_v_ /sng.
-            simpl in heq_SfetchG_id_.
+            simpl in h_eq_SfetchG_id_.
             constructor;auto.
           * unfold make_load.
             rewrite h_access_mode_cm_typ_nme_.
@@ -9932,9 +9960,9 @@ Proof.
               with (build_loads_ (Econst (Oaddrstack Ptrofs.zero)) (S lvl)).
             eapply chained_stack_structure_decomp_S_2'.
             -- apply chained_stack_structure_le  with (1:=h_chain_m_postchainarg_).
-               rewrite <- heq_sub_.
+               rewrite <- h_eq_sub_.
                assert (S m'=S (Datatypes.length CE_sufx))%nat.
-               { erewrite CompilEnv.exact_lvl_lvl_of_top with (2:=heq_lvloftop_m'_);eauto. }
+               { erewrite CompilEnv.exact_lvl_lvl_of_top with (2:=h_eq_lvloftop_m'_);eauto. }
                lia.
             -- eassumption.
             -- assumption.
@@ -9948,7 +9976,7 @@ Proof.
       - red.
         cbn.
         f_equal.
-        rewrite <- heq_pb_lvl_.
+        rewrite <- h_eq_pb_lvl_.
         reflexivity.
       - apply nodup_cons.
         + apply h_match_env0_.
@@ -9956,7 +9984,7 @@ Proof.
           intros /sng.
           cbn in h_lst_in_.
           decomp h_lst_in_.
-          * inversion heq_pair_ /sng.
+          * inversion h_eq_pair_ /sng.
             constructor.
           * intro abs. contradict abs.
       - red.
@@ -9975,7 +10003,7 @@ Proof.
       - auto 1.
       - red.
         intros /sng.
-        simpl in heq_SfetchG_id_.
+        simpl in h_eq_SfetchG_id_.
         eapply h_match_env0_.(me_overflow);eauto.
       - split.
         + red.
@@ -9983,29 +10011,29 @@ Proof.
           specialize (h_match_env0_ /sng.(me_safe_cm_env).(me_stack_match_addresses)) as ?.
           red in h_stk_mtch_addr_chaining_expr_from_caller_v_m_postchainarg_.
           specialize h_stk_mtch_addr_chaining_expr_from_caller_v_m_postchainarg_ with (nme:=nme).
-          functional inversion heq_transl_name_ /sng.
+          functional inversion h_eq_transl_name_ /sng.
           functional inversion h_eq_transl_var_ /sng.
-          cbn in heq_CEfetchG_id_,heq_lvloftop_m'_,heq_CEframeG_id_.
+          cbn in h_eq_CEfetchG_id_,h_eq_lvloftop_m'_,h_eq_CEframeG_id_.
           assert (CompilEnv.level_of_top CE_sufx = Some (Datatypes.length CE_sufx - 1)%nat) /sng. {
             rewrite foo with (CE:=CE_sufx);auto.
             - intro abs.
               subst CE_sufx.
               cbn in h_eq_transl_var_.
               discriminate. }
-          invclear heq_lvloftop_m'_ /sng.
+          invclear h_eq_lvloftop_m'_ /sng.
           subst.
           assert (transl_name st CE_sufx (Identifier astnum id) =:  build_loads (Datatypes.length CE_sufx - 1 - lvl_id) δ_id ) /sng. {
             unfold transl_name,transl_variable.
-            rewrite heq_CEfetchG_id_,heq_CEframeG_id_,heq_lvloftop_CE_sufx_.
+            rewrite h_eq_CEfetchG_id_,h_eq_CEframeG_id_,h_eq_lvloftop_CE_sufx_.
             reflexivity. }
-          specialize h_stk_mtch_addr_chaining_expr_from_caller_v_m_postchainarg_ with (1:=heq_transl_name0_).
+          specialize h_stk_mtch_addr_chaining_expr_from_caller_v_m_postchainarg_ with (1:=h_eq_transl_name0_).
           decomp h_stk_mtch_addr_chaining_expr_from_caller_v_m_postchainarg_.
           exists addr.
           assert((Datatypes.length CE_sufx - lvl_id) = S (Datatypes.length CE_sufx - 1 - lvl_id))%nat /sng. {
             assert (lvl_id < Datatypes.length CE_sufx)%nat. {
               eapply CompilEnv.exact_levelG_frameG_lt_lgth;eauto. }
             lia. }
-          rewrite heq_sub_.
+          rewrite h_eq_sub_.
           unfold build_loads in h_CM_eval_expr_addr_ |- *.
           inversion h_CM_eval_expr_addr_ /sng.
           econstructor.
@@ -10022,8 +10050,8 @@ Proof.
           unfold stack_separate in h_separate_CE_sufx_m_postchainarg_ |- *.
           intros /sng.
           specialize h_separate_CE_sufx_m_postchainarg_
-            with (1:=heq_type_of_name_) (2:=heq_type_of_name0_)
-                 (5:=heq_transl_type_)(6:=heq_transl_type0_)
+            with (1:=h_eq_type_of_name_) (2:=h_eq_type_of_name0_)
+                 (5:=h_eq_transl_type_)(6:=h_eq_transl_type0_)
                  (9:=h_access_mode_cm_typ_nme_)(10:=h_access_mode_cm_typ_nme'_)
                  (11:=hneq_nme) (k₁:=k₁) (δ₁:=δ₁)(k₂:=k₂) (δ₂:=δ₂).
 
@@ -10036,17 +10064,17 @@ Proof.
             - subst.
               econstructor.
               assumption. }              
-          specialize exact_lvl_transl_name_empty_top with (1:=h_exct_lvlG_) (2:=heq_transl_name_) as ? /sng.
-          specialize exact_lvl_transl_name_empty_top with (1:=h_exct_lvlG_) (2:=heq_transl_name0_) as ? /sng.
+          specialize exact_lvl_transl_name_empty_top with (1:=h_exct_lvlG_) (2:=h_eq_transl_name_) as ? /sng.
+          specialize exact_lvl_transl_name_empty_top with (1:=h_exct_lvlG_) (2:=h_eq_transl_name0_) as ? /sng.
           decomp h_ex_.
           decomp h_ex0_.
           subst.
           assert (chained_stack_structure m_postchainarg (S δ) stkptr_proc) /sng. {
             apply chained_stack_structure_le with (n:=S (Datatypes.length CE_sufx));auto.
-            specialize exact_level_transl_name with (1:=h_exct_lvlG_CE_sufx_)(2:=heq_transl_name1_) as ? ;eauto /sng. }
+            specialize exact_level_transl_name with (1:=h_exct_lvlG_CE_sufx_)(2:=h_eq_transl_name1_) as ? ;eauto /sng. }
           assert (chained_stack_structure m_postchainarg (S δ0) stkptr_proc) /sng. {
             apply chained_stack_structure_le with (n:=S (Datatypes.length CE_sufx));auto.
-            specialize exact_level_transl_name with (1:=h_exct_lvlG_CE_sufx_)(2:=heq_transl_name2_) as ? ;eauto /sng. }
+            specialize exact_level_transl_name with (1:=h_exct_lvlG_CE_sufx_)(2:=h_eq_transl_name2_) as ? ;eauto /sng. }
           eapply h_separate_CE_sufx_m_postchainarg_;eauto.
           * unfold build_loads in h_CM_eval_expr_nme_t_,h_CM_eval_expr_nme'_t_.
             Opaque build_loads_.
@@ -10106,14 +10134,14 @@ Proof.
           decomp h_ex_.
           eapply h_match_env0_.(me_safe_cm_env).(me_stack_freeable);eauto.
           subst.
-          rewrite heq_id_t_ in h_CM_eval_expr_id_t_.
+          rewrite h_eq_id_t_ in h_CM_eval_expr_id_t_.
           unfold build_loads in h_CM_eval_expr_id_t_.
           Opaque build_loads_.
           inversion h_CM_eval_expr_id_t_ /sng.
           Transparent build_loads_.
           
           assert (δ < S (Datatypes.length CE_sufx))%nat /sng. {
-            specialize transl_variable_exact_lvl_le_toplvl with (1:=h_exct_lvlG_CE_sufx_)(2:=heq_transl_variable0_) as ? /sng.
+            specialize transl_variable_exact_lvl_le_toplvl with (1:=h_exct_lvlG_CE_sufx_)(2:=h_eq_transl_variable0_) as ? /sng.
             lia. }
           specialize chained_stack_structure_decomp_S
             with (1:=h_chain_m_postchainarg_)(2:=h_lt_δ_) (3:=h_CM_eval_expr_v1_) as ? /sng.
@@ -10151,24 +10179,24 @@ Proof.
               rewrite <- app_assoc.
               simpl.
               reflexivity. }
-            rewrite heq_app_ in heq_cons_.
+            rewrite h_eq_app_ in h_eq_cons_.
             change ((parameter_name prm_prof, e_v) :: initf)
-                   with ([(parameter_name prm_prof, e_v)] ++ initf) in heq_cons_.
-            apply app_same_length_eq2_ in heq_cons_;auto.
-            decomp heq_cons_.
+                   with ([(parameter_name prm_prof, e_v)] ++ initf) in h_eq_cons_.
+            apply app_same_length_eq2_ in h_eq_cons_;auto.
+            decomp h_eq_cons_.
             destruct l /sng.
-            * repeat split;auto;simpl in *;inversion heq_cons_ /sng.
+            * repeat split;auto;simpl in *;inversion h_eq_cons_ /sng.
               -- reflexivity.
-              -- rewrite heq_parameter_mode_.
+              -- rewrite h_eq_parameter_mode_.
                  assumption.
               -- assumption.
             * exfalso.
-              simpl in heq_cons_.
+              simpl in h_eq_cons_.
               assert (List.length [(parameter_name prm_prof, e_v)] = List.length (p :: l ++ [(i, v)])) /sng. {
-                rewrite  heq_cons_;auto. }
-              simpl in heq_length_.
-              rewrite app_length in heq_length_.
-              simpl in heq_length_.
+                rewrite  h_eq_cons_;auto. }
+              simpl in h_eq_length_.
+              rewrite app_length in h_eq_length_.
+              simpl in h_eq_length_.
               lia.
           + inversion h_copy_in0_ /sng.
             assert ((l ++ (i, v) :: initf) = ((l ++ [(i, v)]) ++ initf)) /sng. {
@@ -10176,25 +10204,25 @@ Proof.
               rewrite <- app_assoc.
               simpl.
               reflexivity. }
-            rewrite heq_app_ in heq_cons_.
+            rewrite h_eq_app_ in h_eq_cons_.
             change ((parameter_name prm_prof, Int v0) :: initf)
-                   with ([(parameter_name prm_prof, Int v0)] ++ initf) in heq_cons_.
-            apply app_same_length_eq2_ in heq_cons_;auto.
-            decomp heq_cons_.
+                   with ([(parameter_name prm_prof, Int v0)] ++ initf) in h_eq_cons_.
+            apply app_same_length_eq2_ in h_eq_cons_;auto.
+            decomp h_eq_cons_.
             destruct l /sng.
-            * repeat split;auto;simpl in *; inversion heq_cons_ /sng.
+            * repeat split;auto;simpl in *; inversion h_eq_cons_ /sng.
               -- reflexivity.
-              -- rewrite heq_parameter_mode_.
-                 inversion heq_cons_ /sng.
+              -- rewrite h_eq_parameter_mode_.
+                 inversion h_eq_cons_ /sng.
                  assumption.
               -- assumption.
             * exfalso.
-              simpl in heq_cons_.
+              simpl in h_eq_cons_.
               assert (List.length [(parameter_name prm_prof, Int v0)] = List.length (p :: l ++ [(i, v)])) /sng. {
-                rewrite  heq_cons_;auto. }
-              simpl in heq_length_.
-              rewrite app_length in heq_length_.
-              simpl in heq_length_.
+                rewrite  h_eq_cons_;auto. }
+              simpl in h_eq_length_.
+              rewrite app_length in h_eq_length_.
+              simpl in h_eq_length_.
               lia.
           + inversion h_copy_in0_ /sng.
             assert ((l ++ (i, v) :: initf) = ((l ++ [(i, v)]) ++ initf)) /sng. {
@@ -10202,19 +10230,19 @@ Proof.
               rewrite <- app_assoc.
               simpl.
               reflexivity. }
-            rewrite heq_app_ in heq_cons_.
+            rewrite h_eq_app_ in h_eq_cons_.
             change ((parameter_name prm_prof, v0) :: initf)
-                   with ([(parameter_name prm_prof, v0)] ++ initf) in heq_cons_.
-            apply app_same_length_eq2_ in heq_cons_;auto.
-            decomp heq_cons_.
+                   with ([(parameter_name prm_prof, v0)] ++ initf) in h_eq_cons_.
+            apply app_same_length_eq2_ in h_eq_cons_;auto.
+            decomp h_eq_cons_.
             destruct l /sng.
-            * repeat split;auto;simpl in *; inversion heq_cons_ /sng.
+            * repeat split;auto;simpl in *; inversion h_eq_cons_ /sng.
               -- reflexivity.
-              -- rewrite heq_parameter_mode_.
+              -- rewrite h_eq_parameter_mode_.
                  constructor.
                  assumption.
               -- assumption.
-            * inversion heq_cons_ /sng.
+            * inversion h_eq_cons_ /sng.
               exfalso.
               eapply app_cons_not_nil with (a:=(i, v));eauto.
           + inversion h_copy_in0_ /sng.
@@ -10223,26 +10251,26 @@ Proof.
               rewrite <- app_assoc.
               simpl.
               reflexivity. }
-            rewrite heq_app_ in heq_cons_.
+            rewrite h_eq_app_ in h_eq_cons_.
             change ((parameter_name prm_prof, Int v0) :: initf)
-                   with ([(parameter_name prm_prof, Int v0)] ++ initf) in heq_cons_.
-            apply app_same_length_eq2_ in heq_cons_;auto.
-            decomp heq_cons_.
+                   with ([(parameter_name prm_prof, Int v0)] ++ initf) in h_eq_cons_.
+            apply app_same_length_eq2_ in h_eq_cons_;auto.
+            decomp h_eq_cons_.
             destruct l /sng.
             * simpl in *.
-              repeat split;auto; inversion heq_cons_ /sng.
+              repeat split;auto; inversion h_eq_cons_ /sng.
               -- reflexivity.
-              -- rewrite heq_parameter_mode_.
+              -- rewrite h_eq_parameter_mode_.
                  constructor.
                  assumption.
               -- assumption.
             * exfalso.
-              simpl in heq_cons_.
+              simpl in h_eq_cons_.
               assert (List.length [(parameter_name prm_prof, Int v0)] = List.length (p :: l ++ [(i, v)])) /sng. {
-                rewrite  heq_cons_;auto. }
-              simpl in heq_length_.
-              rewrite app_length in heq_length_.
-              simpl in heq_length_.
+                rewrite  h_eq_cons_;auto. }
+              simpl in h_eq_length_.
+              rewrite app_length in h_eq_length_.
+              simpl in h_eq_length_.
               lia.
           + inversion h_copy_in0_ /sng.
             assert ((l ++ (i, v) :: initf) = ((l ++ [(i, v)]) ++ initf)) /sng. {
@@ -10250,25 +10278,25 @@ Proof.
               rewrite <- app_assoc.
               simpl.
               reflexivity. }
-            rewrite heq_app_ in heq_cons_.
+            rewrite h_eq_app_ in h_eq_cons_.
             change ((parameter_name prm_prof, Undefined) :: initf)
-                   with ([(parameter_name prm_prof, Undefined)] ++ initf) in heq_cons_.
-            apply app_same_length_eq2_ in heq_cons_;auto.
-            decomp heq_cons_.
+                   with ([(parameter_name prm_prof, Undefined)] ++ initf) in h_eq_cons_.
+            apply app_same_length_eq2_ in h_eq_cons_;auto.
+            decomp h_eq_cons_.
             destruct l /sng.
             * simpl in *.
-              repeat split;inversion heq_cons_ /sng.
+              repeat split;inversion h_eq_cons_ /sng.
               -- reflexivity.
-              -- rewrite heq_parameter_mode_.
+              -- rewrite h_eq_parameter_mode_.
                  reflexivity.
               -- assumption.
             * exfalso.
-              simpl in heq_cons_.
+              simpl in h_eq_cons_.
               assert (List.length [(parameter_name prm_prof, Undefined)] = List.length (p :: l ++ [(i, v)])) /sng. {
-                rewrite  heq_cons_;auto. }
-              simpl in heq_length_.
-              rewrite app_length in heq_length_.
-              simpl in heq_length_.
+                rewrite  h_eq_cons_;auto. }
+              simpl in h_eq_length_.
+              rewrite app_length in h_eq_length_.
+              simpl in h_eq_length_.
               lia.
         - inversion h_copy_in_ /sng.
           unfold ST.push in h_copy_in0_.
@@ -10324,26 +10352,26 @@ Proof.
           - constructor.
           - constructor.
             + intros /sng.
-              rename heq_length_ into heq.
+              rename h_eq_length_ into heq.
               assert (Datatypes.length l = Datatypes.length l') /sng. {
                 rewrite app_length in heq.
                 simpl in heq.
                 lia. }
               clear heq.
               destruct x;intros /sng.
-              specialize h_forall_k'_ with (1:=heq_transl_paramid_).
-              destruct (parameter_mode y) eqn:heq_mode_;up_type.
+              specialize h_forall_k'_ with (1:=h_eq_transl_paramid_).
+              destruct (parameter_mode y) eqn:h_eq_mode_;up_type.
               * rew transl_paramexprlist_ok with functional inversion htrans_prmexprl;
                   match goal with
                   | H: parameter_mode ?a = ?x, H': parameter_mode ?a = ?y |- _ => try now (rewrite H in H';discriminate)
                   end /sng.
-                specialize transl_expr_ok with (1:=heq_tr_expr_e_)
+                specialize transl_expr_ok with (1:=h_eq_tr_expr_e_)
                                                (2:=h_forall_k'_) (3:=h_match_env_) as ? /sng.
                 decomp h_ex_.
                 exists e_t_v.
                 split.
                 -- assumption.
-                -- rew store_params_ok with functional inversion heq_store_prms_ /sng.
+                -- rew store_params_ok with functional inversion h_eq_store_prms_ /sng.
                    subst.
                    admit.
               * assumption.
@@ -10357,9 +10385,9 @@ Proof.
 (*
   
 
-  unfold transl_name in heq_transl_name_.
+  unfold transl_name in h_eq_transl_name_.
   destruct nme; try discriminate /sng.
-  revert nme_t heq_transl_name_.
+  revert nme_t h_eq_transl_name_.
   functional induction (transl_variable stbl CE a i) ;try discriminate;simpl; !!intros /sng.
   
 
@@ -10373,28 +10401,28 @@ Proof.
         econstructor.
       * constructor.
         reflexivity.
-  - unfold value_at_addr in heq_value_at_addr_.
-    destruct (transl_type stbl astnum_type) eqn:heq_transl_type_;simpl in *.
+  - unfold value_at_addr in h_eq_value_at_addr_.
+    destruct (transl_type stbl astnum_type) eqn:h_eq_transl_type_;simpl in *.
     + destruct h_match_env_ /sng.
       edestruct h_safe_cm_CE_m_.(me_stack_match_addresses) with (nme:=Identifier astnum id);eauto. 
       eapply h_stk_mtch_s_m_;eauto.
       * simpl.
         assumption.
       * simpl.
-        rewrite heq_fetch_exp_type_.
+        rewrite h_eq_fetch_exp_type_.
         reflexivity.
     + discriminate.
-  - decomp (h_forall_e'_ _ heq_tr_expr_e_ _ _ _ _ _ _ h_eval_expr_e_e_v_ h_match_env_).
-    decomp (h_forall_e'0_ _ heq_tr_expr_e0_ _ _ _ _ _ _ h_eval_expr_e0_e0_v_ h_match_env_).
+  - decomp (h_forall_e'_ _ h_eq_tr_expr_e_ _ _ _ _ _ _ h_eval_expr_e_e_v_ h_match_env_).
+    decomp (h_forall_e'0_ _ h_eq_tr_expr_e0_ _ _ _ _ _ _ h_eval_expr_e0_e0_v_ h_match_env_).
     assert (hex:or (exists b, v = Bool b) (exists n, v = Int n)). {
       apply do_run_time_check_on_binop_ok in h_do_rtc_binop_.
       rewrite binopexp_ok in h_do_rtc_binop_.
       functional inversion h_do_rtc_binop_;subst;eq_same_clear
        ;try contradiction;eauto /sng.
-      unfold Math.mod' in  heq_mod'_.
+      unfold Math.mod' in  h_eq_mod'_.
       destruct e_v;try discriminate.
       destruct e0_v;try discriminate.
-      inversion heq_mod'_.
+      inversion h_eq_mod'_.
       right;eauto. }
     decomp hex;subst.
     + destruct b; eexists;(split;[econstructor;eauto|]).
@@ -10409,25 +10437,25 @@ Proof.
         eapply binary_operator_ok with (v1:=e_v) (v2:=e0_v);eauto.
         econstructor;eauto.
   - (* Unary minus *)
-    simpl in heq_transl_unop_.
+    simpl in h_eq_transl_unop_.
     eq_same_clear.
-    specialize h_forall_e'_ with (1:=heq_tr_expr_e_) (2:=h_eval_expr_e_e_v_) (3:=h_match_env_).
+    specialize h_forall_e'_ with (1:=h_eq_tr_expr_e_) (2:=h_eval_expr_e_e_v_) (3:=h_match_env_).
     decomp h_forall_e'_.
     invclear h_do_rtc_unop_;eq_same_clear /sng.
     invclear h_overf_check_ /sng.
     eexists.
     split.
     * econstructor.
-    * assert (h:=unaryneg_ok _ _ _ h_transl_value_e_v_e_t_v_ heq_unary_minus_).
+    * assert (h:=unaryneg_ok _ _ _ h_transl_value_e_v_e_t_v_ h_eq_unary_minus_).
       econstructor;eauto.
       simpl.
       inversion h.
       reflexivity.
   (* Not *)
   - invclear h_do_rtc_unop_;simpl in *;try eq_same_clear /sng.
-    specialize h_forall_e'_ with (1:=heq_tr_expr_e_) (2:=h_eval_expr_e_e_v_) (3:=h_match_env_).
+    specialize h_forall_e'_ with (1:=h_eq_tr_expr_e_) (2:=h_eval_expr_e_e_v_) (3:=h_match_env_).
     decomp h_forall_e'_.
-    generalize (not_ok _ _ _ h_transl_value_e_v_e_t_v_ heq_unary_operation_).
+    generalize (not_ok _ _ _ h_transl_value_e_v_e_t_v_ h_eq_unary_operation_).
     intro /sng.
     exists (Values.Val.notbool e_t_v).
     split;auto.
@@ -10496,7 +10524,7 @@ Admitted.
         inversion h_NoDupA_ /sng.
         specialize h_forall_args_t_ with (bigs:=bigs)(lvl:=lvl)
                                         (1:=htrans_prmexprl)(5:=h_NoDupA_lprmSpec_).
-        invclear heq_OK_ /sng.
+        invclear h_eq_OK_ /sng.
         inversion h_CM_eval_exprl_args_t_args_t_v_ /sng.
         clear h_CM_eval_exprl_args_t_args_t_v_.
         specialize h_forall_args_t_ with (1:=h_CM_eval_exprl_l_e_t_vl_)(3:=h_match_env_).
@@ -10529,9 +10557,9 @@ Admitted.
           specialize h_forall_args_t_ with (1:=h_copy_in1_)(2:=eq_refl)(3:=eq_refl).
           rewrite rev_unit.
           constructor;intros /sng.
-          * rewrite heq_parameter_mode_.
+          * rewrite h_eq_parameter_mode_.
             specialize transl_expr_ok
-              with (1:=heq_tr_expr_e_) (2:=h_eval_expr_exp_args_exp_args_v_)
+              with (1:=h_eq_tr_expr_e_) (2:=h_eval_expr_exp_args_exp_args_v_)
                    (3:=h_match_env_)
               as ? /sng.
             decomp h_ex_.
@@ -10543,14 +10571,14 @@ Admitted.
             simpl.
             subst.
             rewrite Maps.PTree.gss.
-            specialize transl_expr_ok with (1:=heq_tr_expr_e_) (2:=h_eval_expr_exp_args_exp_args_v_)
+            specialize transl_expr_ok with (1:=h_eq_tr_expr_e_) (2:=h_eval_expr_exp_args_exp_args_v_)
                                             (3:=h_match_env_) as ? /sng.
             decomp h_ex_.
             rewrite transl_value_det with (2:=h_transl_value_exp_args_v_e_t_v0_) (1:=h_transl_value_exp_args_v_v'_).
             f_equal.
             eapply det_eval_expr;eauto.
           * specialize transl_expr_ok
-              with (1:=heq_tr_expr_e_) (2:=h_eval_expr_exp_args_exp_args_v_)
+              with (1:=h_eq_tr_expr_e_) (2:=h_eval_expr_exp_args_exp_args_v_)
                    (3:=h_match_env_)
               as ? /sng.
             decomp h_ex_.
@@ -10559,7 +10587,7 @@ Admitted.
             autorename h_CM_eval_expr_e_t_e_t_v0_. 
              (eapply Forall2_impl with (2:=h_forall_args_t_); intros) /sng.
             destruct a;intros /sng.
-            specialize h_forall_k'_ with (1:=heq_transl_paramid_).
+            specialize h_forall_k'_ with (1:=h_eq_transl_paramid_).
             destruct (parameter_mode b).
             -- decomp h_forall_k'_.
                exists t_t;split;auto.
@@ -10571,7 +10599,7 @@ Admitted.
 
                     apply transl_lparameter_specification_to_lident_nodup;auto. }
 
-                    specialize set_params_in with (1:=heq_mget_k'_t_t_) as? /sng.
+                    specialize set_params_in with (1:=h_eq_mget_k'_t_t_) as? /sng.
                   simpl in h_nodup_.
                   subst k'.
                   rewrite abs in *.
@@ -10584,12 +10612,12 @@ Admitted.
                simpl.
                rewrite Maps.PTree.gso.
                ++ eexists;split.
-                  ** eapply heq_mget_k'_addr_.
+                  ** eapply h_eq_mget_k'_addr_.
                   ** assumption.
                ++ intro abs.
                   assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))) /sng. {
                     apply transl_lparameter_specification_to_lident_nodup;auto. }
-                  specialize set_params_in with (1:=heq_mget_k'_addr_) as ? /sng.
+                  specialize set_params_in with (1:=h_eq_mget_k'_addr_) as ? /sng.
                   simpl in h_nodup_.
                   subst k'.
                   rewrite abs in *.
@@ -10618,12 +10646,12 @@ Admitted.
           specialize h_forall_args_t_ with (1:=h_copy_in1_)(2:=eq_refl)(3:=eq_refl).
           rewrite rev_unit.
           constructor;intros /sng.
-          * rewrite heq_parameter_mode_.
+          * rewrite h_eq_parameter_mode_.
             intros /sng.
             simpl.
             subst.
             rewrite Maps.PTree.gss.
-            specialize transl_expr_ok with (1:=heq_tr_expr_e_) (2:=h_eval_expr_exp_args_)
+            specialize transl_expr_ok with (1:=h_eq_tr_expr_e_) (2:=h_eval_expr_exp_args_)
                                             (3:=h_match_env_) as ? /sng.
             decomp h_ex_.
             exists e_t_v0;split;auto.
@@ -10631,7 +10659,7 @@ Admitted.
             eapply det_eval_expr;eauto.
           *  (eapply Forall2_impl with (2:=h_forall_args_t_); intros) /sng.
             destruct a;intros /sng.
-            specialize h_forall_k'_ with (1:=heq_transl_paramid_).
+            specialize h_forall_k'_ with (1:=h_eq_transl_paramid_).
             destruct (parameter_mode b).
             -- decomp h_forall_k'_. 
                exists t_t;split;auto.
@@ -10641,7 +10669,7 @@ Admitted.
                ++ intro abs.
                   assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))) /sng. {
                     apply transl_lparameter_specification_to_lident_nodup;auto. }
-                  specialize set_params_in with (1:=heq_mget_k'_t_t_) as ? /sng.
+                  specialize set_params_in with (1:=h_eq_mget_k'_t_t_) as ? /sng.
                   simpl in h_nodup_.
                   subst k'.
                   rewrite abs in *.
@@ -10656,15 +10684,15 @@ Admitted.
                rewrite Maps.PTree.gso.
                ++ eexists.
                   split.
-                  ** eapply heq_mget_k'_addr_.
+                  ** eapply h_eq_mget_k'_addr_.
                   ** assumption.
                ++ intro abs.
                   assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))) /sng. {
                     apply transl_lparameter_specification_to_lident_nodup;auto. }
-                  specialize set_params_in with (1:=heq_mget_k'_addr_) as ? /sng.
+                  specialize set_params_in with (1:=h_eq_mget_k'_addr_) as ? /sng.
                   simpl in h_nodup_.
                   subst k'.
-                  specialize set_params_in with (1:=heq_mget_k'_addr_) as ? /sng.
+                  specialize set_params_in with (1:=h_eq_mget_k'_addr_) as ? /sng.
                   rewrite abs in *.
                   rewrite NoDup_cons_iff in h_nodup_.
                   destruct h_nodup_ /sng.
@@ -10679,7 +10707,7 @@ Admitted.
         specialize h_forall_args_t_ with (bigs:=bigs)(lvl:=lvl)
                                         (1:=htrans_prmexprl)(5:=h_NoDupA_lprmSpec_).
         admit. (*
-        invclear heq_OK_ /sng.
+        invclear h_eq_OK_ /sng.
         inversion h_CM_eval_exprl_args_t_args_t_v_ /sng.
         clear h_CM_eval_exprl_args_t_args_t_v_.
         specialize h_forall_args_t_ with (1:=h_CM_eval_exprl_l_e_t_vl_)(3:=h_match_env_).
@@ -10709,11 +10737,11 @@ Admitted.
           specialize h_forall_args_t_ with (1:=h_copy_in1_)(2:=eq_refl)(3:=eq_refl).
           rewrite rev_unit.
           constructor;intros /sng.
-          * rewrite heq_parameter_mode_.
+          * rewrite h_eq_parameter_mode_.
             reflexivity.
           *  (eapply Forall2_impl with (2:=h_forall_args_t_); intros) /sng.
             destruct a;intros /sng.
-            specialize h_forall_k'_ with (1:=heq_transl_paramid_).
+            specialize h_forall_k'_ with (1:=h_eq_transl_paramid_).
             destruct (parameter_mode b).
             -- decomp h_forall_k'_.
                exists t_t;split;auto.
@@ -10723,7 +10751,7 @@ Admitted.
                ++ intro abs.
                   assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))) /sng. {
                     apply transl_lparameter_specification_to_lident_nodup;auto. }
-                  specialize set_params_in with (1:=heq_mget_k'_t_t_) as ? /sng.
+                  specialize set_params_in with (1:=h_eq_mget_k'_t_t_) as ? /sng.
                   simpl in h_nodup_.
                   subst k'.                 
                   rewrite abs in *.
@@ -10738,12 +10766,12 @@ Admitted.
                rewrite Maps.PTree.gso.
                ++ eexists.
                   split.
-                  ** eapply heq_mget_k'_addr_.
+                  ** eapply h_eq_mget_k'_addr_.
                   ** assumption.
                ++ intro abs.
                   assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))) /sng. {
                     apply transl_lparameter_specification_to_lident_nodup;auto. }
-                  specialize set_params_in with (1:=heq_mget_k'_addr_) as ? /sng.
+                  specialize set_params_in with (1:=h_eq_mget_k'_addr_) as ? /sng.
                   simpl in h_nodup_.
                   subst k'.
                   rewrite abs in *.
@@ -10760,7 +10788,7 @@ Admitted.
         specialize h_forall_args_t_ with (bigs:=bigs)(lvl:=lvl)
                                         (1:=htrans_prmexprl)(5:=h_NoDupA_lprmSpec_).
         admit. (*
-        invclear heq_OK_ /sng.
+        invclear h_eq_OK_ /sng.
         inversion h_CM_eval_exprl_args_t_args_t_v_ /sng.
         clear h_CM_eval_exprl_args_t_args_t_v_.
         specialize h_forall_args_t_ with (1:=h_CM_eval_exprl_l_e_t_vl_)(3:=h_match_env_).
@@ -10791,7 +10819,7 @@ Admitted.
           specialize h_forall_args_t_ with (1:=h_copy_in1_)(2:=eq_refl)(3:=eq_refl).
           rewrite rev_unit.
           constructor;intros /sng.
-          * rewrite heq_parameter_mode_.
+          * rewrite h_eq_parameter_mode_.
             assert (evalExp st bigs (Name O nme_args) (OK nme_args_v)) /sng. {
               constructor;auto. }
             simpl.
@@ -10801,27 +10829,27 @@ Admitted.
             assert (transl_expr st CE (Name 0%nat nme_args)
                      = value_at_addr st (parameter_subtype_mark prmSpec) nme_t) /sng. {
               simpl transl_expr.
-              functional inversion heq_transl_name_ /sng.
+              functional inversion h_eq_transl_name_ /sng.
               rewrite h_eq_transl_var_.
               assert (symboltable.fetch_exp_type_ astnum st = Some (parameter_subtype_mark prmSpec)) /sng. {
                 admit. (* Well typedness of the call:
                           the actual arg's type = the formal arg type *)
               }
-              rewrite heq_fetch_exp_type_.
+              rewrite h_eq_fetch_exp_type_.
               reflexivity.
             }
-            unfold value_at_addr in heq_tr_expr_.
+            unfold value_at_addr in h_eq_tr_expr_.
             destruct (transl_type st (parameter_subtype_mark prmSpec)) eqn:heq.
             all:swap 1 2.
             { exfalso.
-              simpl bind in heq_tr_expr_.
+              simpl bind in h_eq_tr_expr_.
               admit. (* well typedness: prmspec is correct, so transl_type and transl_exp should not rturn an error *) }
-            simpl bind in heq_tr_expr_.
+            simpl bind in h_eq_tr_expr_.
             specialize make_load_no_fail with (nme_t:=nme_t)(1:=heq) as ? /sng.
             decomp h_ex_.
-            rewrite heq_make_load_ in heq_tr_expr_.
-            functional inversion heq_make_load_ /sng.
-             specialize h_forall_e'_ with (1:=heq_tr_expr_).
+            rewrite h_eq_make_load_ in h_eq_tr_expr_.
+            functional inversion h_eq_make_load_ /sng.
+             specialize h_forall_e'_ with (1:=h_eq_tr_expr_).
              decomp h_forall_e'_.
              exists nme_args_v_t, chunk;split;[|split].
             -- assumption.
@@ -10836,7 +10864,7 @@ Admitted.
                assumption.
           *  (eapply Forall2_impl with (2:=h_forall_args_t_); intros) /sng.
             destruct a;intros /sng.
-            specialize h_forall_k'_ with (1:=heq_transl_paramid_).
+            specialize h_forall_k'_ with (1:=h_eq_transl_paramid_).
             destruct (parameter_mode b).
             -- decomp h_forall_k'_.
                simpl.
@@ -10845,7 +10873,7 @@ Admitted.
                ++ intro abs.
                   assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))) /sng. {
                     apply transl_lparameter_specification_to_lident_nodup;auto. }
-                  specialize set_params_in with (1:=heq_mget_k'_t_t_) as ? /sng.
+                  specialize set_params_in with (1:=h_eq_mget_k'_t_t_) as ? /sng.
                   simpl in h_nodup_.
                   subst k'.
                   rewrite abs in *.
@@ -10861,7 +10889,7 @@ Admitted.
                ++ intro abs.
                   assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))) /sng. {
                     apply transl_lparameter_specification_to_lident_nodup;auto. }
-                  specialize set_params_in with (1:=heq_mget_k'_addr_) as ? /sng.
+                  specialize set_params_in with (1:=h_eq_mget_k'_addr_) as ? /sng.
                   simpl in h_nodup_.
                   subst k'.
                   rewrite abs in *.
@@ -10890,7 +10918,7 @@ Admitted.
           specialize h_forall_args_t_ with (1:=h_copy_in1_)(2:=eq_refl)(3:=eq_refl).
           rewrite rev_unit.
           constructor;intros /sng.
-          * rewrite heq_parameter_mode_.
+          * rewrite h_eq_parameter_mode_.
             assert (evalExp st bigs (Name O nme_args) (OK (Int v))) /sng. {
               constructor;auto. }
             simpl.
@@ -10899,24 +10927,24 @@ Admitted.
             specialize transl_expr_ok as ? /sng.
             assert (transl_expr st CE (Name 0%nat nme_args) = value_at_addr st (parameter_subtype_mark prmSpec) nme_t) /sng. {
               simpl.
-              functional inversion heq_transl_name_ /sng.
+              functional inversion h_eq_transl_name_ /sng.
               rewrite h_eq_transl_var_.
               assert (symboltable.fetch_exp_type_ astnum st = Some (parameter_subtype_mark prmSpec)) /sng. {
                 admit. (* Well typedness *)
               }
-              rewrite heq_fetch_exp_type_.
+              rewrite h_eq_fetch_exp_type_.
               reflexivity.
             }
-            unfold value_at_addr in heq_tr_expr_.
+            unfold value_at_addr in h_eq_tr_expr_.
             destruct (transl_type st (parameter_subtype_mark prmSpec)) eqn:heq.
             all:swap 1 2.
             { exfalso. admit. (* well typedness: prmspec is correct *) }
-            simpl bind in heq_tr_expr_.
+            simpl bind in h_eq_tr_expr_.
             specialize make_load_no_fail with (nme_t:=nme_t)(1:=heq) as ? /sng.
             decomp h_ex_.
-            rewrite heq_make_load_ in heq_tr_expr_.
-            functional inversion heq_make_load_ /sng.
-             specialize h_forall_stbl_ with (1:=heq_tr_expr_)(2:=h_eval_expr_)
+            rewrite h_eq_make_load_ in h_eq_tr_expr_.
+            functional inversion h_eq_make_load_ /sng.
+             specialize h_forall_stbl_ with (1:=h_eq_tr_expr_)(2:=h_eval_expr_)
                                            (3:=h_match_env_).
              decomp h_forall_stbl_.
              exists v_t, chunk;split;[|split].
@@ -10932,7 +10960,7 @@ Admitted.
                assumption.
           *  (eapply Forall2_impl with (2:=h_forall_args_t_); intros) /sng.
             destruct a;intros /sng.
-            specialize h_forall_k'_ with (1:=heq_transl_paramid_).
+            specialize h_forall_k'_ with (1:=h_eq_transl_paramid_).
             destruct (parameter_mode b).
             -- intros /sng.
                decomp h_forall_k'_.
@@ -10942,7 +10970,7 @@ Admitted.
                ++ intro abs.
                   assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))) /sng. {
                     apply transl_lparameter_specification_to_lident_nodup;auto. }
-                  specialize set_params_in with (1:=heq_mget_k'_t_t_) as ? /sng.
+                  specialize set_params_in with (1:=h_eq_mget_k'_t_t_) as ? /sng.
                   simpl in h_nodup_.
                   subst k'.
                   rewrite abs in *.
@@ -10958,7 +10986,7 @@ Admitted.
                ++ intro abs.
                   assert (List.NoDup (transl_lparameter_specification_to_lident st (prmSpec::lprmSpec))) /sng. {
                     apply transl_lparameter_specification_to_lident_nodup;auto. }
-                  specialize set_params_in with (1:=heq_mget_k'_addr_) as ? /sng.
+                  specialize set_params_in with (1:=h_eq_mget_k'_addr_) as ? /sng.
                   simpl in h_nodup_.
                   subst k'.
                   rewrite abs in *.
@@ -10972,7 +11000,7 @@ Admitted.
       admit. (* well formed/typed function *) }
 
     specialize copyIn_store_params_ok
-      with (1:=heq_transl_params_p_x_) (3:=h_CM_eval_exprl_args_t_args_t_v_)
+      with (1:=h_eq_transl_params_p_x_) (3:=h_CM_eval_exprl_args_t_args_t_v_)
            (2:=h_copy_in_) (4:=h_match_env_) (5:=h_NoDupA_procedure_parameter_profile_)
            (6:=eq_refl) (7:=eq_refl) as ? /sng.
     rename h_for3_f_procedure_parameter_profile_args_ into h_init_params_.
@@ -11005,10 +11033,10 @@ Admitted.
       assert (Maps.PTree.get chaining_param (set_params args_t_v (transl_lparameter_specification_to_lident st procedure_parameter_profile)) = None) /sng. {
         destruct Maps.PTree.get eqn:? /sng.
         - exfalso.
-          apply set_params_in in heq_mget_chaining_param_v_.
+          apply set_params_in in h_eq_mget_chaining_param_v_.
           eapply chaining_param_neq_transl_lparam;eauto.
         - reflexivity. }
-      revert heq_get_.
+      revert h_eq_get_.
       (* removes the occurrence of procedure_parameter_profile that we do not want
          to induct on. *)
       remember (transl_lparameter_specification_to_lident st procedure_parameter_profile) as l.
@@ -11018,7 +11046,7 @@ Admitted.
       - constructor.
         + intros /sng.
           destruct x;!intros /sng.
-          specialize h_forall_k'_ with (1:= heq_transl_paramid_).
+          specialize h_forall_k'_ with (1:= h_eq_transl_paramid_).
           destruct (parameter_mode y);!intros /sng.
           all: swap 1 2.
           * assumption.
@@ -11028,18 +11056,18 @@ Admitted.
             rewrite abs in h_forall_k'_.
             decomp h_forall_k'_.
             specialize h_forall_k'0_ with (1:=abs).
-            rewrite heq_get_ in h_forall_k'0_.
+            rewrite h_eq_get_ in h_forall_k'0_.
             decomp h_forall_k'0_.
-            discriminate heq_None_.
+            discriminate h_eq_None_.
           * rewrite Maps.PTree.gso;auto.
             -- intro abs.
                subst.
                decomp h_forall_k'_.
-               (* specialize h_forall_k'_ with (1:=h_transl_value_t_v'_)(2:=heq_compute_chnk_of_type_). *)
-               rewrite abs in heq_mget_.
+               (* specialize h_forall_k'_ with (1:=h_transl_value_t_v'_)(2:=h_eq_compute_chnk_of_type_). *)
+               rewrite abs in h_eq_mget_.
                specialize h_forall_k'0_ with (1:=abs).
                decomp h_forall_k'0_.
-               rewrite heq_mget_chaining_param_addr0_ in heq_get_.
+               rewrite h_eq_mget_chaining_param_addr0_ in h_eq_get_.
                discriminate.
         + apply h_impl_for3_l0_l'_l''_;auto. }
 
@@ -11078,11 +11106,11 @@ Admitted.
         intros until 1 /sng.
         rename h_for3_revf_proc_param_prof_args_ into h_cpinOK_.
         (induction h_cpinOK_;!intros) /sng.
-        - rew store_params_ok with functional inversion heq_store_prms_.
+        - rew store_params_ok with functional inversion h_eq_store_prms_.
           subst.
           do 3 eexists.
           constructor.
-        - rew store_params_ok with functional inversion heq_store_prms_ /sng.
+        - rew store_params_ok with functional inversion h_eq_store_prms_ /sng.
           rename x1 into s_params'.
           destruct x.
           destruct (parameter_mode y) eqn:? /sng.
@@ -11098,12 +11126,12 @@ Admitted.
             assert ((i,t)=(parameter_name y, Undefined)) /sng. {
               admit. (* TODO: lemma similar to copy_in_cons *)
             }
-            invclear heq_pair_ /sng.
+            invclear h_eq_pair_ /sng.
             rewrite <- app_assoc in h_copy_in0_.
             simpl in h_copy_in0_.
             specialize h_forall_the_proc_ with
                 (initf:=(parameter_name y, Undefined)::initf) (the_proc:=the_proc)
-                (1:=eq_refl) (2:=heq_store_prms_l'_x1_)(3:=h_copy_in0_)(4:=h_inv_comp_st_)
+                (1:=eq_refl) (2:=h_eq_store_prms_l'_x1_)(3:=h_copy_in0_)(4:=h_inv_comp_st_)
                 (5:=h_match_env_).
             decomp h_forall_the_proc_.
             exists locenv',(Events.Eapp Events.E0 t2),m'.
@@ -11124,12 +11152,12 @@ Admitted.
             * assert ((i,t)=(parameter_name y, e_v)) /sng. {
                 admit. (* TODO: lemma similar to copy_in_cons *)
               }
-              invclear heq_pair_ /sng.
+              invclear h_eq_pair_ /sng.
               rewrite <- app_assoc in h_copy_in0_.
               simpl in h_copy_in0_.
               specialize h_forall_the_proc_ with
                   (initf:=(parameter_name y, e_v)::initf) (the_proc:=the_proc)
-                  (1:=eq_refl) (2:=heq_store_prms_l'_x1_)(3:=h_copy_in0_)(4:=h_inv_comp_st_)
+                  (1:=eq_refl) (2:=h_eq_store_prms_l'_x1_)(3:=h_copy_in0_)(4:=h_inv_comp_st_)
                   (5:=h_match_env_).
               decomp h_forall_the_proc_.
               assert (Datatypes.length suffix_s = Datatypes.length CE_sufx) /sng. {
@@ -11139,9 +11167,9 @@ Admitted.
                                                  t1 e1 m1 Out_normal) /sng. {
                  specialize (h_match_env_ /sng.(me_safe_cm_env).(me_stack_match_addresses)) as ?.
                  red in h_stk_mtch_addr_stkptr_proc_m_postchainarg_.
-                 rewrite heq_length_ in h_stk_mtch_addr_stkptr_proc_m_postchainarg_.
+                 rewrite h_eq_length_ in h_stk_mtch_addr_stkptr_proc_m_postchainarg_.
                  specialize h_stk_mtch_addr_stkptr_proc_m_postchainarg_
-                            with (1:=heq_transl_name_).
+                            with (1:=h_eq_transl_name_).
                  decomp h_stk_mtch_addr_stkptr_proc_m_postchainarg_.
                  assert (exists aa bb, stkptr_proc = Values.Vptr aa bb) /sng. {
                    specialize match_env_sp_zero_ with (1:=h_match_env_) as ? /sng.
@@ -11150,9 +11178,9 @@ Admitted.
                    assumption. }
                    decomp h_ex_.
                    subst.
-                   simpl in heq_transl_name_.
+                   simpl in h_eq_transl_name_.
                    specialize transl_variable_Vptr
-                   with (1:=h_inv_comp_st_) (3:=heq_transl_name_)
+                   with (1:=h_inv_comp_st_) (3:=h_eq_transl_name_)
                         (2:=me_stack_localstack_aligned (me_safe_cm_env h_match_env_))
                    as ? /sng.
                  specialize h_forall_nme_t_v_ with (1:=h_CM_eval_expr_x2_x2_v_).
@@ -11161,11 +11189,11 @@ Admitted.
                  specialize Mem.valid_access_store as ? /sng.
                  specialize h_match_env_ /sng.(me_safe_cm_env).(me_stack_freeable) as ?.
                  red in h_freeable_m_postchainarg_.
-                 rewrite heq_length_ in *.
+                 rewrite h_eq_length_ in *.
                  specialize h_freeable_m_postchainarg_ with
-                     (1:=heq_transl_name_)
+                     (1:=h_eq_transl_name_)
                      (2:=h_CM_eval_expr_x2_x2_v_)
-                     (3:=heq_compute_chnk_).
+                     (3:=h_eq_compute_chnk_).
                  apply Mem.valid_access_freeable_any with (p:=Writable)
                    in h_freeable_m_postchainarg_.
                  specialize forall_m1 with (v:=t_t)(1:=h_freeable_m_postchainarg_).
@@ -11175,9 +11203,9 @@ Admitted.
                 econstructor.
                 -- eassumption.
                 -- constructor.
-                   rewrite heq_mget_.
+                   rewrite h_eq_mget_.
                    reflexivity.
-                -- eapply heq_store_t_t_m2_. }
+                -- eapply h_eq_store_t_t_m2_. }
               decomp h_ex_. 
               assert (exists m'' t2, exec_stmt g the_proc stkptr_proc e1 m1
                                            s_params' t2 locenv' m'' Out_normal) /sng. {
@@ -11185,7 +11213,7 @@ Admitted.
 
 
 
-                unfold Mem.storev in heq_storev_v_m1_.
+                unfold Mem.storev in h_eq_storev_v_m1_.
                 destruct x2_v;try discriminate.
 
                 assert (chained_stack_structure
@@ -11200,11 +11228,11 @@ Admitted.
                 assert (Ptrofs.unsigned i >= 4) /sng. {
                   admit. (* TODO *) }
                 specialize store_param_nosideeffect with
-                    (1:=heq_store_prms_l'_x1_)
+                    (1:=h_eq_store_prms_l'_x1_)
                     (2:=h_chain_m_postchainarg_)
                     (3:=h_exct_lvlG_)
                     (4:=h_exec_stmt_s_params'_Out_normal_)
-                    (5:=heq_storev_v_m1_)
+                    (5:=h_eq_storev_v_m1_)
                     (6:=h_ge_)
                   as ? /sng.
                 decomp h_ex_.
@@ -11220,12 +11248,12 @@ Admitted.
             * assert ((i,t)=(parameter_name y, Int v)) /sng. {
                 admit. (* TODO: lemma similar to copy_in_cons *)
               }
-              invclear heq_pair_ /sng.
+              invclear h_eq_pair_ /sng.
               rewrite <- app_assoc in h_copy_in0_.
               simpl in h_copy_in0_.
               specialize h_forall_the_proc_ with
                   (initf:=(parameter_name y, Int v)::initf) (the_proc:=the_proc)
-                  (1:=eq_refl) (2:=heq_store_prms_l'_x1_)(3:=h_copy_in0_)(4:=h_inv_comp_st_)
+                  (1:=eq_refl) (2:=h_eq_store_prms_l'_x1_)(3:=h_copy_in0_)(4:=h_inv_comp_st_)
                   (5:=h_match_env_).
               decomp h_forall_the_proc_.
               assert (exists t1 e1 m1, exec_stmt g the_proc stkptr_proc locenv m_postchainarg
@@ -11247,7 +11275,7 @@ Admitted.
 
           + (* in_Out *)
 xxxx
-                functional inversion heq_transl_name_ /sng.
+                functional inversion h_eq_transl_name_ /sng.
                  specialize match_env_sp_zero_ with (1:=h_match_env_) as ? /sng.
                  decomp h_ex_.
                  rename b into proc_addr.
@@ -11257,8 +11285,8 @@ xxxx
                  }
                  specialize (h_match_env_ /sng.(me_safe_cm_env).(me_stack_match_addresses)) as ?.
                  red in h_stk_mtch_addr_.
-                 rewrite heq_length_ in h_stk_mtch_addr_.
-                 specialize h_stk_mtch_addr_ with (1:=heq_transl_name_).
+                 rewrite h_eq_length_ in h_stk_mtch_addr_.
+                 specialize h_stk_mtch_addr_ with (1:=h_eq_transl_name_).
                  decomp h_stk_mtch_addr_.
                  specialize transl_variable_Vptr
                    with (1:=h_inv_comp_st_)(3:=h_eq_transl_var_)
@@ -11285,7 +11313,7 @@ xxx
           assert (∃ (locenv'_fst : env) (t_fst : Events.trace) (m_fst : mem), 
                      exec_stmt g the_proc stkptr_proc locenv m_postchainarg
                                (Sstore x0 x2 rexp) t_fst locenv'_fst m_fst Out_normal). {
-            functional inversion heq_transl_name_ /sng.
+            functional inversion h_eq_transl_name_ /sng.
              specialize match_env_sp_zero_ with (1:=h_match_env_) as ? /sng.
              decomp h_ex_.
              rename b into proc_addr.
@@ -11295,8 +11323,8 @@ xxx
              }
              specialize (h_match_env_ /sng.(me_safe_cm_env).(me_stack_match_addresses)) as ?.
              red in h_stk_mtch_addr_.
-             rewrite heq_length_ in h_stk_mtch_addr_.
-             specialize h_stk_mtch_addr_ with (1:=heq_transl_name_).
+             rewrite h_eq_length_ in h_stk_mtch_addr_.
+             specialize h_stk_mtch_addr_ with (1:=h_eq_transl_name_).
              decomp h_stk_mtch_addr_.
             specialize transl_variable_Vptr
               with (1:=h_inv_comp_st_)(3:=h_eq_transl_var_)
@@ -11316,16 +11344,16 @@ xxx
             specialize Mem.valid_access_store as ? /sng.
             specialize h_match_env_ /sng.(me_safe_cm_env).(me_stack_freeable) as ?.
             red in h_freeable_m_postchainarg_.
-            rewrite heq_length_ in *.
+            rewrite h_eq_length_ in *.
             specialize h_freeable_m_postchainarg_ with
                 (1:=h_eq_transl_var_)
                 (2:=h_CM_eval_expr_x2_x2_v_)
-                (3:=heq_compute_chnk_).
+                (3:=h_eq_compute_chnk_).
               apply Mem.valid_access_freeable_any with (p:=Writable)
                 in h_freeable_m_postchainarg_.
 
 
-            destruct (parameter_mode y) eqn:heq_prmmode_;simpl.
+            destruct (parameter_mode y) eqn:h_eq_prmmode_;simpl.
             + decomp h_forall_k'_.
               specialize forall_m1 with (v:=t_t)(1:=h_freeable_m_postchainarg_).
               decomp forall_m1.
@@ -11333,9 +11361,9 @@ xxx
               econstructor.
               * eapply h_CM_eval_expr_x2_x2_v_.
               * econstructor.
-                eapply heq_mget_.
+                eapply h_eq_mget_.
               * simpl.
-                eapply heq_store_t_t_m2_.
+                eapply h_eq_store_t_t_m2_.
             + subst t.
               specialize forall_m1 with (1:=h_freeable_m_postchainarg_).
               (* decomp forall_m1. *)
@@ -11347,9 +11375,9 @@ xxx
                    admit.
                 -- edestruct forall_m1 /sng. 
                    econstructor.
-                eapply heq_mget_.
+                eapply h_eq_mget_.
               * simpl.
-                eapply heq_store_t_t_m2_.
+                eapply h_eq_store_t_t_m2_.
             + 
                 
               
@@ -11369,20 +11397,20 @@ xxx
               }
               subst i.
               
-              destruct (parameter_mode y) eqn:heq_prmmode_;simpl.
+              destruct (parameter_mode y) eqn:h_eq_prmmode_;simpl.
               * econstructor.
                 specialize h_forall_k'_ with (1:=eq_refl).
                 decomp h_forall_k'_.
-                eapply heq_mget_.
-                rewrite heq_compute_chnk_,heq_store_prms_l'_x1_,h_eq_transl_var_ in heq_store_prms_.
-                simpl in heq_store_prms_.
+                eapply h_eq_mget_.
+                rewrite h_eq_compute_chnk_,h_eq_store_prms_l'_x1_,h_eq_transl_var_ in h_eq_store_prms_.
+                simpl in h_eq_store_prms_.
               
 
             specialize transl_variable_Vptr
               with (1:=h_inv_comp_st_)(3:=h_eq_transl_var_)
                    (2:=me_stack_localstack_aligned (me_safe_cm_env h_match_env_))
                as ? /sng.
-            rewrite heq_length_ in h_copy_in_.
+            rewrite h_eq_length_ in h_copy_in_.
             (* destruct args. *)
             (* { inversion h_copy_in_. } *)
             simpl in h_copy_in_.
@@ -11392,8 +11420,8 @@ xxx
                                              locenv_postchainarg m_postchainarg x2 nme_t_v). {
               specialize (me_stack_match(h_match_env_)) as ? /sng.
               red in h_stk_mtch_.
-              rewrite heq_length_ in h_stk_mtch_.
-              specialize h_stk_mtch_ with (1:=heq_transl_name_).
+              rewrite h_eq_length_ in h_stk_mtch_.
+              specialize h_stk_mtch_ with (1:=h_eq_transl_name_).
               
               functional inversion h_eq_transl_var_ /sng.
 
@@ -11438,7 +11466,7 @@ xxx
                   end) /sng.
             + specialize (me_stack_match_addresses (me_safe_cm_env h_match_env_)) as ? /sng.
               red in h_stk_mtch_addr_.
-              specialize h_stk_mtch_addr_ with (1:=heq_transl_name_).
+              specialize h_stk_mtch_addr_ with (1:=h_eq_transl_name_).
               decomp h_stk_mtch_addr_.
               specialize h_forall_nme_t_v_ with (1:=h_CM_eval_expr_x2_x2_v_).
               decomp h_forall_nme_t_v_.
@@ -11476,10 +11504,10 @@ xxx
               + eapply eval_expr_transl_name_inv_locenv;eauto.
               + eassumption.
               + simpl.
-                eapply heq_store_v_m2_. }
+                eapply h_eq_store_v_m2_. }
             + specialize (me_stack_match_addresses (me_safe_cm_env h_match_env_)) as ? /sng.
               red in h_stk_mtch_addr_.
-              specialize h_stk_mtch_addr_ with (1:=heq_transl_name_).
+              specialize h_stk_mtch_addr_ with (1:=h_eq_transl_name_).
               decomp h_stk_mtch_addr_.
               specialize h_forall_nme_t_v_ with (1:=h_CM_eval_expr_x2_x2_v_).
               decomp h_forall_nme_t_v_.
@@ -11513,10 +11541,10 @@ xxx
               + eapply eval_expr_transl_name_inv_locenv;eauto.
               + eassumption.
               + simpl.
-                eapply heq_store_v0_m2_. }
+                eapply h_eq_store_v0_m2_. }
             + specialize (me_stack_match_addresses (me_safe_cm_env h_match_env_)) as ? /sng.
               red in h_stk_mtch_addr_.
-              specialize h_stk_mtch_addr_ with (1:=heq_transl_name_).
+              specialize h_stk_mtch_addr_ with (1:=h_eq_transl_name_).
               decomp h_stk_mtch_addr_.
               specialize h_forall_nme_t_v_ with (1:=h_CM_eval_expr_x2_x2_v_).
               decomp h_forall_nme_t_v_.
@@ -11546,7 +11574,7 @@ xxx
                 + eapply eval_expr_transl_name_inv_locenv;eauto.
                 + eassumption.
                 + simpl.
-                  eapply heq_store_v_m2_.  }
+                  eapply h_eq_store_v_m2_.  }
             +
 }
 *)
@@ -11620,50 +11648,50 @@ xxx
       remember (set_params (chaining_expr_from_caller_v :: args_t_v) (fn_params the_proc)) as locenv_proc in *.
       unfold fn_vars, fn_vars, the_proc in h_init_params_.
       
-(*      revert s_parms the_proc heq_find_func_paddr_fction_ h_alloc_ Heqlocenv_proc
-             h_exec_stmt_ heq_store_prms_procedure_parameter_profile_s_parms_.
-      (* revert heq_store_prms_procedure_parameter_profile_s_parms_. *)
+(*      revert s_parms the_proc h_eq_find_func_paddr_fction_ h_alloc_ Heqlocenv_proc
+             h_exec_stmt_ h_eq_store_prms_procedure_parameter_profile_s_parms_.
+      (* revert h_eq_store_prms_procedure_parameter_profile_s_parms_. *)
       remember (rev f) as revf.
       remember procedure_parameter_profile as prms.*)
 
       clearbody the_proc.
-      clear h_copy_out_ h_copy_in_ heq_fetch_proc_p_
-            hcpout_prm_procedure_parameter_profile_s_copyout heq_bldCE_
-            heq_transl_stmt_stm'_.
+      clear h_copy_out_ h_copy_in_ h_eq_fetch_proc_p_
+            hcpout_prm_procedure_parameter_profile_s_copyout h_eq_bldCE_
+            h_eq_transl_stmt_stm'_.
       
       revert sto fr_prm p_sig s_parms args_t
              h_NoDupA_procedure_parameter_profile_
              hnodup_arg hnodup_decl
-             heq_store_prms_procedure_parameter_profile_s_parms_
-             h_forall_s'_ heq_transl_decl_procedure_declarative_part_c_
-             heq_transl_stmt_procedure_statements_s_pbdy_
-             heq_init_lcl_procedure_declarative_part_s_locvarinit_
-             heq_build_frame_decl_ heq_bld_frm_procedure_parameter_profile_ hfrsh
+             h_eq_store_prms_procedure_parameter_profile_s_parms_
+             h_forall_s'_ h_eq_transl_decl_procedure_declarative_part_c_
+             h_eq_transl_stmt_procedure_statements_s_pbdy_
+             h_eq_init_lcl_procedure_declarative_part_s_locvarinit_
+             h_eq_build_frame_decl_ h_eq_bld_frm_procedure_parameter_profile_ hfrsh
              h_inv_CE''_bld_ h_reachable_enclosing_variables_
              h_forbidden_incl_m_m_poschainarg'_
-             heq_transl_lprm_spec_procedure_parameter_profile_p_sig_
-             heq_transl_params_p_x_ h_CM_eval_exprl_args_t_args_t_v_
+             h_eq_transl_lprm_spec_procedure_parameter_profile_p_sig_
+             h_eq_transl_params_p_x_ h_CM_eval_exprl_args_t_args_t_v_
              .
       induction h_init_params_;!intros /sng.
-      - simpl in heq_store_prms_.
-        inversion  heq_store_prms_.
+      - simpl in h_eq_store_prms_.
+        inversion  h_eq_store_prms_.
         subst s_parms.
         do 3 eexists.
         econstructor.
       - up_type.
-        rew store_params_ok with functional inversion heq_store_prms_ /sng.
+        rew store_params_ok with functional inversion h_eq_store_prms_ /sng.
         rew transl_paramexprlist_ok with functional inversion htrans_prmexprl /sng.
         rename h_impl_impl_forall_sto_ into IH.
         inversion h_NoDupA_ /sng.
         inversion h_NoDupA0_ /sng.
         (* inversion h_NoDupA_procedure_parameter_profile_ /sng. *)
         specialize IH with (1:=h_NoDupA_l'_) (2:=h_NoDupA_l'0_) (3:=h_NoDupA1_)
-                           (4:=heq_store_prms_l'_x1_)
+                           (4:=h_eq_store_prms_l'_x1_)
                            (5:=h_forall_lvl_)
-                           (6:=heq_transl_decl_procedure_declarative_part_lglobdef_)(* useless? *)
-                           (7:=heq_transl_stmt_procedure_statements_s_pbdy_)(* useless? *)
-                           (8:=heq_init_lcl_procedure_declarative_part_s_locvarinit_)
-                           (9:=heq_build_frame_decl_)
+                           (6:=h_eq_transl_decl_procedure_declarative_part_lglobdef_)(* useless? *)
+                           (7:=h_eq_transl_stmt_procedure_statements_s_pbdy_)(* useless? *)
+                           (8:=h_eq_init_lcl_procedure_declarative_part_s_locvarinit_)
+                           (9:=h_eq_build_frame_decl_)
                            (12:=h_inv_comp_st_)
                            (13:=h_forall_astnum0_)
                            (14:=h_forall_astnum1_)
@@ -11678,11 +11706,11 @@ xxx
         inversion h_fresh_prms_ /sng.
         specialize IH with (2:=h_lst_forall_l'_).
         
-        rew build_frame_lparams_ok with functional inversion heq_bld_frm_ /sng.
+        rew build_frame_lparams_ok with functional inversion h_eq_bld_frm_ /sng.
         specialize IH with (1:=)
         .
         specialize 
-        specialize h_impl_ex_ with (1:=heq_store_prms_l'_x1_).
+        specialize h_impl_ex_ with (1:=h_eq_store_prms_l'_x1_).
         
         eapply h_impl_ex_;auto.
         
@@ -11795,18 +11823,18 @@ Proof.
     !!!intros; up_type /sng.
   all:swap 2 3.
   - inversion h_copy_in_ /sng.
-    invclear heq_OK_ /sng.
-    rew store_params_ok with functional inversion heq_store_prms_ /sng.
+    invclear h_eq_OK_ /sng.
+    rew store_params_ok with functional inversion h_eq_store_prms_ /sng.
     exists (set_params args_t_v (transl_lparameter_specification_to_lident stbl [ ])).
     eexists.
     exists m.
     split.
     + econstructor.
     + assumption.
-  - inversion heq_Error_.
+  - inversion h_eq_Error_.
   - rename h_forall_astnum_ into IH.
     match goal with |- context [?x::lparam'] => set (a:=x) in * end; up_type.
-    rew store_params_ok with functional inversion heq_store_prms_;up_type /sng.
+    rew store_params_ok with functional inversion h_eq_store_prms_;up_type /sng.
     enough (
         ∃ (t_fst : Events.trace) (m_fst:mem) , 
           exec_stmt
@@ -11842,11 +11870,11 @@ Proof.
       specialize assignment_preserve_match_env_
         with (3:=h_match_env0_)
              (5:=h_CM_eval_expr_x3_x3_v_)
-             (9:=heq_storev_rexp_v_m_fst_)
+             (9:=h_eq_storev_rexp_v_m_fst_)
         as ? /sng.
       specialize h_forall_x_
-        with (4:=heq_compute_chnk_).
-        with (3:=heq_transl_name_)
+        with (4:=h_eq_compute_chnk_).
+        with (3:=h_eq_transl_name_)
       .
 
       cbn in h_copy_in0_.
@@ -11885,18 +11913,18 @@ Proof.
     (∃ (locenv' : env) (t2 : Events.trace) (m' : mem), 
         exec_stmt g proc_t (Values.Vptr sp Ptrofs.zero) locenv_fst m_fst x2 t2 locenv' m' Out_normal
         ∧ match_env_ stbl ((lvl, x') :: s) ((lvl, l') :: CE) (Values.Vptr sp Ptrofs.zero) locenv' g m'))). {
-      cbn in heq_transl_name_.
-       functional inversion heq_transl_name_ /sng.
-       rew add_to_frame_ok with functional inversion heq_add_to_fr_nme_ /sng.
+      cbn in h_eq_transl_name_.
+       functional inversion h_eq_transl_name_ /sng.
+       rew add_to_frame_ok with functional inversion h_eq_add_to_fr_nme_ /sng.
       do 3 eexists .
       split.
       
     + admit.
       (*specialize (h_match_env0_ /sng.(me_stack_match)) as ?.
       red in h_stk_mtch_.
-      specialize h_stk_mtch_ with (1:=heq_transl_name_).
+      specialize h_stk_mtch_ with (1:=h_eq_transl_name_).
       inversion h_copy_in_ /sng.
-      functional inversion heq_transl_name_ /sng.
+      functional inversion h_eq_transl_name_ /sng.
       functional inversion h_eq_transl_var_ /sng.
       econstructor.
       *)
@@ -11909,7 +11937,7 @@ Proof.
       * reflexivity.
       * xxx
 
-      rewrite <- heq_E0_ in *.
+      rewrite <- h_eq_E0_ in *.
       decomp h_ex_.
       do 3 eexists.
       split.
@@ -11922,25 +11950,25 @@ Proof.
     + destruct x /sng.
       unfold ST.push in h_copy_in0_.
       cbn in h_copy_in0_.
-      specialize IH with (1:=heq_build_frame_lparams_)(2:=eq_refl)(3:=eq_refl)
-                          (4:=heq_transl_decl_decl0_newlfundef_)(6:=heq_transl_decl_to_lident_)
+      specialize IH with (1:=h_eq_build_frame_lparams_)(2:=eq_refl)(3:=eq_refl)
+                          (4:=h_eq_transl_decl_decl0_newlfundef_)(6:=h_eq_transl_decl_to_lident_)
                           (9:=h_stkcut_bigs_lvl_)(10:=h_CEcut_callingCE_lvl_)
                           (14:=h_match_env_)(11:=h_copy_in0_).
       up_type.
       subst fram_sz.
-      rew store_params_ok with functional inversion heq_store_prms_;
+      rew store_params_ok with functional inversion h_eq_store_prms_;
         match goal with
         | H: parameter_mode ?a = ?x, H': parameter_mode ?a = ?y |- _ => try now (rewrite H in H';discriminate)
         end /sng.
       up_type.
       unfold a in id;simpl in id.
       unfold a in id0;simpl in id0.
-      specialize IH with (1:=heq_store_params_)(2:=eq_refl).
+      specialize IH with (1:=h_eq_store_params_)(2:=eq_refl).
       rew transl_paramexprlist_ok with functional inversion htrans_prmexprl;
         match goal with
         | H: parameter_mode ?a = ?x, H': parameter_mode ?a = ?y |- _ => try now (rewrite H in H';discriminate)
         end /sng.
-      specialize IH with (1:=heq_transl_paramexprlist_).
+      specialize IH with (1:=h_eq_transl_paramexprlist_).
       inversion h_CM_eval_exprl_args_t_args_t_v_ /sng.
       specialize IH with (1:=h_CM_eval_exprl_x4_vl_)(2:=eq_refl).
       up_type.
@@ -11964,11 +11992,11 @@ Proof.
           destruct (name_dec nme0 (Identifier 0%nat nme)).
           + subst nme0.
             inversion h_eval_name_nme0_v_ /sng.
-            cbn in heq_SfetchG_nme_.
-            rewrite Nat.eqb_refl in heq_SfetchG_nme_.
-            invclear heq_SfetchG_nme_ /sng.
-            functional inversion heq_make_load_ /sng.
-            specialize transl_expr_ok with (1:=heq_tr_expr_e_)(2:=h_eval_expr_e_e_v_)(3:=h_match_env_) as ? /sng.
+            cbn in h_eq_SfetchG_nme_.
+            rewrite Nat.eqb_refl in h_eq_SfetchG_nme_.
+            invclear h_eq_SfetchG_nme_ /sng.
+            functional inversion h_eq_make_load_ /sng.
+            specialize transl_expr_ok with (1:=h_eq_tr_expr_e_)(2:=h_eval_expr_e_e_v_)(3:=h_match_env_) as ? /sng.
             decomp h_ex_.
             exists e_t_v0;split;auto.
             econstructor;eauto.*)
@@ -11982,7 +12010,7 @@ Proof.
       
 
 
-      specialize IHlparams with (1:=heq_is_).
+      specialize IHlparams with (1:=h_eq_is_).
 
     (* FIXME: have something saying that
        1) evaluation of real args match between sparka and cminor
@@ -12080,31 +12108,31 @@ xxx Change the statement above.
       Transparent build_frame_lparams.
       - inversion h_exec_stmt_initparams_Out_normal_ /sng.
         inversion h_copy_in_ /sng.
-        simpl in heq_bld_frm_.
-        inversion heq_bld_frm_ /sng.
+        simpl in h_eq_bld_frm_.
+        inversion h_eq_bld_frm_ /sng.
         subst.
         assumption.
       - 
         (* specialize invariant_compile_subcons with (1:=h_inv_comp_st_) as ? /sng. *)
-        rewrite build_frame_lparams_ok in heq_bld_frm_.
-        functional inversion heq_bld_frm_ /sng.
+        rewrite build_frame_lparams_ok in h_eq_bld_frm_.
+        functional inversion h_eq_bld_frm_ /sng.
         rewrite <- build_frame_lparams_ok in *.
         subst.
         assert (_x0 = In). {
-          cbn in heq_parameter_mode_.
+          cbn in h_eq_parameter_mode_.
           assumption. }
         subst _x0.
         set (prm:={| parameter_astnum := _x; parameter_name := nme; parameter_subtype_mark := subtyp_mrk; parameter_mode := In |}) in *.
-        rewrite add_to_frame_ok in heq_add_to_fr_nme_.
-        functional inversion heq_add_to_fr_nme_;subst /sng.
+        rewrite add_to_frame_ok in h_eq_add_to_fr_nme_.
+        functional inversion h_eq_add_to_fr_nme_;subst /sng.
         rewrite <- add_to_frame_ok in *.
         specialize h_forall_l_
-          with (2:=heq_store_params_)(6:=heq_build_frame_lparams_).
+          with (2:=h_eq_store_params_)(6:=h_eq_build_frame_lparams_).
         inversion h_copy_in_;
           match goal with
           | H:parameter_mode prm = ?X, H':parameter_mode prm = ?Y |- _ =>
             try (rewrite H in H'; discriminate)
-          end; clear heq_parameter_mode0_ /sng.
+          end; clear h_eq_parameter_mode0_ /sng.
         + admit. 
           (* copy_in In  norange *)
          (* specialize h_forall_initparams_ with (5:=h_copy_in0_).
@@ -12196,10 +12224,10 @@ Admitted.
     }
     subst f_lvl.
     specialize init_arg_locals_succeeds_and_preserve_match_env_
-               with (1:=heq_store_prms_procedure_parameter_profile_s_parms_)
-                    (* (4:=heq_bld_frm_procedure_parameter_profile_) *)
-                    (5:=heq_init_lcl_procedure_declarative_part_s_locvarinit_) /sng.
-                    (7:=heq_bldCE_)
+               with (1:=h_eq_store_prms_procedure_parameter_profile_s_parms_)
+                    (* (4:=h_eq_bld_frm_procedure_parameter_profile_) *)
+                    (5:=h_eq_init_lcl_procedure_declarative_part_s_locvarinit_) /sng.
+                    (7:=h_eq_bldCE_)
                     (9:=h_eval_decl_)
                     (2:=eq_refl)
     .
@@ -12209,7 +12237,7 @@ Admitted.
 
     destruct fr_prm.
     specialize init_params_succeeds_and_preserve_match_env_
-               with (1:=heq_store_prms_procedure_parameter_profile_s_parms_)
+               with (1:=h_eq_store_prms_procedure_parameter_profile_s_parms_)
                     (2:=eq_refl) (3:=h_stkcut_s_n_)
       as ? /sng.
     (8:=h_match_env1_)
@@ -12221,8 +12249,8 @@ Admitted.
       apply chained_stack_structure_le with (S (Datatypes.length CE_sufx));eauto. }
     specialize init_params_succeeds_and_preserve_match_env_
                with
-                  (*1:=heq_store_prms_procedure_parameter_profile_s_parms_*)
-                  (5:=heq_bld_frm_procedure_parameter_profile_) (CE:=CE_sufx) (2:=eq_refl)
+                  (*1:=h_eq_store_prms_procedure_parameter_profile_s_parms_*)
+                  (5:=h_eq_bld_frm_procedure_parameter_profile_) (CE:=CE_sufx) (2:=eq_refl)
                     (7:=h_copy_in_) (3:=h_stkcut_s_n_)(8:=h_match_env1_)(4:=h_inv_comp_st_)
                     (proc_t := the_proc) (*6:=h_chain_m_postchainarg1_*)
       as ? /sng.
@@ -12233,15 +12261,15 @@ Admitted.
       * eapply chained_stack_structure_le with (1:=h_chain_m_postchainarg_);auto.
       * 
     assert (exists s_parms', store_params st CE_sufx procedure_parameter_profile =:s_parms'). {
-      rewrite store_params_ok in heq_store_prms_procedure_parameter_profile_s_parms_.
-      functional inversion heq_store_prms_procedure_parameter_profile_s_parms_;subst;eauto;
+      rewrite store_params_ok in h_eq_store_prms_procedure_parameter_profile_s_parms_.
+      functional inversion h_eq_store_prms_procedure_parameter_profile_s_parms_;subst;eauto;
         rewrite <- store_params_ok in *.
     + 
         
         eapply h_chain_m_postchainarg0_.
       
-    rewrite <- build_compilenv_ok in heq_bldCE_.
-    functional inversion heq_bldCE_;subst /sng.
+    rewrite <- build_compilenv_ok in h_eq_bldCE_.
+    functional inversion h_eq_bldCE_;subst /sng.
 (* xx TODO: check this statement + do the same with build_frame_decl, so that we can have the same for build_compilenv. *)
 
       
@@ -12255,14 +12283,14 @@ Admitted.
         
         
         
-      revert heq_store_prms_procedure_parameter_profile_s_parms_.
+      revert h_eq_store_prms_procedure_parameter_profile_s_parms_.
       
       rewrite store_params_ok in *.
-      unfold function_utils.store_params in heq_store_prms_procedure_parameter_profile_s_parms_.
+      unfold function_utils.store_params in h_eq_store_prms_procedure_parameter_profile_s_parms_.
       functional induction function_utils.store_params st ((pb_lvl, sto) :: CE_sufx) procedure_parameter_profile;try rewrite <- store_params_ok in * /sng.
 
-      - simpl in heq_store_prms_procedure_parameter_profile_s_parms_.
-        inversion heq_store_prms_procedure_parameter_profile_s_parms_.
+      - simpl in h_eq_store_prms_procedure_parameter_profile_s_parms_.
+        inversion h_eq_store_prms_procedure_parameter_profile_s_parms_.
         subst s_parms.
         exists locenv_init, m_postchainarg, nil.
         constructor.
@@ -12270,7 +12298,7 @@ Admitted.
         match type of IH with
         | context [exec_stmt g ?X _ _ _ _ _ _ _ _] => set (the_proc':= X ) in *
         end.
-        simpl in heq_store_prms_procedure_parameter_profile_s_parms_.
+        simpl in h_eq_store_prms_procedure_parameter_profile_s_parms_.
       admit.
     }
     decomp h_ex_.
@@ -12291,11 +12319,11 @@ Admitted.
         eapply no_overflow_NoDup_G_cut with (2:=h_CEcut_CE_pb_lvl_) ;eauto.
         erewrite (CompilEnv.cut_until_spec1 _ _ _ _ h_CEcut_CE_pb_lvl_);eauto. }
       assert (stack_no_null_offset ((pb_lvl, sto) :: CE_sufx)) /sng. {
-        eapply build_compilenv_stack_no_null_offset with (4:=heq_bldCE_);eauto. }
+        eapply build_compilenv_stack_no_null_offset with (4:=h_eq_bldCE_);eauto. }
       assert (CompilEnv.exact_levelG ((pb_lvl, sto) :: CE_sufx)) /sng. {
         eapply h_inv_CE''_bld_. }
       assert (all_addr_no_overflow ((pb_lvl, sto) :: CE_sufx)) /sng. {
-        eapply build_compilenv_stack_no_overf with (4:=heq_bldCE_);eauto. }
+        eapply build_compilenv_stack_no_overf with (4:=h_eq_bldCE_);eauto. }
       assert (stack_localstack_aligned
                 (Datatypes.length ((pb_lvl, sto) :: CE_sufx)) locenv_init g
                 m_postchainarg stkptr_proc) /sng. {
@@ -12306,7 +12334,7 @@ Admitted.
       intros /sng.
       specialize init_params_preserves_structure
         with (1:=h_exct_lvlG_) (2:=H) (3:=h_no_overf_)
-             (4:=heq_store_prms_procedure_parameter_profile_s_parms_)
+             (4:=h_eq_store_prms_procedure_parameter_profile_s_parms_)
              (7:=h_aligned_g_m_postchainarg_)
              (8:=h_exec_stmt_s_parms_Out_normal_)(astnum:=astnum)
              (lvl:=(1 + Datatypes.length CE_sufx)%nat) as ? /sng.
@@ -12459,7 +12487,7 @@ xxx
           * admit.
         + admit.
       - apply Mem.unchanged_on_trans with m_postcpout;auto.
-        apply Mem.free_unchanged_on with (1:=heq_free_).
+        apply Mem.free_unchanged_on with (1:=h_eq_free_).
         intros /sng.
         intro abs.
         red in abs.
@@ -12534,10 +12562,10 @@ old stuff
                      unchange_forbidden st CE g astnum locenv locenv stkptr m m_postcpout
                      ∧ Mem.unchanged_on (forbidden st CE g astnum locenv stkptr m m) m m_postcpout)).
     { decomp h_ex_.
-      destruct (Mem.free m_postcpout spb_proc 0 sto_sz) as [m_postfree|m_postfree] eqn:heq_free_.
+      destruct (Mem.free m_postcpout spb_proc 0 sto_sz) as [m_postfree|m_postfree] eqn:h_eq_free_.
       all:swap 1 2.
       - edestruct Mem.range_perm_free eqn:heq.
-        erewrite e in heq_free_.
+        erewrite e in h_eq_free_.
         discriminate.
       - exists locenv_postcpout, m_postcpout, trace_postcpout.
         split;[|exists m_postfree;split;[|split;[|split]]].
@@ -12669,7 +12697,7 @@ old stuff
 
             assert (compute_chnk_id st (parameter_name param) =: ast_num_type) /sng.
             { admit. (* well formedness of st wrt to ast nums *) }
-            rewrite heq_fetch_exp_type0_ in h_cpout_prm_.
+            rewrite h_eq_fetch_exp_type0_ in h_cpout_prm_.
             
             
         Qed.
@@ -12994,7 +13022,7 @@ XXXXXXXXXXX
             - simpl.
               rewrite Int.add_zero,Int.unsigned_zero; cbn.
               subst init_sto_sz.
-              pose proof build_frame_lparams_mon_sz _ _ _ _ heq_bld_frm_procedure_parameter_profile_ /sng.
+              pose proof build_frame_lparams_mon_sz _ _ _ _ h_eq_bld_frm_procedure_parameter_profile_ /sng.
               cbn in h_le_.
               transitivity (snd fr_prm);auto.
               change sto_sz with (snd (sto, sto_sz)).
@@ -13028,7 +13056,7 @@ XXXXXXXXXXX
               specialize (h_stck_mtch_CE_ nme v nme_t load_addr_nme typ_nme cm_typ_nme).
               assert (evalName st s nme (OK v)) /sng.
               { admit. (* if it is mapped to v in suffix_s, then it is also in s (no clash name). *)  }
-              specialize (h_stck_mtch_CE_ h_eval_name_nme_v0_ heq_type_of_name_ heq_transl_name_ heq_transl_type_ heq_make_load_).
+              specialize (h_stck_mtch_CE_ h_eval_name_nme_v0_ h_eq_type_of_name_ h_eq_transl_name_ h_eq_transl_type_ h_eq_make_load_).
               destruct h_stck_mtch_CE_ as [? [? ?]] /sng.
               exists load_addr_nme_v;split;auto. }
 
@@ -13059,7 +13087,7 @@ XXXXXXXXXXX
             { (* should be lemma about empty top frame.  *)
               inversion h_eval_name_nme_v_ /sng.
               - constructor.
-                cbn in heq_SfetchG_x_.
+                cbn in h_eq_SfetchG_x_.
                 assumption.
               - admit. (* array *)
               - admit. (* record *) }
@@ -13067,7 +13095,7 @@ XXXXXXXXXXX
             (* Now we need to prove the other premisses of h_stk_mtch_suffix_s_m_.
                  This is very painful for something trivial. *)
             assert (exists δ nme_t_sub_indirections, nme_t = Ebinop Oadd nme_t_sub_indirections δ) /sng.
-            { functional inversion heq_transl_name_ /sng.
+            { functional inversion h_eq_transl_name_ /sng.
               functional inversion h_eq_transl_var_ /sng.
               unfold build_loads.
               eexists;eexists;eauto. }
@@ -13077,10 +13105,10 @@ XXXXXXXXXXX
             assert (exists pb_lvl_sub, (pb_lvl = S pb_lvl_sub /\ CompilEnv.level_of_top CE_sufx = Some pb_lvl_sub)) /sng.
             { assert (h_ce_lvl_ := ci_exact_lvls _ _ h_inv_CE''_bld_) /sng.
               inversion h_exct_lvlG_ /sng.
-              destruct (Datatypes.length CE_sufx) eqn:heq_lgthCE_sufx_.
-              - apply length_zero_iff_nil_ in heq_lgthCE_sufx_.
+              destruct (Datatypes.length CE_sufx) eqn:h_eq_lgthCE_sufx_.
+              - apply length_zero_iff_nil_ in h_eq_lgthCE_sufx_.
                 subst.
-                functional inversion heq_transl_name_.
+                functional inversion h_eq_transl_name_.
               - exists n;split;auto.
                 assert (invariant_compile CE_sufx st) /sng.
                 { eapply invariant_compile_sublist with (CE1:=[(S n, sto)]);auto. }
@@ -13091,25 +13119,25 @@ XXXXXXXXXXX
                   inversion heq.
                 + cbn.
                   subst CE_sufx.
-                  cbn in heq_lgthCE_sufx_.
-                  inversion heq_lgthCE_sufx_ /sng.
+                  cbn in h_eq_lgthCE_sufx_.
+                  inversion h_eq_lgthCE_sufx_ /sng.
                   reflexivity. }
             destruct h_ex_ as [pb_sub_lvl [? ?]]; subst pb_lvl /sng.
 
-            functional inversion heq_make_load_;subst load_addr_nme /sng.
-            functional inversion heq_transl_name_ /sng.
+            functional inversion h_eq_make_load_;subst load_addr_nme /sng.
+            functional inversion h_eq_transl_name_ /sng.
             functional inversion h_eq_transl_var_ /sng.
             subst.
-            cbn in heq_lvloftop_m'_.
-            inversion heq_lvloftop_m'_.
+            cbn in h_eq_lvloftop_m'_.
+            inversion h_eq_lvloftop_m'_.
             subst m'; eq_same_clear.
             assert (transl_name st CE_sufx (Identifier astnum id) =:
                                  Ebinop Oadd (build_loads_ (pb_sub_lvl - lvl_id))
                                  (Econst (Ointconst (Int.repr δ_id)))) /sng.
             { unfold transl_name.
               unfold transl_variable.
-              simpl in heq_CEfetchG_id_,heq_CEframeG_id_.
-              rewrite heq_CEfetchG_id_,heq_CEframeG_id_,heq_lvloftop_CE_sufx_pb_sub_lvl_.
+              simpl in h_eq_CEfetchG_id_,h_eq_CEframeG_id_.
+              rewrite h_eq_CEfetchG_id_,h_eq_CEframeG_id_,h_eq_lvloftop_CE_sufx_pb_sub_lvl_.
               unfold build_loads.
               reflexivity. }
             assert (make_load (Ebinop Oadd (build_loads_ (pb_sub_lvl - lvl_id)) (Econst (Ointconst (Int.repr δ_id)))) cm_typ_nme
@@ -13121,7 +13149,7 @@ XXXXXXXXXXX
             red in h_stk_mtch_suffix_s_m0_.
             pose proof (h_stk_mtch_suffix_s_m0_
                           _ _ _ _ _ _
-                          h_eval_name_nme_v0_ heq_type_of_name_ heq_transl_name0_ heq_transl_type_ heq_make_load0_)
+                          h_eval_name_nme_v0_ h_eq_type_of_name_ h_eq_transl_name0_ h_eq_transl_type_ h_eq_make_load0_)
               as h_stk_mtch_suffix_s_m'_.
             (* instantiation done *)
             (* ****************** *)
@@ -13161,7 +13189,7 @@ xxxx
             red in h_sck_mtch_fun_.
             red.
             intros /sng.
-            specialize (h_sck_mtch_fun_ p0 pb_lvl0 pb0 heq_fetch_proc_p0_).
+            specialize (h_sck_mtch_fun_ p0 pb_lvl0 pb0 h_eq_fetch_proc_p0_).
             destruct h_sck_mtch_fun_ as [CE_prefx' [CE_sufx' [p0addr [p_id [p0_fundef [p_lsubprocs hand]]]]]].
             decomp hand.
             destruct (Compare.le_dec pb_lvl0 pb_lvl).
@@ -13180,8 +13208,8 @@ xxxx
 
             
 
-            rewrite transl_procedure_ok in heq_transl_proc_pb0_.
-            functional inversion heq_transl_proc_pb0_.
+            rewrite transl_procedure_ok in h_eq_transl_proc_pb0_.
+            functional inversion h_eq_transl_proc_pb0_.
                   
 (*              
 
@@ -13210,9 +13238,9 @@ Proof.
                   functional inversion heq;subst /sng.
                   unfold build_compilenv.
                   unfold stoszchainparam in *.
-                  rewrite heq_bld_frm_lparams_;simpl.
+                  rewrite h_eq_bld_frm_lparams_;simpl.
                   rewrite heq2;simpl.
-                  rewrite heq_bool_true_.
+                  rewrite h_eq_bool_true_.
                   rewrite <- IHr.
 xxxx
 
@@ -13288,13 +13316,13 @@ xxxx
     + eapply exec_Scall;eauto.
       * econstructor;eauto.
       * simpl.
-        unfold transl_procsig in heq_transl_procsig_p_.
-        rewrite heq_fetch_proc_p_ in heq_transl_procsig_p_.
-        rewrite heq_pb_ in heq_transl_procsig_p_.
-        simpl in heq_transl_procsig_p_.
-        rewrite heq_transl_lprm_spec_procedure_parameter_profile_p_sig_ in heq_transl_procsig_p_.
-        simpl in heq_transl_procsig_p_.
-        inversion heq_transl_procsig_p_.
+        unfold transl_procsig in h_eq_transl_procsig_p_.
+        rewrite h_eq_fetch_proc_p_ in h_eq_transl_procsig_p_.
+        rewrite h_eq_pb_ in h_eq_transl_procsig_p_.
+        simpl in h_eq_transl_procsig_p_.
+        rewrite h_eq_transl_lprm_spec_procedure_parameter_profile_p_sig_ in h_eq_transl_procsig_p_.
+        simpl in h_eq_transl_procsig_p_.
+        inversion h_eq_transl_procsig_p_.
         reflexivity.
       * (* gather every intermediate parts together to get funcall ---> m_postfree *)
         eapply eval_funcall_internal with (e2:=locenv_postcpout) (out:=Out_normal);eauto.

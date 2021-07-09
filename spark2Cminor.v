@@ -1095,6 +1095,7 @@ Ltac rename_hyp1 n th :=
     | compute_size _ ?subtype => name(`_cmpt_size` ++ subtype#n)
     | build_frame_lparams _ _ ?lprm => name(`_bld_frm` ++ lprm#n)
     | add_to_frame _ _ ?typ _ => name(`_add_to_fr` ++ typ#n)
+    | value_at_addr _ _ ?e => name (`_value_at_addr` ++ e#n)
 end.
 
 (* Tests
